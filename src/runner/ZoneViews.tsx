@@ -87,6 +87,20 @@ export interface TableCtx {
 export type ZoneSize = 'strip' | 'center' | 'hand';
 const CARD_WIDTH: Record<ZoneSize, number> = { strip: 44, center: 72, hand: 88 };
 
+/**
+ * Keyboard activation for role=button divs: Enter/Space act, with the
+ * default cancelled — otherwise Space also page-scrolls the nearest
+ * scrollable ancestor (native buttons suppress that for free; divs don't).
+ */
+function pressHandler(act: (e: React.SyntheticEvent) => void) {
+  return (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      act(e);
+    }
+  };
+}
+
 export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, custom }: {
   ctx: TableCtx;
   zone: ZoneDef;
@@ -155,7 +169,15 @@ export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, cus
     // A collapsed group's face stays bright while ANY member is legal.
     const groupLegal = it.n > 1 && topLegalCard(it.memberIds, hasMoves) !== null;
     const card = (
-      <TableCard ctx={ctx} cardId={it.cardId} width={width} dimInactive={zoneHasLegal && !groupLegal} />
+      <TableCard
+        ctx={ctx}
+        cardId={it.cardId}
+        width={width}
+        dimInactive={zoneHasLegal && !groupLegal}
+        // The × N badge is aria-hidden and the other members never enter the
+        // DOM, so the count rides the face card's accessible name.
+        nameSuffix={it.n > 1 ? ` × ${it.n}` : undefined}
+      />
     );
     const body = it.n > 1
       ? <CollapsedGroup ctx={ctx} item={it} width={width}>{card}</CollapsedGroup>
@@ -258,9 +280,7 @@ export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, cus
       role={tappable ? 'button' : undefined}
       tabIndex={tappable ? 0 : undefined}
       onClick={tappable ? () => ctx.onZoneTap(inst.key) : undefined}
-      onKeyDown={tappable
-        ? (e) => { if (e.key === 'Enter' || e.key === ' ') ctx.onZoneTap(inst.key); }
-        : undefined}
+      onKeyDown={tappable ? pressHandler(() => ctx.onZoneTap(inst.key)) : undefined}
     >
       {(caption !== '' || capChip !== null) && (
         <span className="rn-zone-cap">{caption}{capChip}</span>
@@ -288,6 +308,14 @@ function SupplyPile({ ctx, pile, width, badgeField, dimWhenIdle }: {
   const faceLegal = hasMoves(pile.topId);
   const card = ctx.state.cards[pile.topId];
   const badgeVal = badgeField !== null && card ? card.fields[badgeField] : undefined;
+  // The badge lozenge itself is aria-hidden, so its field (e.g. "Cost 3")
+  // joins the pile's accessible name instead of vanishing from AT entirely.
+  const badgeName = badgeField !== null && card
+    ? templateOf(ctx.def, card)?.fields.find((f) => f.id === badgeField)?.name
+    : undefined;
+  const badgePart = badgeVal !== undefined && badgeVal !== ''
+    ? `, ${badgeName !== undefined ? `${badgeName} ` : ''}${String(badgeVal)}`
+    : '';
   const tap = topLegal !== null && !faceLegal
     ? (e: React.SyntheticEvent) => {
         e.stopPropagation(); // don't also fire a zone-target tap
@@ -299,11 +327,17 @@ function SupplyPile({ ctx, pile, width, badgeField, dimWhenIdle }: {
       className={`rn-spile${topLegal !== null ? ' rn-pilelegal' : ''}${dimWhenIdle && topLegal === null ? ' rn-piledim' : ''}`}
       role={tap ? 'button' : undefined}
       tabIndex={tap ? 0 : undefined}
-      aria-label={card ? `${card.name} × ${pile.count}` : undefined}
+      aria-label={card ? `${card.name} × ${pile.count}${badgePart}` : undefined}
       onClick={tap}
-      onKeyDown={tap ? (e) => { if (e.key === 'Enter' || e.key === ' ') tap(e); } : undefined}
+      onKeyDown={tap ? pressHandler(tap) : undefined}
     >
-      <TableCard ctx={ctx} cardId={pile.topId} width={width} dimInactive={false} />
+      <TableCard
+        ctx={ctx}
+        cardId={pile.topId}
+        width={width}
+        dimInactive={false}
+        nameSuffix={` × ${pile.count}${badgePart}`}
+      />
       <span className="rn-badge" aria-hidden="true">× {pile.count}</span>
       {badgeVal !== undefined && badgeVal !== '' && (
         <span className="rn-pilecost" aria-hidden="true"><span>{String(badgeVal)}</span></span>
@@ -328,6 +362,10 @@ function CollapsedGroup({ ctx, item, width, children }: {
   const faceLegal = hasMoves(item.cardId);
   const buriedLegal = topLegal !== null && !faceLegal;
   const radius = Math.max(4, width * 0.06);
+  const face = ctx.state.cards[item.cardId];
+  const faceName = face !== undefined && isCardVisibleTo(ctx.def, ctx.state, item.cardId, ctx.viewerId)
+    ? face.name
+    : 'Face-down card';
   const tap = buriedLegal
     ? (e: React.SyntheticEvent) => {
         e.stopPropagation();
@@ -339,8 +377,9 @@ function CollapsedGroup({ ctx, item, width, children }: {
       className={`rn-collapse${buriedLegal ? ' rn-grouplegal' : ''}`}
       role={tap ? 'button' : undefined}
       tabIndex={tap ? 0 : undefined}
+      aria-label={tap ? `${faceName} × ${item.n}` : undefined}
       onClick={tap}
-      onKeyDown={tap ? (e) => { if (e.key === 'Enter' || e.key === ' ') tap(e); } : undefined}
+      onKeyDown={tap ? pressHandler(tap) : undefined}
     >
       {item.n > 2 && (
         <div className="rn-cshadow rn-cshadow2" style={{ borderRadius: radius }} aria-hidden="true" />
@@ -361,11 +400,13 @@ function badgeVisible(v: unknown): boolean {
  * One card on the table: visibility-resolved facing, glow + tap when legal,
  * rotation + badge chips from def.cardState.
  */
-function TableCard({ ctx, cardId, width, dimInactive }: {
+function TableCard({ ctx, cardId, width, dimInactive, nameSuffix }: {
   ctx: TableCtx;
   cardId: Id;
   width: number;
   dimInactive: boolean;
+  /** Joined to the accessible name (collapsed × N counts, pile badges). */
+  nameSuffix?: string;
 }) {
   const card = ctx.state.cards[cardId];
   if (!card) return null;
@@ -395,9 +436,9 @@ function TableCard({ ctx, cardId, width, dimInactive }: {
       }}
       role={hasMoves ? 'button' : undefined}
       tabIndex={hasMoves ? 0 : undefined}
-      aria-label={visible ? card.name : 'Face-down card'}
+      aria-label={`${visible ? card.name : 'Face-down card'}${nameSuffix ?? ''}`}
       onClick={tap}
-      onKeyDown={tap ? (e) => { if (e.key === 'Enter' || e.key === ' ') tap(e); } : undefined}
+      onKeyDown={tap ? pressHandler(tap) : undefined}
     >
       <div className="rn-rotor" style={rotated ? { width, height } : undefined}>
         <CardView

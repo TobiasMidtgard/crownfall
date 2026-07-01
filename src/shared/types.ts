@@ -344,6 +344,8 @@ export interface VariableDef {
   scope: VarScope;
   type: VarType;
   initial: number | string | boolean;
+  /** Internal bookkeeping: never shown as a chip in the table's status bar. */
+  hidden?: boolean;
 }
 
 // ---------------------------------------------------------------------------

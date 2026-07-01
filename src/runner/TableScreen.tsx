@@ -39,7 +39,7 @@ import {
   Curtain, ErrorBanner, FatalScreen, GameOverOverlay, LogDrawer, Snackbar,
 } from './overlays';
 
-export function TableScreen({ def, seats, seed, navigate, onPlayAgain, onBackToSetup, onGameOver }: {
+export function TableScreen({ def, seats, seed, navigate, onPlayAgain, onBackToSetup, onGameOver, homeLabel }: {
   def: GameDef;
   seats: SeatSetup[];
   seed: number;
@@ -48,6 +48,9 @@ export function TableScreen({ def, seats, seed, navigate, onPlayAgain, onBackToS
   onBackToSetup: () => void;
   /** Fired once, when the session first reports the game finished. */
   onGameOver?: (summary: { result: GameState['result']; state: GameState }) => void;
+  /** Label for the leave-the-table overlay action (default 'Home') — hosts
+   *  whose onHome lands elsewhere name the real destination. */
+  homeLabel?: string;
 }) {
   // The session is created in an effect (not render) so StrictMode's double
   // mount creates/disposes cleanly — engine.start() may only run once.
@@ -84,20 +87,29 @@ export function TableScreen({ def, seats, seed, navigate, onPlayAgain, onBackToS
         onRetry={onBackToSetup}
         retryLabel="Back to setup"
         onHome={() => navigate('#/')}
+        homeLabel={homeLabel}
       />
     );
   }
   return (
-    <Table def={def} session={session} snap={snap} navigate={navigate} onPlayAgain={onPlayAgain} />
+    <Table
+      def={def}
+      session={session}
+      snap={snap}
+      navigate={navigate}
+      onPlayAgain={onPlayAgain}
+      homeLabel={homeLabel}
+    />
   );
 }
 
-function Table({ def, session, snap, navigate, onPlayAgain }: {
+function Table({ def, session, snap, navigate, onPlayAgain, homeLabel }: {
   def: GameDef;
   session: GameSession;
   snap: SessionSnapshot;
   navigate: (hash: string) => void;
   onPlayAgain: () => void;
+  homeLabel?: string;
 }) {
   const state = snap.state;
   const accent = def.meta.accentColor ?? '#7c5cff';
@@ -232,6 +244,14 @@ function Table({ def, session, snap, navigate, onPlayAgain }: {
   const globalVars = def.variables.filter((v) => v.scope === 'global');
   const choice = snap.choice;
 
+  // Screen-reader page heading: the table itself has no visible headings
+  // until the game-over h2, so heading navigation needs this landmark.
+  const tableHeading = (
+    <h1 className="rn-vh">
+      {def.meta.name} — {state.players.map((p) => p.name).join(' vs ')}
+    </h1>
+  );
+
   // While the hotseat curtain is up the table is NOT rendered at all (render
   // replacement, not an overlay): the hidden hand never enters the DOM or the
   // accessibility tree, so nothing behind the curtain can be read or
@@ -239,6 +259,7 @@ function Table({ def, session, snap, navigate, onPlayAgain }: {
   if (showCurtain && viewer) {
     return (
       <div className="rn-root">
+        {tableHeading}
         {snap.scriptError && (
           <ErrorBanner message={snap.scriptError} onDismiss={() => session.dismissScriptError()} />
         )}
@@ -259,7 +280,7 @@ function Table({ def, session, snap, navigate, onPlayAgain }: {
       {globalVars
         // Empty-string globals are internal bookkeeping (e.g. a pending-effect
         // tag between announcements) — noise until they hold something.
-        .filter((v) => state.globalVars[v.id] !== '')
+        .filter((v) => !v.hidden && state.globalVars[v.id] !== '')
         .map((v) => (
           <span className="chip" key={v.id}>{v.name}: {formatVarValue(state.globalVars[v.id])}</span>
         ))}
@@ -269,7 +290,7 @@ function Table({ def, session, snap, navigate, onPlayAgain }: {
         title={`Animation speed: ${speed === '1x' ? 'normal' : speed === '2x' ? 'fast' : 'instant'}`}
         aria-label={`Animation speed: ${speed === '1x' ? 'normal' : speed === '2x' ? 'fast' : 'instant'} — tap to change`}
       >
-        {speed === '1x' ? '1×' : speed === '2x' ? '2×' : '⚡'}
+        {speed === '1x' ? '1×' : speed === '2x' ? '2×' : 'max'}
       </button>
       <button className="btn rn-statusbtn" onClick={() => setLogOpen(true)}>Log</button>
     </div>
@@ -291,6 +312,7 @@ function Table({ def, session, snap, navigate, onPlayAgain }: {
 
   return (
     <div className="rn-root">
+      {tableHeading}
       <div className="rn-table">
         {active ? (
           <section className="rn-screenhost">
@@ -396,7 +418,8 @@ function Table({ def, session, snap, navigate, onPlayAgain }: {
       {snap.scriptError && (
         <ErrorBanner message={snap.scriptError} onDismiss={() => session.dismissScriptError()} />
       )}
-      {snack && <Snackbar text={snack.text} />}
+      {/* Always mounted: the live region must exist before a message lands. */}
+      <Snackbar text={snack?.text ?? ''} seq={snack?.n ?? 0} />
 
       {pick && (
         <ActionPickSheet
@@ -418,7 +441,13 @@ function Table({ def, session, snap, navigate, onPlayAgain }: {
       )}
       {logOpen && <LogDrawer entries={state.log} onClose={() => setLogOpen(false)} />}
       {state.result && (
-        <GameOverOverlay def={def} state={state} onPlayAgain={onPlayAgain} onHome={() => navigate('#/')} />
+        <GameOverOverlay
+          def={def}
+          state={state}
+          onPlayAgain={onPlayAgain}
+          onHome={() => navigate('#/')}
+          homeLabel={homeLabel}
+        />
       )}
     </div>
   );

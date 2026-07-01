@@ -20,16 +20,55 @@ function SheetBase({ who, title, onClose, children }: {
   children: ReactNode;
 }) {
   // Move focus into the dialog when it opens so keyboard/assistive users
-  // aren't soft-locked on the (inert) table behind a blocking sheet.
+  // aren't soft-locked on the (inert) table behind a blocking sheet, and hand
+  // it back to the opener when the sheet closes (if it's still in the DOM —
+  // the card that opened a picker may have moved by then).
   const sheetRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
+    const opener = document.activeElement;
+    const sheet = sheetRef.current;
+    if (sheet) {
+      const first = sheet.querySelector<HTMLElement>('button:not(:disabled)');
+      (first ?? sheet).focus();
+    }
+    return () => {
+      if (opener instanceof HTMLElement && opener.isConnected) opener.focus();
+    };
+  }, []);
+  // Modal manners: Tab cycles inside the dialog instead of walking the
+  // obscured table; Escape dismisses the sheets that CAN be dismissed
+  // (engine choices are blocking and pass no onClose).
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape' && onClose) {
+      e.stopPropagation();
+      onClose();
+      return;
+    }
+    if (e.key !== 'Tab') return;
     const sheet = sheetRef.current;
     if (!sheet) return;
-    const first = sheet.querySelector<HTMLElement>('button:not(:disabled)');
-    (first ?? sheet).focus();
-  }, []);
+    const focusables = Array.from(sheet.querySelectorAll<HTMLElement>(
+      'button:not(:disabled), a[href], input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])',
+    ));
+    if (focusables.length === 0) {
+      e.preventDefault();
+      return;
+    }
+    // indexOf is -1 while focus sits on the sheet itself (tabIndex -1): both
+    // directions wrap instead of escaping.
+    const idx = focusables.indexOf(document.activeElement as HTMLElement);
+    if (e.shiftKey) {
+      if (idx <= 0) {
+        e.preventDefault();
+        focusables[focusables.length - 1].focus();
+      }
+    } else if (idx === -1 || idx === focusables.length - 1) {
+      e.preventDefault();
+      focusables[0].focus();
+    }
+  };
   return (
-    <div className="rn-sheet-backdrop" onClick={onClose}>
+    <div className="rn-sheet-backdrop" onClick={onClose} onKeyDown={onKeyDown}>
       <div
         className="rn-sheet"
         role="dialog"

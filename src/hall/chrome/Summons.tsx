@@ -1,16 +1,18 @@
 /**
- * The Ceremony (summons overlay) — the three-stage matchmaking rite, ported
- * from FableTest app.js (renderSearching / renderSeated / renderField).
+ * The Ceremony (summons overlay) — the matchmaking rite, ported from FableTest
+ * app.js (renderSearching / renderSeated).
  *
  *   searching  open-seat only: rotating ring, flavor lines, mm:ss clock;
  *              after 3.6–5.4s a seat-taker answers → found
  *   found      versus plate + the Coin of Succession 3D flip (youFirst is
  *              decided before the animation; verdict text lands at ~2200ms,
- *              700ms under reduced motion or calm)
- *   field      the continuity change: 'To the table' launches the REAL match
- *              at #/play/dominion — the old 'Launch the engine' dead-end is
- *              gone. Practice foes omit the foe param (the table defaults to
- *              'The Computer').
+ *              700ms under reduced motion or calm). 'To the table' launches
+ *              the REAL match at #/play/dominion, carrying the coin's verdict
+ *              as &first=you|foe — the table seats the first player at seat 0.
+ *              Practice foes omit the foe param (the table defaults to 'The
+ *              Computer'). The old 'field' confirmation stage is gone: it was
+ *              a relic of the fake engine's dead-end launch, and cutting it
+ *              keeps a practice match within three clicks of #/tables.
  *
  * role=dialog aria-modal, body scroll locked, Esc closes, Tab is trapped,
  * focus returns to the opener on close. All timers live inside effects and
@@ -63,8 +65,7 @@ const SIGIL_NAMES: Record<Sigil, string> = {
 
 type Stage =
   | { at: 'searching' }
-  | { at: 'found'; foe: SummonsFoe; seatLine: string; youFirst: boolean }
-  | { at: 'field'; foe: SummonsFoe };
+  | { at: 'found'; foe: SummonsFoe; seatLine: string; youFirst: boolean };
 
 export interface SummonsProps {
   request: SummonsRequest;
@@ -118,15 +119,13 @@ export function Summons({ request, navigate, onClose }: SummonsProps) {
     };
   }, []);
 
-  // Esc closes (message depends on how far the rite went); Tab stays inside.
+  // Esc closes; Tab stays inside.
   // An <Edit> caret swallows its own Escape first — the ladder holds.
   const stageAt = stage.at;
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        herald(stageAt === 'field'
-          ? 'The heralds will call when the table is ready.'
-          : 'You clear the table. The heralds apologize on your behalf.');
+        herald('You clear the table. The heralds apologize on your behalf.');
         onClose();
       } else if (e.key === 'Tab') {
         const overlay = overlayRef.current;
@@ -143,7 +142,7 @@ export function Summons({ request, navigate, onClose }: SummonsProps) {
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [stageAt, onClose]);
+  }, [onClose]);
 
   // searching: clock tick, flavor rotation, and the answering foe
   useEffect(() => {
@@ -186,10 +185,13 @@ export function Summons({ request, navigate, onClose }: SummonsProps) {
     else titleRef.current?.focus();
   }, [stageAt]);
 
-  const launch = (foe: SummonsFoe) => {
+  // The Coin of Succession's verdict rides along: the table must open on the
+  // turn the ceremony announced, not always the player's.
+  const launch = (foe: SummonsFoe, youFirst: boolean) => {
+    const first = youFirst ? 'you' : 'foe';
     navigate(foe.gear
-      ? `#/play/dominion?set=${kingdom.id}&seat=practice`
-      : `#/play/dominion?set=${kingdom.id}&foe=${encodeURIComponent(foe.name)}&seat=open`);
+      ? `#/play/dominion?set=${kingdom.id}&seat=practice&first=${first}`
+      : `#/play/dominion?set=${kingdom.id}&foe=${encodeURIComponent(foe.name)}&seat=open&first=${first}`);
   };
 
   const closeWith = (message: string) => {
@@ -285,7 +287,7 @@ export function Summons({ request, navigate, onClose }: SummonsProps) {
               <button
                 className="btn btn-primary"
                 type="button"
-                onClick={() => setStage({ at: 'field', foe: stage.foe })}
+                onClick={() => launch(stage.foe, stage.youFirst)}
               >
                 <Edit id="summons-enter-label" fallback="To the table" />
               </button>
@@ -302,38 +304,6 @@ export function Summons({ request, navigate, onClose }: SummonsProps) {
           </>
         )}
 
-        {stage.at === 'field' && (
-          <>
-            <div className="summons-ring-wrap">
-              <svg
-                className="summons-crest"
-                aria-hidden="true"
-                style={{ width: '8rem', height: '8rem' }}
-              >
-                <use href="#mark-crownfall" />
-              </svg>
-            </div>
-            <h2 className="summons-title" id="summons-title" tabIndex={-1} ref={titleRef}>
-              <Edit id="summons-field-title" fallback="The table is prepared" />
-            </h2>
-            <p className="summons-line">
-              Across the table, {stage.foe.name} cuts the deck and does not look up.<br />
-              <span><Edit id="summons-field-note" fallback="Beyond this door the cards are dealt. Take your seat." /></span>
-            </p>
-            <div className="summons-actions">
-              <button className="btn btn-primary" type="button" onClick={() => launch(stage.foe)}>
-                <Edit id="summons-launch-label" fallback="To the table" />
-              </button>
-              <button
-                className="btn btn-ghost"
-                type="button"
-                onClick={() => closeWith('The heralds will call when the table is ready.')}
-              >
-                <Edit id="summons-back-label" fallback="Back to the tables" />
-              </button>
-            </div>
-          </>
-        )}
       </div>
     </div>
   );

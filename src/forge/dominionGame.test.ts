@@ -4,11 +4,12 @@
  * example playthrough harness (seeded random moves + choices).
  */
 import { describe, expect, it } from 'vitest';
-import type { ChoiceRequest, Expr, GameDef, GameState } from '../shared/types';
+import type { ChoiceRequest, Expr, GameDef, GameState, ScreenElement } from '../shared/types';
 import { validateGameDef } from '../shared/validate';
 import { KINGDOM_SETS } from '../shared/kingdoms';
 import { createEngine } from '../engine';
 import { playThrough, totalCards } from '../examples/testHarness';
+import { renderTextParts } from '../runner/layout';
 import { buildDominionDef, kingdomCardNames, pickKingdom } from './dominionGame';
 
 const BASIC_NAMES = ['Copper', 'Silver', 'Gold', 'Estate', 'Duchy', 'Province', 'Curse'];
@@ -95,8 +96,8 @@ describe('pickKingdom', () => {
   );
 });
 
-/** Setup block moving ONE named card from the supply to p0's hand. */
-function dealNamed(name: string): GameDef['setup'][number] {
+/** Setup block moving ONE named card from the supply to `toZone` (default: p0's hand). */
+function dealNamed(name: string, toZone = 'dom_zone_hand'): GameDef['setup'][number] {
   const nameIs: Expr = {
     kind: 'compare', op: '==',
     left: { kind: 'cardField', card: { kind: 'binding', name: '$card' }, fieldId: 'name' },
@@ -105,7 +106,7 @@ function dealNamed(name: string): GameDef['setup'][number] {
   return {
     kind: 'moveCards',
     from: { zoneId: 'dom_zone_supply', owner: null },
-    to: { zoneId: 'dom_zone_hand', owner: null }, // contextual = p0 during setup
+    to: { zoneId: toZone, owner: null }, // contextual = p0 during setup
     cards: {
       kind: 'specific',
       card: {
@@ -173,6 +174,71 @@ describe('rebuilt card semantics (deterministic probes)', () => {
     expect(errors).toEqual([]);
     expect(state.players[0].vars['dom_var_vp']).toBe(6);
     expect(state.players[1].vars['dom_var_vp']).toBe(3); // 3 Estates
+  });
+});
+
+describe('end-of-turn timing (the original checks the supply only at turn end)', () => {
+  it('a mid-turn last-Province buy does NOT end the game; that turn\'s end does', async () => {
+    const def = buildDominionDef();
+    // One Province left in the supply; 8 starting coins reach it turn one.
+    for (let i = 0; i < 7; i += 1) def.setup.push(dealNamed('Province', 'dom_zone_trash'));
+    def.variables.find((v) => v.id === 'dom_var_coins')!.initial = 8;
+    const { engine, errors } = probeEngine(def, () => { throw new Error('no choices expected'); });
+    await engine.start();
+    await engine.performAction('p0', { actionId: 'dom_action_done' });
+    let state = engine.getState();
+    const province = state.zones['dom_zone_supply'].cardIds
+      .find((id) => state.cards[id].name === 'Province')!;
+    await engine.performAction('p0', { actionId: 'dom_action_buy', cardId: province });
+    state = engine.getState();
+    expect(errors).toEqual([]);
+    // The Provinces ran dry mid-buy-phase — but the turn (and its remaining
+    // moves) survives until cleanup, like the original table.
+    expect(state.zones['dom_zone_supply'].cardIds
+      .filter((id) => state.cards[id].name === 'Province')).toHaveLength(0);
+    expect(engine.finished).toBe(false);
+    expect(state.result).toBeNull();
+    expect(engine.getLegalMoves('p0').length).toBeGreaterThan(0);
+    // Ending the turn runs cleanup, then the end-of-turn judgement fires.
+    await engine.performAction('p0', { actionId: 'dom_action_end_turn' });
+    state = engine.getState();
+    expect(errors).toEqual([]);
+    expect(engine.finished).toBe(true);
+    expect(state.result).not.toBeNull();
+    expect(state.result!.winners).toEqual(['p0']); // 3 Estates + the Province vs 3 Estates
+  });
+});
+
+describe('the TURN ticker counts rounds, not per-seat turns', () => {
+  /** The parts of a text element anywhere in an element tree. */
+  function textParts(els: ScreenElement[], id: string): readonly (string | Expr)[] {
+    for (const el of els) {
+      if (el.id === id && el.kind === 'text') return el.parts ?? [];
+      const kids = el.kind === 'group' ? el.children : el.children ?? [];
+      const found = kids.length > 0 ? textParts(kids, id) : [];
+      if (found.length > 0) return found;
+    }
+    return [];
+  }
+
+  it('dom_el_turn / dom_el_m_turn show the round like the original top bar', async () => {
+    const def = buildDominionDef();
+    const desktop = textParts(def.screenLayout!.elements, 'dom_el_turn');
+    const mobile = textParts(def.screenLayout!.mobile!.elements, 'dom_el_m_turn');
+    expect(desktop.length).toBeGreaterThan(0);
+    expect(mobile.length).toBeGreaterThan(0);
+    const { engine, errors } = probeEngine(def, () => { throw new Error('no choices expected'); });
+    await engine.start();
+    const shown = () => renderTextParts(def, engine.getState(), desktop, 'p0');
+    expect(shown()).toBe('TURN 1'); // p0's first turn
+    await engine.performAction('p0', { actionId: 'dom_action_done' });
+    await engine.performAction('p0', { actionId: 'dom_action_end_turn' });
+    expect(shown()).toBe('TURN 1'); // p1 still plays ROUND 1 (original: turnNo 1)
+    await engine.performAction('p1', { actionId: 'dom_action_done' });
+    await engine.performAction('p1', { actionId: 'dom_action_end_turn' });
+    expect(shown()).toBe('TURN 2'); // back to p0 — round 2
+    expect(renderTextParts(def, engine.getState(), mobile, 'p0')).toBe('TURN 2');
+    expect(errors).toEqual([]);
   });
 });
 

@@ -103,6 +103,17 @@ export function VariablesTab({ def, onChange }: { def: GameDef; onChange: (def: 
                 </select>
               )}
             </label>
+            <label className="field">
+              <span>At the table</span>
+              <select
+                className="select"
+                value={v.hidden ? 'hidden' : 'shown'}
+                onChange={(e) => update(i, { ...v, hidden: e.target.value === 'hidden' || undefined })}
+              >
+                <option value="shown">Shown in the status bar</option>
+                <option value="hidden">Hidden — internal bookkeeping</option>
+              </select>
+            </label>
           </div>
         </div>
       ))}

@@ -5,7 +5,8 @@
  * real matches) and three lobby blocks: open tables (fixtures; own-hosted
  * rows hidden), set a table (kingdom + seat radiogroups with roving tabindex
  * and arrow-key wrap, tonight's suggestion, live summary), and the chronicle
- * (real recorded matches first, the original fixture rows as older history).
+ * (real recorded matches merged with the original fixture rows — the fixtures
+ * anchored to the first visit — in one newest-first timeline).
  *
  * 'Set the table' / 'Take the seat' open the ceremony (chrome/Summons.tsx),
  * which launches the real match at #/play/dominion. Stores are
@@ -45,13 +46,33 @@ const OPEN_TABLES: OpenTable[] = [
   },
 ];
 
-/** The original fixture history — rendered below the real chronicle. */
+/**
+ * The original fixture history. Each row is anchored `nights` before the
+ * hall's first visit, so fixtures age like real entries (no eternal 'Last
+ * night') and merge into one chronologically sorted timeline with them.
+ */
 const CHRONICLE_FIXTURES = [
-  { when: 'Last night', text: 'Tobit took the realm from Lady Wrenfield, 5 provinces to 3.', kingdom: 'Sharp Coins', turns: 19 },
-  { when: 'Last night', text: 'Brother Hollis stole it from Tobit on the final turn, 4 to 4 by duchies.', kingdom: 'First Game', turns: 23 },
-  { when: 'Three nights past', text: 'Lady Wrenfield cursed her way past Brother Hollis, 5 to 2.', kingdom: 'The Witching Hour', turns: 17 },
-  { when: 'A week past', text: 'Tobit over Ser Calloway, by a single estate.', kingdom: 'First Game', turns: 26 },
+  { nights: 1, text: 'Tobit took the realm from Lady Wrenfield, 5 provinces to 3.', kingdom: 'Sharp Coins', turns: 19 },
+  { nights: 1, text: 'Brother Hollis stole it from Tobit on the final turn, 4 to 4 by duchies.', kingdom: 'First Game', turns: 23 },
+  { nights: 3, text: 'Lady Wrenfield cursed her way past Brother Hollis, 5 to 2.', kingdom: 'The Witching Hour', turns: 17 },
+  { nights: 7, text: 'Tobit over Ser Calloway, by a single estate.', kingdom: 'First Game', turns: 26 },
 ];
+
+const ANCHOR_KEY = 'crownfall.chronicle.anchor';
+let memoryAnchor: string | null = null;
+
+/** First-visit timestamp the fixture dates hang off; set once, then stable.
+ * Storage-barred sessions hold it in module memory instead. */
+function chronicleAnchor(): number {
+  let iso = memoryAnchor;
+  try { iso = window.localStorage.getItem(ANCHOR_KEY) ?? iso; } catch { /* memory only */ }
+  if (!iso || Number.isNaN(new Date(iso).getTime())) {
+    iso = new Date().toISOString();
+    try { window.localStorage.setItem(ANCHOR_KEY, iso); } catch { /* memory only */ }
+  }
+  memoryAnchor = iso;
+  return new Date(iso).getTime();
+}
 
 /* ── chronicle voice ── */
 
@@ -103,6 +124,31 @@ export function Tables({ navigate }: { navigate: (hash: string) => void }) {
   const [summons, setSummons] = useState<SummonsRequest | null>(null);
   const [tonight] = useState(() => KINGDOM_SETS[new Date().getDay() % KINGDOM_SETS.length]);
   const chronicle = useChronicle();
+  const [anchor] = useState(chronicleAnchor);
+
+  // One timeline: real entries and anchored fixtures, newest first, labels
+  // aging together — a fresh match can never sit below 'Last night'.
+  const chronicleRows = [
+    ...chronicle.map((e) => ({
+      key: e.id,
+      date: new Date(e.when).getTime() || 0,
+      when: chronicleWhen(e.when),
+      text: chronicleText(e),
+      kingdom: e.kingdom,
+      turns: e.turns,
+    })),
+    ...CHRONICLE_FIXTURES.map((c) => {
+      const date = anchor - c.nights * 86400000;
+      return {
+        key: c.text,
+        date,
+        when: chronicleWhen(new Date(date).toISOString()),
+        text: c.text,
+        kingdom: c.kingdom,
+        turns: c.turns,
+      };
+    }),
+  ].sort((a, b) => b.date - a.date);
 
   const selected = kingdomById(kingdomId);
   const selectedName = useCopy(`kingdom-name-${selected.id}`, selected.name);
@@ -134,12 +180,14 @@ export function Tables({ navigate }: { navigate: (hash: string) => void }) {
       <div className="tables">
         <aside className="hall-profile" aria-label="Your standing">
           <svg className="profile-crest" aria-hidden="true"><use href={`#crest-${user.sigil}`} /></svg>
-          <h2 className="profile-name">
+          {/* Not a heading: the aside precedes the page's h1 in DOM order,
+              and it is already named by the aria-label above. */}
+          <p className="profile-name" style={{ margin: 0 }}>
             {user.name}{' '}
             {user.keeper && (
               <svg className="keeper-crown" aria-hidden="true"><use href="#glyph-crown-small" /></svg>
             )}
-          </h2>
+          </p>
           <div className="profile-ledger">
             <div><span>Sigil</span><strong>{SIGIL_TITLES[user.sigil]}</strong></div>
             <div><span>Victories</span><strong>{user.victories.toLocaleString()}</strong></div>
@@ -267,18 +315,11 @@ export function Tables({ navigate }: { navigate: (hash: string) => void }) {
           <div data-block="lobby-chronicle" data-block-name="The chronicle">
             <h2 className="lobby-subhead eyebrow"><Edit id="tables-chronicle-head" fallback="The chronicle" /></h2>
             <ol className="chronicle">
-              {chronicle.map((e) => (
-                <li className="chronicle-row" key={e.id}>
-                  <span className="chronicle-when">{chronicleWhen(e.when)}</span>
-                  <span className="chronicle-text">{chronicleText(e)}</span>
-                  <span className="chronicle-meta">{e.kingdom} · {e.turns} turns</span>
-                </li>
-              ))}
-              {CHRONICLE_FIXTURES.map((c) => (
-                <li className="chronicle-row" key={c.text}>
-                  <span className="chronicle-when">{c.when}</span>
-                  <span className="chronicle-text">{c.text}</span>
-                  <span className="chronicle-meta">{c.kingdom} · {c.turns} turns</span>
+              {chronicleRows.map((r) => (
+                <li className="chronicle-row" key={r.key}>
+                  <span className="chronicle-when">{r.when}</span>
+                  <span className="chronicle-text">{r.text}</span>
+                  <span className="chronicle-meta">{r.kingdom} · {r.turns} turns</span>
                 </li>
               ))}
             </ol>
@@ -324,7 +365,7 @@ function OpenTableRow({ table, onJoin }: { table: OpenTable; onJoin: () => void 
           className="btn btn-ghost"
           type="button"
           aria-label={`Watch ${table.host.name} against ${table.opponent}: ${kName}`}
-          onClick={() => herald('The spectator benches arrive with the engine. Soon.')}
+          onClick={() => herald('The spectator benches are still being carved. Soon.')}
         >
           Watch
         </button>

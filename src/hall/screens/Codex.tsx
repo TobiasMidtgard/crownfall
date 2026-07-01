@@ -132,7 +132,8 @@ function CodexCardView({ card, index, revealed }: { card: CodexCard; index: numb
       <div className="card-face">
         <span className="card-cost" aria-label={`Cost ${card.cost}`}>{card.cost}</span>
         <div className="card-art" aria-hidden="true"><CardArt card={card} /></div>
-        <h3 className="card-name">{card.name}</h3>
+        {/* h2, not h3: the page outline is the h1 then one card per level. */}
+        <h2 className="card-name">{card.name}</h2>
         <p className="card-type"><span className="kind">{typeLabel}</span>{card.promo ? ' · Promo' : ''}</p>
         <p className="card-text">{card.text}</p>
         <div className="card-stats">{stat}</div>

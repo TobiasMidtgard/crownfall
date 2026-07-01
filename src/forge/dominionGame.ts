@@ -33,8 +33,8 @@ import type {
 import { deepClone } from '../shared/defaults';
 import { dominionGame } from '../examples/dominion';
 import {
-  ALL, CURRENT, add, allOf, announce, anyOf, bnd, bestCard, changeVar, chooseCard,
-  chooseCardsBlock, countCards, eq, field, forEachCard, forEachPlayer, getVar, gt, iff, lte,
+  ALL, CURRENT, TURN_NUMBER, add, allOf, announce, anyOf, bnd, bestCard, changeVar, chooseCard,
+  chooseCardsBlock, countCards, eq, field, forEachCard, forEachPlayer, getVar, gt, gte, iff, lte,
   move, mul, neg, neq, not, num, or, repeat, setVar, shuffle, specific, str, sub, topN, zone,
   zoneCount,
 } from '../examples/dsl';
@@ -62,6 +62,8 @@ const IMMUNE = 'dom_var_immune';
 const EMPTY_PILES = 'dom_var_empty_piles';
 /** Per-player scratch number (Cellar's discard count, Remodel/Mine's cost cap). */
 const SCRATCH = 'dom_var_scratch';
+/** Set at turn end when the supply says the game is over (see buildDominionDef). */
+const GAME_OVER = 'dom_var_game_over';
 
 const COST = 'dom_field_cost';
 const CTYPE = 'dom_field_ctype';
@@ -431,6 +433,7 @@ function pileWatcherScript(kingdomNames: string[]): Block[] {
 // --- screen-layout touch-ups ----------------------------------------------------
 
 type ZoneEl = Extract<ScreenElement, { kind: 'zone' }>;
+type TextEl = Extract<ScreenElement, { kind: 'text' }>;
 
 function patchZoneEl(elements: ScreenElement[], id: string, patch: Partial<ZoneEl>): void {
   for (const el of elements) {
@@ -438,6 +441,26 @@ function patchZoneEl(elements: ScreenElement[], id: string, patch: Partial<ZoneE
     const kids = el.kind === 'group' ? el.children : el.children ?? [];
     if (kids.length > 0) patchZoneEl(kids, id, patch);
   }
+}
+
+function patchTextEl(elements: ScreenElement[], id: string, patch: Partial<TextEl>): void {
+  for (const el of elements) {
+    if (el.id === id && el.kind === 'text') Object.assign(el, patch);
+    const kids = el.kind === 'group' ? el.children : el.children ?? [];
+    if (kids.length > 0) patchTextEl(kids, id, patch);
+  }
+}
+
+/**
+ * The round number the TURN ticker shows. The original table numbers ROUNDS
+ * (turnNo advances only when play returns to the first seat) while the
+ * engine's turnNumber counts every seat's turn, so for this strictly
+ * two-seat table: round = floor((turnNumber + 1) / 2), written with the
+ * (n − n%2)/2 integer-floor idiom the Gardens recount already uses.
+ */
+function roundNumberParts(): TextEl['parts'] {
+  const next = add(TURN_NUMBER, num(1));
+  return ['TURN ', div(sub(next, mod(next, num(2))), num(2))];
 }
 
 // Slice filters by NAME so Gardens (a victory-typed kingdom card) stays in
@@ -484,7 +507,12 @@ export function buildDominionDef(): GameDef {
 
   def.variables.push(
     { id: SCRATCH, name: 'Scratch counter', scope: 'perPlayer', type: 'number', initial: 0 },
+    { id: GAME_OVER, name: 'Game over pending', scope: 'global', type: 'number', initial: 0, hidden: true },
   );
+  // The empty-pile counter (inherited from the example) is bookkeeping too —
+  // the table's supply already shows the piles themselves.
+  const emptyPilesVar = def.variables.find((v) => v.id === EMPTY_PILES);
+  if (emptyPilesVar) emptyPilesVar.hidden = true;
 
   def.cards.push(...EXTRA_CARDS);
 
@@ -541,22 +569,60 @@ export function buildDominionDef(): GameDef {
   const watcher = def.triggers.find((t) => t.id === 'dom_trigger_piles');
   if (watcher) watcher.script = pileWatcherScript(defaultSet.cards);
 
+  // End-of-turn timing, matching the original table: engine.js checks the
+  // supply only inside endTurn (after cleanup + redraw), never mid-turn. The
+  // engine here evaluates endConditions after EVERY settle, so gate them on a
+  // pending var that only a turnEnd trigger can raise — placed AFTER the VP
+  // recount so the verdict scores the finished turn. A mid-turn last-Province
+  // buy (or a Remodel emptying a third pile) no longer forfeits the rest of
+  // the turn, which could flip the winner.
+  const vpIdx = def.triggers.findIndex((t) => t.id === 'dom_trigger_vp');
+  def.triggers.splice(vpIdx + 1, 0, {
+    id: 'dom_trigger_game_over',
+    name: 'Judge the supply at turn end',
+    event: { kind: 'turnEnd' },
+    condition: null,
+    script: [
+      iff(anyOf(
+        eq(countCards(zone(SUPPLY), nameIs('Province')), num(0)),
+        gte(getVar(EMPTY_PILES), num(3)),
+      ), [setVar(GAME_OVER, num(1))]),
+    ],
+  });
+  def.endConditions = def.endConditions.map((ec) => ({
+    ...ec,
+    condition: allOf(gte(getVar(GAME_OVER), num(1)), ec.condition),
+  }));
+
   // Screen layout: name-based supply slices (desktop + mobile), a 4-row
-  // victory column (Curse joins it), and the carousel mobile supply.
+  // victory column (Curse joins it), the carousel mobile supply, and TURN
+  // tickers that count rounds like the original's top bar.
   const layout = def.screenLayout;
   if (layout) {
+    patchTextEl(layout.elements, 'dom_el_turn', { parts: roundNumberParts() });
     patchZoneEl(layout.elements, 'dom_el_supply_victory', {
       cardFilter: IS_BASIC_VICTORY_PILE, rows: 4, cardScale: 4, gap: 0.5,
     });
     patchZoneEl(layout.elements, 'dom_el_supply_kingdom', { cardFilter: IS_KINGDOM_PILE });
     if (layout.mobile) {
+      patchTextEl(layout.mobile.elements, 'dom_el_m_turn', { parts: roundNumberParts() });
+      // Carousel geometry (verified by rect math at a 375px viewport): the
+      // example's 7.8%-tall rows hold ~62px of card room at aspect 0.42,
+      // but a cardScale-12 card is ~63px tall BEFORE the carousel's vertical
+      // padding and the cost diamond's ~12px overhang — the piles rode over
+      // the panel borders. A taller page (aspect 0.38 → these rows ≈ 77px)
+      // plus cardScale 10 (37.5×52.5px cards) fits card + diamond + padding
+      // inside every frame; dominion-skin.css left-anchors the initial snap.
+      layout.mobile.aspect = 0.38;
       patchZoneEl(layout.mobile.elements, 'dom_el_m_supply_victory', {
-        cardFilter: IS_BASIC_VICTORY_PILE, display: 'carousel',
+        cardFilter: IS_BASIC_VICTORY_PILE, display: 'carousel', cardScale: 10,
       });
       patchZoneEl(layout.mobile.elements, 'dom_el_m_supply_kingdom', {
-        cardFilter: IS_KINGDOM_PILE, display: 'carousel',
+        cardFilter: IS_KINGDOM_PILE, display: 'carousel', cardScale: 10,
       });
-      patchZoneEl(layout.mobile.elements, 'dom_el_m_supply_treasures', { display: 'carousel' });
+      patchZoneEl(layout.mobile.elements, 'dom_el_m_supply_treasures', {
+        display: 'carousel', cardScale: 10,
+      });
     }
   }
 

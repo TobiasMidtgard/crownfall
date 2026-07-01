@@ -12,10 +12,10 @@
  * imperatively — so typing (which mutates DOM React would otherwise own) is
  * never clobbered by a parent re-render. Keyboard contract preserved from
  * editor.js: Enter commits, Escape restores the focus-time value, emptying
- * reverts to the default; paste is forced to plain text; clicks on editable
- * buttons/links edit instead of firing.
+ * reverts to the default; paste is forced to plain text; clicks AND keyboard
+ * activation (Enter/Space) on editable buttons/links edit instead of firing.
  */
-import { useLayoutEffect, useRef, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useRef, useSyncExternalStore } from 'react';
 import { useUser } from './auth';
 import { herald } from '../Heralds';
 
@@ -120,6 +120,42 @@ export function Edit({ id, fallback }: EditProps) {
     if (el.textContent !== text) el.textContent = text;
   });
 
+  // While edit mode is on, an editable control must rewrite instead of fire —
+  // for the keyboard too. Enter/Space activation dispatches the click at the
+  // host <button>/<a> itself (it never passes through the span's handlers),
+  // so guard the host directly and hand the caret focus instead. Native
+  // listeners run before React's root-delegated ones, so stopPropagation here
+  // keeps the host's own onClick from firing.
+  useEffect(() => {
+    if (!active) return;
+    const el = ref.current;
+    const host = el?.closest('a, button');
+    if (!el || !(host instanceof HTMLElement)) return;
+    const swallowClick = (e: Event) => {
+      if (e.defaultPrevented) return; // a sibling <Edit> guard already claimed it
+      // clicks landing on any editable span are that span's to handle
+      if (e.target instanceof Element && e.target.closest('[data-edit]')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      el.focus();
+    };
+    const swallowKeys = (e: KeyboardEvent) => {
+      if (e.target !== host || (e.key !== 'Enter' && e.key !== ' ')) return;
+      const claimed = e.defaultPrevented;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.type === 'keydown' && !claimed) el.focus();
+    };
+    host.addEventListener('click', swallowClick);
+    host.addEventListener('keydown', swallowKeys);
+    host.addEventListener('keyup', swallowKeys); // Space activates on keyup
+    return () => {
+      host.removeEventListener('click', swallowClick);
+      host.removeEventListener('keydown', swallowKeys);
+      host.removeEventListener('keyup', swallowKeys);
+    };
+  }, [active]);
+
   if (!active) return <>{text}</>;
 
   const save = () => {
@@ -131,6 +167,8 @@ export function Edit({ id, fallback }: EditProps) {
     <span
       ref={ref}
       data-edit={id}
+      role="textbox"
+      aria-label={`Editable text: ${id}`}
       contentEditable={supportsPlaintextOnly ? 'plaintext-only' : true}
       suppressContentEditableWarning
       spellCheck={false}

@@ -9,7 +9,7 @@
  * Hash routing keeps the app a fully static bundle (GitHub Pages / tunnel safe).
  * Query params ride inside the hash: '#/play/dominion?set=sharp-coins'.
  */
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Component, Suspense, lazy, useEffect, useState, type ReactNode } from 'react';
 import { HallApp, type HallPage } from './hall/HallApp';
 
 const ForgeApp = lazy(() => import('./forge/ForgeApp'));
@@ -57,6 +57,41 @@ function RouteLoading() {
   );
 }
 
+/**
+ * A rejected lazy import (typically stale chunk URLs in an open tab after a
+ * redeploy — the bundle's filenames are hashed) would otherwise unmount the
+ * whole root and blank the page. Catch it and offer a reload instead.
+ * Styled like RouteLoading: no area tokens, base.css only.
+ */
+class RouteErrorBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
+  state = { failed: false };
+  static getDerivedStateFromError() {
+    return { failed: true };
+  }
+  render() {
+    if (!this.state.failed) return this.props.children;
+    return (
+      <div className="route-loading" role="alert" style={{ flexDirection: 'column', gap: '1.2rem' }}>
+        <p style={{ margin: 0 }}>
+          <span className="route-loading-mark" aria-hidden="true">◆</span>{' '}
+          The door sticks — the hall has been rebuilt since you arrived.
+        </p>
+        <button
+          type="button"
+          onClick={() => window.location.reload()}
+          style={{
+            font: 'inherit', letterSpacing: 'inherit', textTransform: 'inherit',
+            color: '#ece4d8', background: 'transparent', border: '1px solid #a3342e',
+            padding: '0.55rem 1.4rem', cursor: 'pointer',
+          }}
+        >
+          Reload the hall
+        </button>
+      </div>
+    );
+  }
+}
+
 export default function App() {
   const [route, setRoute] = useState<Route>(() => parseHash(window.location.hash));
 
@@ -68,16 +103,20 @@ export default function App() {
 
   if (route.area === 'forge') {
     return (
-      <Suspense fallback={<RouteLoading />}>
-        <ForgeApp sub={route.sub} navigate={navigate} />
-      </Suspense>
+      <RouteErrorBoundary key={route.area}>
+        <Suspense fallback={<RouteLoading />}>
+          <ForgeApp sub={route.sub} navigate={navigate} />
+        </Suspense>
+      </RouteErrorBoundary>
     );
   }
   if (route.area === 'table') {
     return (
-      <Suspense fallback={<RouteLoading />}>
-        <DominionPlay params={route.params} navigate={navigate} />
-      </Suspense>
+      <RouteErrorBoundary key={route.area}>
+        <Suspense fallback={<RouteLoading />}>
+          <DominionPlay params={route.params} navigate={navigate} />
+        </Suspense>
+      </RouteErrorBoundary>
     );
   }
   return <HallApp page={route.page} navigate={navigate} />;

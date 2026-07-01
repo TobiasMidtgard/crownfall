@@ -53,7 +53,16 @@ export interface Flight {
   burn: boolean;
 }
 
+/**
+ * True when the player asked for stillness: the OS-level reduced-motion
+ * preference, or a host app's reduce-animations setting signalled by a
+ * `calm` class on <html> (the class — not any host import — is the
+ * contract). Checked live so a mid-game toggle applies immediately.
+ */
 export function prefersReducedMotion(): boolean {
+  if (typeof document !== 'undefined' && document.documentElement.classList.contains('calm')) {
+    return true;
+  }
   return typeof window !== 'undefined'
     && typeof window.matchMedia === 'function'
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;

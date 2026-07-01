@@ -7,6 +7,7 @@ import { newGameDef } from '../shared/defaults';
 import type { GameDef } from '../shared/types';
 import { exportGame, parseImportedGame } from '../storage/storage';
 import { cloneGame, deleteGame, saveGame, useStorageOk, useUserGames } from '../state/store';
+import { DOMINION_GAME_ID, markDominionSeedDeleted } from '../forge/seedDominion';
 
 export function HomePage({ navigate }: { navigate: (hash: string) => void }) {
   const games = useUserGames();
@@ -111,12 +112,20 @@ export function HomePage({ navigate }: { navigate: (hash: string) => void }) {
             <div className="modal-header">Delete “{confirmDelete.meta.name}”?</div>
             <div className="modal-body">
               This permanently removes the game and all its cards from this device.
+              {confirmDelete.meta.id === DOMINION_GAME_ID &&
+                ' The hall’s Dominion table will play the stock build instead.'}
             </div>
             <div className="modal-footer">
               <button className="btn" onClick={() => setConfirmDelete(null)}>Cancel</button>
               <button
                 className="btn btn-danger"
-                onClick={() => { deleteGame(confirmDelete.meta.id); setConfirmDelete(null); }}
+                onClick={() => {
+                  // The seeded def would otherwise be re-seeded on next load;
+                  // the tombstone makes this delete as permanent as promised.
+                  if (confirmDelete.meta.id === DOMINION_GAME_ID) markDominionSeedDeleted();
+                  deleteGame(confirmDelete.meta.id);
+                  setConfirmDelete(null);
+                }}
               >
                 Delete
               </button>

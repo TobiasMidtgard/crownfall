@@ -22,6 +22,8 @@
   --dgt-ash: oklch(0.68 0.018 40);
   --dgt-crimson: oklch(0.5 0.2 22);
   --dgt-crimson-bright: oklch(0.6 0.225 24);
+  /* Hover press (the original phase seal's hover): bone stays over 4.5:1. */
+  --dgt-crimson-press: oklch(0.43 0.175 22);
   --dgt-crimson-deep: oklch(0.34 0.13 20);
   --dgt-crimson-whisper: oklch(0.5 0.2 22 / 0.12);
   --dgt-aurum: oklch(0.78 0.1 85);
@@ -129,6 +131,18 @@
     0 0 0 2px var(--dgt-aurum),
     0 4px 18px oklch(0.78 0.1 85 / 0.4);
 }
+/* The stack panel's top entry (every Militia/Witch response window):
+   runner.css hardcodes a Cardsmith-teal halo no token re-point can reach —
+   repaint it aurum like the other legal-target golds. */
+.dominion-skin .rn-stack-entry.rn-stack-top {
+  box-shadow: 0 0 10px oklch(0.78 0.1 85 / 0.4);
+}
+/* Teal-era INK literals (#07221e) on aurum chips: warm the ink to match
+   the phase seal's pass treatment above. */
+.dominion-skin .rn-msel-count,
+.dominion-skin .rn-actionbar .rn-passbtn {
+  color: oklch(0.18 0.03 85);
+}
 
 /* ---------- supply piles: gold diamond cost, Gloock counts ---------- */
 
@@ -151,6 +165,18 @@
   font-weight: 400;
   color: var(--dgt-bone-dim);
 }
+
+/* Mobile supply carousels: the runner's default padding centers the snapped
+   pile (parking the first pile mid-frame with the rest trailing offscreen)
+   and its 10px top inset clips the cost diamond. Anchor the row at the
+   frame's left instead — the scroll starts ON the first pile — and give the
+   diamond's ~12px overhang room on the top and left. */
+.dominion-skin .rn-carousel {
+  padding: 12px 12px 4px;
+  scroll-padding-inline: 12px;
+  align-items: flex-start;
+}
+.dominion-skin .rn-carouselslot { scroll-snap-align: start; }
 
 /* ---------- card faces (via CardView's cv-<elementId> part tags) ---------- */
 
@@ -209,8 +235,10 @@
   color: var(--dgt-bone);
   box-shadow: 0 0 14px oklch(0.5 0.2 22 / 0.35);
 }
+/* Hover deepens the seal rather than brightening it: bone on crimson-bright
+   is 3.6:1, below the hall's 4.5:1 contrast floor (crownfall.css). */
 .dominion-skin .rn-sl-btn:not(:disabled):not(.rn-sl-deco):hover {
-  background: var(--dgt-crimson-bright);
+  background: var(--dgt-crimson-press);
 }
 .dominion-skin .rn-sl-btn.rn-sl-pass {
   color: oklch(0.18 0.03 85);
@@ -232,7 +260,16 @@
 }
 .dominion-skin .btn:hover { background: var(--dgt-dais); }
 .dominion-skin .btn-primary { color: var(--dgt-bone); }
-.dominion-skin .btn-primary:hover { background: var(--dgt-crimson-bright); }
+.dominion-skin .btn-primary:hover { background: var(--dgt-crimson-press); }
+
+/* clip-path clips outlines: the notched buttons above carry their focus
+   ring INSIDE as an inset shadow (the hall's crownfall.css invariant) —
+   the skin's outline rule would render entirely outside the clip. */
+.dominion-skin .btn:focus-visible,
+.dominion-skin .rn-sl-btn:not(:disabled):focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--dgt-bone);
+}
 
 .dominion-skin .rn-status {
   background: oklch(0.1 0.012 20 / 0.85);
@@ -300,3 +337,13 @@
   }
   .dominion-skin .rn-sl-btn { transition: none; }
 }
+
+/* The hall's own "Reduce animations" toggle (html.calm, Profile & settings)
+   stills the table the same way as the OS preference above. */
+html.calm .dominion-skin .rn-zone.rn-highlight,
+html.calm .dominion-skin .rn-spile.rn-pilelegal,
+html.calm .dominion-skin .rn-priority {
+  animation: none;
+  box-shadow: 0 0 0 2px var(--dgt-crimson);
+}
+html.calm .dominion-skin .rn-sl-btn { transition: none; }

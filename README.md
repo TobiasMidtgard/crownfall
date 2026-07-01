@@ -55,7 +55,12 @@ ceremony over decoration.
 
 ## Deploy
 
-Pushes to `main` build and deploy to **GitHub Pages** via
-`.github/workflows/deploy.yml`. The Vite base is relative (`./`) and routing is
+`npm run deploy` builds and force-pushes `dist/` to the `gh-pages` branch,
+which **GitHub Pages** serves. The Vite base is relative (`./`) and routing is
 hash-based, so the same build also serves from any static host or the local
 dev tunnel.
+
+(A CI workflow that deploys on every push exists locally at
+`.github/workflows/deploy.yml`; committing it requires the gh CLI's `workflow`
+scope — `gh auth refresh -h github.com -s workflow` — after which it can be
+un-ignored and pushed.)

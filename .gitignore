@@ -4,3 +4,8 @@ dist/
 .DS_Store
 
 .claude/scheduled_tasks.lock
+
+# Kept out of the repo until the gh CLI token carries the `workflow` scope
+# (pushing workflow files is blocked without it). To switch to CI deploys:
+# gh auth refresh -h github.com -s workflow, then un-ignore and commit.
+.github/workflows/

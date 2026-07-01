@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "deploy": "node scripts/deploy-pages.mjs",
     "preview": "vite preview",
     "test": "vitest",
     "typecheck": "tsc --noEmit"

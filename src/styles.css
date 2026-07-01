@@ -1,0 +1,382 @@
+/* ============================================================
+   The Forge — Cardsmith's stylesheet, scoped under .forge-root.
+   Crownfall mounts several rooms in one document, so nothing here
+   may leak: design tokens live on .forge-root (not :root), element
+   rules are .forge-root-prefixed, and the box-sizing/height reset
+   belongs to src/base.css. Shared primitives (.btn, .input, .panel…)
+   keep their Cardsmith names; the heraldic re-theme happens through
+   token VALUES only, so every prefixed stylesheet (rn-, dz-, ed-,
+   gr-, tt-) re-dresses itself by consuming them.
+   ============================================================ */
+
+.forge-root {
+  --bg: oklch(0.13 0.012 20);
+  --bg-raised: oklch(0.165 0.014 20);
+  --panel: oklch(0.19 0.016 21);
+  --panel-2: oklch(0.22 0.018 22);
+  --border: oklch(0.26 0.022 22);
+  --border-strong: oklch(0.32 0.028 22);
+  --text: oklch(0.93 0.012 75);
+  --muted: oklch(0.68 0.018 40);
+  /* Lifted above the hall's 0.52 ash-step: .faint carries real hint copy
+     here and needs ~4.5:1 on --bg. */
+  --faint: oklch(0.58 0.02 38);
+  --accent: oklch(0.55 0.21 23);
+  --accent-soft: oklch(0.50 0.20 22 / 0.15);
+  --accent-2: oklch(0.78 0.10 85);
+  /* Brighter + more coral than the crimson accent so destructive intent
+     stays distinguishable (oklch ~0.58 0.19 29 reads as the same red). */
+  --danger: #e5484d;
+  --warning: oklch(0.75 0.13 75);
+  --ok: oklch(0.62 0.14 145);
+  --felt: oklch(0.20 0.03 22);
+
+  --radius-s: 4px;
+  --radius-m: 8px;
+  --radius-l: 12px;
+  --shadow-1: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --shadow-2: 0 8px 28px rgba(0, 0, 0, 0.5);
+
+  --font: 'Schibsted Grotesk', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono: 'Cascadia Code', Consolas, monospace;
+
+  /* Block editor category colors — functional differentiation, not décor. */
+  --cat-cards: #4f8df7;
+  --cat-vars: #f08c3a;
+  --cat-control: #f5c542;
+  --cat-players: #b15cff;
+  --cat-game: #e5538c;
+  --cat-expr: #2dd4bf;
+
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+}
+
+/* Modal portals into document.body, outside the mounted tree; this wrapper
+   re-enters the scope (tokens + primitives) without adding a layout box. */
+.forge-root.forge-portal { display: contents; }
+
+.forge-root h1, .forge-root h2, .forge-root h3, .forge-root h4 { margin: 0 0 0.4em; font-weight: 700; }
+.forge-root h1 { font-size: 1.5rem; }
+.forge-root h2 { font-size: 1.2rem; }
+.forge-root h3 { font-size: 1rem; }
+.forge-root p { margin: 0 0 0.6em; }
+.forge-root a {
+  color: var(--text);
+  text-decoration: underline;
+  text-decoration-color: var(--accent);
+  text-underline-offset: 2px;
+}
+.forge-root a:hover { text-decoration-color: var(--accent-2); }
+
+/* ---------- Primitives ---------- */
+
+.forge-root .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-m);
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, border-color 0.15s, transform 0.08s;
+}
+.forge-root .btn:hover { background: oklch(0.25 0.02 22); }
+.forge-root .btn:active { transform: scale(0.97); }
+.forge-root .btn:disabled { opacity: 0.45; cursor: default; transform: none; }
+
+.forge-root .btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  /* Bright bone, not #fff: warm and ≥4.5:1 on the crimson fill. */
+  color: oklch(0.97 0.01 75);
+}
+/* Hover deepens toward the ember — brightening the crimson would drop the
+   label below AA. */
+.forge-root .btn-primary:hover { background: oklch(0.50 0.20 22); border-color: oklch(0.50 0.20 22); }
+
+.forge-root .btn-danger { border-color: var(--danger); color: var(--danger); background: transparent; }
+.forge-root .btn-danger:hover { background: rgba(229, 72, 77, 0.12); }
+
+.forge-root .btn-ghost { background: transparent; border-color: transparent; color: var(--muted); }
+.forge-root .btn-ghost:hover { background: var(--panel-2); color: var(--text); }
+
+.forge-root .btn-small { min-height: 34px; padding: 4px 10px; font-size: 0.86rem; border-radius: var(--radius-s); }
+
+.forge-root .input, .forge-root .select, .forge-root textarea.input {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+  width: 100%;
+}
+.forge-root .input:focus, .forge-root .select:focus, .forge-root textarea.input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+  border-color: var(--accent);
+}
+.forge-root .input-small { min-height: 34px; padding: 4px 8px; font-size: 0.86rem; border-radius: var(--radius-s); }
+.forge-root textarea.input { resize: vertical; min-height: 70px; }
+
+.forge-root label.field {
+  display: block;
+  margin-bottom: 12px;
+}
+.forge-root label.field > span {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.forge-root .panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
+  padding: 16px;
+}
+
+.forge-root .chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: var(--panel-2);
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+/* Chip ink is a lighter step of each hue: the raw tokens are tuned for
+   fills, and chip text is small. */
+.forge-root .chip.accent { background: var(--accent-soft); color: oklch(0.72 0.16 25); border-color: transparent; }
+.forge-root .chip.ok { background: oklch(0.62 0.14 145 / 0.15); color: var(--ok); border-color: transparent; }
+.forge-root .chip.warn { background: oklch(0.75 0.13 75 / 0.15); color: var(--warning); border-color: transparent; }
+.forge-root .chip.error { background: rgba(229, 72, 77, 0.15); color: var(--danger); border-color: transparent; }
+
+.forge-root .row { display: flex; align-items: center; gap: 10px; }
+.forge-root .row.wrap { flex-wrap: wrap; }
+.forge-root .spacer { flex: 1; }
+.forge-root .muted { color: var(--muted); }
+.forge-root .faint { color: var(--faint); font-size: 0.85rem; }
+
+/* ---------- App shell ---------- */
+
+/* The forge owns the viewport. base.css only guarantees body min-height,
+   so the shell anchors the editor/runner min-height:0 flex chains itself —
+   inside a normally-scrolling page the table would collapse. */
+.forge-root.app-shell {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+.forge-root .app-topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--bg-raised);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  min-height: 56px;
+}
+.forge-root .app-topbar .brand {
+  font-weight: 800;
+  font-size: 1.05rem;
+  letter-spacing: 0.02em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text);
+}
+.forge-root .app-topbar .brand .logo { color: var(--accent-2); font-size: 1.2rem; }
+
+/* Quiet way back to the hall: engraved voice, ash rising to bone. */
+.forge-root .forge-hallreturn {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  transition: color 0.15s;
+}
+.forge-root .forge-hallreturn:hover,
+.forge-root .forge-hallreturn:focus-visible { color: var(--text); }
+
+.forge-root .app-main {
+  flex: 1;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.forge-root .page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 20px 16px calc(40px + var(--safe-bottom));
+}
+
+/* ---------- Tab bar (editor sections) ---------- */
+
+.forge-root .tabbar {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+  padding: 0 8px;
+  flex-shrink: 0;
+}
+.forge-root .tabbar::-webkit-scrollbar { display: none; }
+.forge-root .tabbar button {
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  padding: 12px 14px 9px;
+  cursor: pointer;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+.forge-root .tabbar button.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+/* ---------- Modal / bottom sheet ---------- */
+
+.forge-root .modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: oklch(0.08 0.01 20 / 0.65);
+  backdrop-filter: blur(2px);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+.forge-root .modal {
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-l);
+  box-shadow: var(--shadow-2);
+  width: min(560px, 100%);
+  max-height: min(80vh, 720px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.forge-root .modal-header {
+  padding: 14px 18px 10px;
+  font-weight: 700;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.forge-root .modal-body { padding: 14px 18px; overflow: auto; }
+.forge-root .modal-footer {
+  padding: 12px 18px calc(12px + var(--safe-bottom));
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+@media (max-width: 640px) {
+  .forge-root .modal-backdrop { align-items: flex-end; padding: 0; }
+  .forge-root .modal {
+    width: 100%;
+    border-radius: var(--radius-l) var(--radius-l) 0 0;
+    max-height: 88vh;
+    border-bottom: none;
+  }
+}
+
+/* ---------- Cards grid (home) ---------- */
+
+.forge-root .game-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+}
+.forge-root .game-tile {
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
+  padding: 16px;
+  cursor: pointer;
+  color: var(--text);
+  font: inherit;
+  transition: border-color 0.15s, transform 0.1s;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 120px;
+}
+.forge-root .game-tile:hover { border-color: var(--accent); transform: translateY(-2px); }
+.forge-root .game-tile h3 { margin: 0; }
+.forge-root .game-tile .desc {
+  color: var(--muted);
+  font-size: 0.88rem;
+  flex: 1;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.forge-root .empty-state {
+  text-align: center;
+  color: var(--muted);
+  padding: 48px 16px;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-l);
+}
+
+/* ---------- Generic list rows (zones, vars, actions…) ---------- */
+
+.forge-root .list-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+.forge-root .list-row:hover { border-color: var(--border-strong); }
+.forge-root .list-row .grow { flex: 1; min-width: 0; }
+.forge-root .list-row .title { font-weight: 600; }

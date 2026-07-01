@@ -1,0 +1,28 @@
+/* Crownfall — the only truly global styles. Everything else is owned by an area:
+   the hall brings crownfall.css (OKLCH tokens on :root), the forge brings
+   styles.css scoped under .forge-root. Keep this file boring. */
+
+* { box-sizing: border-box; }
+
+html, body, #root { margin: 0; padding: 0; }
+html { min-height: 100%; }
+body {
+  min-height: 100vh;
+  /* Pre-CSS ground so neither area flashes white; matches --abyss. */
+  background: #1e1514;
+  color: #ece4d8;
+}
+
+/* Lazy-chunk fallback (styled without area tokens on purpose). */
+.route-loading {
+  min-height: 60vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  font: 500 0.95rem 'Schibsted Grotesk', 'Segoe UI', system-ui, sans-serif;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #a89484;
+}
+.route-loading-mark { color: #a3342e; }

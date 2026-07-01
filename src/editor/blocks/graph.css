@@ -1,0 +1,331 @@
+/* ===========================================================================
+   Node-graph script editor (gr-). Dark theme tokens only.
+   Pin geometry must match graphModel.G: HEADER_H 34, ROW_H 34; pin centers
+   sit exactly on node edges so SVG wires line up with the DOM.
+   =========================================================================== */
+
+.gr-wrap {
+  position: relative;
+}
+
+/* Fullscreen: a fixed overlay (works on iOS, unlike the Fullscreen API).
+   z-index below the modal layer so pickers/confirms still stack on top. */
+.gr-wrap-full {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: var(--bg);
+  padding:
+    calc(8px + env(safe-area-inset-top, 0px))
+    calc(8px + env(safe-area-inset-right, 0px))
+    calc(8px + env(safe-area-inset-bottom, 0px))
+    calc(8px + env(safe-area-inset-left, 0px));
+}
+.gr-wrap-full .gr-canvas {
+  height: 100%;
+  max-height: none;
+}
+.gr-wrap-full .gr-toolbar {
+  top: calc(8px + env(safe-area-inset-top, 0px));
+  right: calc(8px + env(safe-area-inset-right, 0px));
+}
+
+.gr-canvas {
+  position: relative;
+  overflow: hidden;
+  height: clamp(300px, 48vh, 480px);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background:
+    radial-gradient(circle, var(--border) 1px, transparent 1px) 0 0 / 22px 22px,
+    var(--bg);
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.gr-canvas:active { cursor: grabbing; }
+
+.gr-stage {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+}
+
+/* --- wires ---------------------------------------------------------------- */
+
+.gr-wires {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.gr-wire { fill: none; }
+.gr-wire-exec { stroke: var(--text); stroke-width: 2.6; opacity: 0.85; }
+.gr-wire-data { stroke-width: 2; opacity: 0.9; }
+.gr-wire-ghost {
+  stroke: var(--accent);
+  stroke-width: 2.4;
+  stroke-dasharray: 6 5;
+  opacity: 0.9;
+}
+.gr-wirehit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 18;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+/* --- nodes ------------------------------------------------------------------ */
+
+.gr-node {
+  position: absolute;
+  box-sizing: border-box;
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  font-size: 0.8rem;
+  overflow: visible;
+}
+.gr-node-data {
+  background: var(--bg-raised);
+  border-style: dashed;
+}
+.gr-node-start {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.gr-head {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 34px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--border);
+  border-radius: 9px 9px 0 0;
+  background: linear-gradient(
+    to right,
+    color-mix(in srgb, var(--node-c, var(--accent)) 28%, transparent),
+    transparent 75%
+  );
+}
+.gr-node-start .gr-head,
+.gr-node:not(:has(.gr-row)) .gr-head { border-bottom: none; border-radius: 9px; }
+
+.gr-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  font-size: 0.76rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gr-node-data .gr-title { font-weight: 600; }
+
+.gr-menu-btn {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.gr-menu-btn:hover { background: var(--panel-2); color: var(--text); }
+
+/* --- rows ------------------------------------------------------------------- */
+
+.gr-row {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 16px;
+  overflow: hidden;
+}
+.gr-row-lane { justify-content: flex-end; }
+.gr-row-lane .gr-rlabel { color: var(--text); font-weight: 600; }
+
+.gr-rlabel {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+.gr-flabel {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+/* compact controls inside node rows */
+.gr-node .blk-chip,
+.gr-node .xp-chip {
+  min-height: 24px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.gr-inline-num { width: 64px; }
+.gr-inline-text { flex: 1; min-width: 0; }
+.gr-node .input.gr-inline-num,
+.gr-node .input.gr-inline-text {
+  min-height: 24px;
+  padding: 2px 6px;
+  font-size: 0.74rem;
+  border-radius: 6px;
+}
+.gr-select {
+  min-height: 24px;
+  max-width: 100%;
+  padding: 2px 6px;
+  font-size: 0.74rem;
+  border-radius: 6px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+
+/* --- pins --------------------------------------------------------------------
+   Visual dot ~12px; the button itself is a 34×34 touch target centered on the
+   node edge (44px effective with the row around it). */
+
+.gr-pin {
+  position: absolute;
+  top: 50%;
+  width: 34px;
+  height: 34px;
+  margin: 0;
+  padding: 0;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  cursor: crosshair;
+  z-index: 3;
+}
+.gr-pin-l { left: -17px; }
+.gr-pin-r { right: -17px; }
+
+.gr-pin::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 11px;
+  height: 11px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 2px solid var(--pin-c, var(--muted));
+  background: var(--panel);
+  box-sizing: border-box;
+}
+.gr-pin-exec { --pin-c: var(--text); }
+.gr-pin-exec::after {
+  border-radius: 2px;
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+.gr-pin-wired::after { background: var(--pin-c, var(--muted)); }
+
+.gr-pin-armed::after {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 5px var(--accent-soft);
+}
+.gr-pin-compat::after {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--pin-c, var(--accent)) 35%, transparent);
+}
+.gr-pin-dim { opacity: 0.3; }
+
+/* --- floating menus (wire / node) -------------------------------------------- */
+
+.gr-float {
+  position: absolute;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 150px;
+  padding: 4px;
+  background: var(--panel-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.45);
+}
+.gr-float button {
+  min-height: 40px;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font-size: 0.8rem;
+  text-align: left;
+  cursor: pointer;
+}
+.gr-float button:hover { background: var(--panel); }
+.gr-float button.danger { color: var(--danger); }
+
+/* --- toolbar & hints ----------------------------------------------------------- */
+
+.gr-toolbar {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  backdrop-filter: blur(4px);
+}
+.gr-zoom {
+  min-width: 38px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+/* Very narrow phones: the −/+ buttons carry the meaning; drop the readout. */
+@media (max-width: 360px) {
+  .gr-zoom { display: none; }
+  .gr-toolbar { gap: 4px; padding: 3px 4px; }
+}
+
+.gr-hint {
+  position: absolute;
+  left: 50%;
+  bottom: 18%;
+  transform: translateX(-50%);
+  max-width: 90%;
+  color: var(--muted);
+  font-size: 0.84rem;
+  text-align: center;
+  pointer-events: none;
+}
+
+.gr-search { margin-bottom: 10px; }
+
+@media (max-width: 640px) {
+  .gr-canvas { height: clamp(280px, 52vh, 420px); }
+}

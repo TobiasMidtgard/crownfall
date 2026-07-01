@@ -1,0 +1,11 @@
+/* Panels — React-port additions only. The whole panel/dock/mason system is
+   styled in crownfall.css (ported wholesale from the original styles.css);
+   this file carries the few rules the merge genuinely added. */
+
+/* The settings panel reuses the mason theme seals inline, without the
+   toolbar's flanking rules. */
+.hall-root .panel-section .mason-themes {
+  border-left: none;
+  border-right: none;
+  padding: 0;
+}

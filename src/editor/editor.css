@@ -1,0 +1,429 @@
+/* ============================================================
+   Game editor styles. Prefixes: ed- (page/tabs), blk- (block
+   scripting), xp- (expressions). Uses only the shared tokens.
+   ============================================================ */
+
+/* ---------- Topbar ---------- */
+
+.ed-topbar { gap: 8px; }
+
+.ed-back { min-width: 44px; padding: 8px; font-size: 1.15rem; }
+
+.ed-name {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 10px;
+  font: inherit;
+  font-weight: 700;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+}
+.ed-name:hover { border-color: var(--border); }
+.ed-name:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--bg);
+}
+
+.ed-issues {
+  appearance: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  min-height: 44px;
+  white-space: nowrap;
+}
+
+.ed-save-hint { white-space: nowrap; }
+
+@media (max-width: 520px) {
+  .ed-save-hint { display: none; }
+  .ed-topbar { padding: 10px 8px; }
+}
+
+/* ---------- Page chrome ---------- */
+
+.ed-page { padding-top: 16px; }
+
+.ed-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  background: rgba(245, 165, 36, 0.1);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-m);
+  color: var(--warning);
+}
+.ed-banner > span { flex: 1; min-width: 200px; }
+
+.ed-section { margin-bottom: 20px; }
+
+/* Entity rows (zones, variables, decks) */
+.ed-item {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.ed-item-name { flex: 1; min-width: 0; font-weight: 600; }
+
+.ed-delete { color: var(--danger); }
+
+/* Compact icon buttons that must stay touch-sized. */
+.ed-tool, .ed-delete { min-width: 44px; min-height: 44px; }
+
+.ed-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  column-gap: 12px;
+  align-items: end;
+}
+
+.ed-mini-label {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ed-subrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.ed-subrow .input, .ed-subrow .select { flex: 1; min-width: 0; }
+.ed-subrow .btn { flex-shrink: 0; min-height: 44px; min-width: 44px; }
+
+.ed-subfield { margin-top: 8px; }
+
+.ed-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ed-check input[type='checkbox'] {
+  width: 20px;
+  height: 20px;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+
+/* Segmented toggle (deck source, yes/no, highest/lowest) */
+.ed-seg {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.ed-seg-btn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  min-height: 44px;
+  padding: 8px 16px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ed-seg-btn.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+/* Standard-deck rank chips */
+.ed-rank-chip {
+  appearance: none;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-s);
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ed-rank-chip.excluded {
+  background: transparent;
+  color: var(--faint);
+  border-style: dashed;
+  text-decoration: line-through;
+}
+
+.ed-color-input {
+  width: 52px;
+  height: 44px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--bg-raised);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.ed-num-input { max-width: 110px; }
+
+/* Issues modal */
+.ed-issue {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.ed-issue:last-child { border-bottom: none; }
+.ed-issue .chip { flex-shrink: 0; margin-top: 2px; }
+.ed-issue-where { font-weight: 600; font-size: 0.85rem; color: var(--muted); }
+
+.ed-modal-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* ============================================================
+   Block scripting (blk-)
+   ============================================================ */
+
+.blk-list { display: flex; flex-direction: column; }
+
+.blk {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--blk-c, var(--accent));
+  border-radius: var(--radius-m);
+}
+
+.blk-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px 6px 8px 10px;
+}
+
+.blk-sentence {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-top: 1px;
+}
+
+.blk-kind {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--blk-c, var(--accent));
+  margin-right: 2px;
+  white-space: nowrap;
+}
+
+.blk-t { color: var(--muted); }
+
+.blk-chip, .xp-chip {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: border-color 0.12s;
+  word-break: break-word;
+}
+.blk-chip:hover, .xp-chip:hover,
+.blk-chip:focus-visible, .xp-chip:focus-visible { border-color: var(--accent); }
+
+.xp-chip { border-left: 3px solid var(--cat-expr); }
+.xp-chip-empty { color: var(--muted); font-style: italic; }
+.blk-chip-missing { border-color: var(--danger); color: var(--danger); }
+
+.blk-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.blk-tools { display: flex; gap: 0; flex-shrink: 0; }
+
+.blk-tool {
+  appearance: none;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.95rem;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.blk-tool:hover { background: var(--panel); color: var(--text); }
+.blk-tool:disabled { opacity: 0.25; cursor: default; background: transparent; }
+.blk-tool-danger:hover { color: var(--danger); }
+
+/* On narrow screens the four tools stack into a 2×2 grid so the sentence
+   keeps room while every target stays 44px. */
+@media (max-width: 520px) {
+  .blk-tools { display: grid; grid-template-columns: repeat(2, 44px); }
+}
+
+/* Container lanes (if/repeat/forEach bodies) */
+.blk-lane {
+  margin: 0 8px 10px 14px;
+  padding-left: 10px;
+  border-left: 3px solid var(--blk-c, var(--accent));
+}
+@supports (border-color: color-mix(in srgb, red 50%, transparent)) {
+  .blk-lane { border-left-color: color-mix(in srgb, var(--blk-c, var(--accent)) 45%, transparent); }
+}
+.blk-lane-label {
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--blk-c, var(--accent));
+  margin: 2px 0 2px;
+}
+
+/* Insertion points */
+.blk-insert {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--faint);
+  width: 100%;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  border-radius: var(--radius-s);
+  cursor: pointer;
+  opacity: 0.65;
+  -webkit-tap-highlight-color: transparent;
+}
+.blk-insert:hover, .blk-insert:focus-visible {
+  opacity: 1;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.blk-insert-end {
+  min-height: 44px;
+  margin-top: 4px;
+  border: 1px dashed var(--border-strong);
+  color: var(--muted);
+  font-size: 0.92rem;
+  font-weight: 600;
+  opacity: 1;
+}
+.blk-insert-end:hover, .blk-insert-end:focus-visible {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+/* Picker rows (block picker + expression kind picker) */
+.blk-pick-cat {
+  margin: 14px 0 6px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+}
+.blk-pick-cat:first-child { margin-top: 0; }
+
+.blk-pick-row {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 8px 12px;
+  margin-bottom: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.blk-pick-row:hover, .blk-pick-row:focus-visible { border-color: var(--accent); }
+
+.blk-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.blk-pick-text { min-width: 0; }
+.blk-pick-label { display: block; font-weight: 700; }
+.blk-pick-desc { display: block; color: var(--muted); font-size: 0.84rem; }
+
+/* ============================================================
+   Expression builder (xp-)
+   ============================================================ */
+
+.xp-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--cat-expr);
+  border-radius: var(--radius-m);
+}
+.xp-preview-text {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 0.92rem;
+  word-break: break-word;
+}

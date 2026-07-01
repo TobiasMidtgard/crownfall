@@ -1,0 +1,376 @@
+/**
+ * Pure tests for the shared layout geometry helpers (parent-relative rect
+ * conversion, seat resolution, style->CSS, grid templates incl. rows, spacing
+ * px math, pile/duplicate grouping, fan transforms, motion spec + speed,
+ * screen variant picking, stage geometry) used by both the runner and the
+ * screen builder's canvas preview.
+ */
+import { describe, expect, it } from 'vitest';
+import type { ScreenElement, ScreenLayout } from '../shared/types';
+import {
+  absToGroupRel, activeScreenVariant, asSpeed, cardIdentity, computeStage, fanMarginPx,
+  fanTransform, fitCount, gridSpec, gridTemplate, groupPiles, groupRelToAbs, layoutStyleCss,
+  lineColor, lineEndpoints, MOTION_DEFAULTS, nextSpeed, pctToPx, rectContains, resolveMotion,
+  resolveSeat, scaleMs, seatOffset, shapeBorderRadius, speedFactor, topLegalCard,
+} from './layoutGeometry';
+
+const parent = { x: 20, y: 10, w: 50, h: 40 };
+
+describe('parent-relative rect conversion', () => {
+  it('converts parent-relative to absolute', () => {
+    // rel (10%, 20%, 40%, 50%) of a 50x40 parent at (20,10)
+    expect(groupRelToAbs({ x: 10, y: 20, w: 40, h: 50 }, parent)).toEqual({
+      x: 25, y: 18, w: 20, h: 20,
+    });
+  });
+
+  it('round-trips abs -> rel -> abs', () => {
+    const abs = { x: 33, y: 17, w: 12, h: 9 };
+    const rel = absToGroupRel(abs, parent);
+    const back = groupRelToAbs(rel, parent);
+    expect(back.x).toBeCloseTo(abs.x, 6);
+    expect(back.y).toBeCloseTo(abs.y, 6);
+    expect(back.w).toBeCloseTo(abs.w, 6);
+    expect(back.h).toBeCloseTo(abs.h, 6);
+  });
+
+  it('does not divide by zero on degenerate parents', () => {
+    const rel = absToGroupRel({ x: 5, y: 5, w: 5, h: 5 }, { x: 0, y: 0, w: 0, h: 0 });
+    expect(Number.isFinite(rel.x)).toBe(true);
+    expect(Number.isFinite(rel.w)).toBe(true);
+  });
+
+  it('rectContains accepts touching edges and rejects overflow', () => {
+    expect(rectContains(parent, { x: 20, y: 10, w: 50, h: 40 })).toBe(true);
+    expect(rectContains(parent, { x: 30, y: 20, w: 10, h: 10 })).toBe(true);
+    expect(rectContains(parent, { x: 65, y: 20, w: 10, h: 10 })).toBe(false);
+    expect(rectContains(parent, { x: 19, y: 10, w: 10, h: 10 })).toBe(false);
+  });
+});
+
+describe('seat resolution', () => {
+  const seats = ['p0', 'p1', 'p2'];
+
+  it("'viewer' is the viewer's own seat", () => {
+    expect(resolveSeat(seats, 'p1', 'viewer')).toBe('p1');
+  });
+
+  it('oppN counts seats after the viewer, wrapping past the last seat', () => {
+    expect(resolveSeat(seats, 'p1', 'opp1')).toBe('p2');
+    expect(resolveSeat(seats, 'p1', 'opp2')).toBe('p0'); // wrapped
+    expect(resolveSeat(seats, 'p2', 'opp1')).toBe('p0'); // wrapped
+    expect(resolveSeat(seats, 'p0', 'opp2')).toBe('p2');
+  });
+
+  it('seats beyond the player count resolve to null (element renders nothing)', () => {
+    expect(resolveSeat(seats, 'p0', 'opp3')).toBeNull();
+    expect(resolveSeat(['p0', 'p1'], 'p0', 'opp2')).toBeNull();
+    expect(resolveSeat(['p0'], 'p0', 'opp1')).toBeNull();
+  });
+
+  it("'shared' never resolves to a player", () => {
+    expect(resolveSeat(seats, 'p0', 'shared')).toBeNull();
+    expect(seatOffset('shared')).toBeNull();
+  });
+
+  it('a spectator viewer (not seated) watches from seat 0', () => {
+    expect(resolveSeat(seats, '', 'viewer')).toBe('p0');
+    expect(resolveSeat(seats, '', 'opp1')).toBe('p1');
+  });
+
+  it('an empty table resolves nothing', () => {
+    expect(resolveSeat([], 'p0', 'viewer')).toBeNull();
+  });
+});
+
+describe('layoutStyleCss', () => {
+  it('emits nothing for absent styles', () => {
+    expect(layoutStyleCss(undefined)).toEqual({});
+    expect(layoutStyleCss({})).toEqual({});
+  });
+
+  it('emits only authored properties', () => {
+    expect(layoutStyleCss({ background: 'red' })).toEqual({ background: 'red' });
+    expect(layoutStyleCss({ borderRadius: 12 })).toEqual({ borderRadius: '12px' });
+  });
+
+  it('builds a border from any border field, defaulting the rest', () => {
+    expect(layoutStyleCss({ borderColor: '#fff', borderWidth: 2, borderStyle: 'dashed' }))
+      .toEqual({ border: '2px dashed #fff' });
+    expect(layoutStyleCss({ borderColor: '#abc' }).border).toBe('1px solid #abc');
+  });
+
+  it('borderWidth 0 removes the border explicitly', () => {
+    expect(layoutStyleCss({ borderWidth: 0 }).border).toBe('none');
+  });
+});
+
+describe('grid template math', () => {
+  it('gridTemplate only for explicit counts', () => {
+    expect(gridTemplate(3)).toBe('repeat(3, max-content)');
+    expect(gridTemplate(null)).toBeUndefined();
+    expect(gridTemplate(undefined)).toBeUndefined();
+    expect(gridTemplate(0)).toBeUndefined();
+  });
+
+  it('gridSpec: columns alone fix the column count (row-major flow)', () => {
+    expect(gridSpec(null, 5)).toEqual({ columns: 'repeat(5, max-content)' });
+  });
+
+  it('gridSpec: rows + columns fix both templates', () => {
+    expect(gridSpec(2, 5)).toEqual({
+      rows: 'repeat(2, max-content)',
+      columns: 'repeat(5, max-content)',
+    });
+  });
+
+  it('gridSpec: rows WITHOUT columns flow column-major so the row count holds', () => {
+    expect(gridSpec(2, null)).toEqual({
+      rows: 'repeat(2, max-content)',
+      autoFlow: 'column',
+    });
+  });
+
+  it('gridSpec: nothing authored = auto grid (null)', () => {
+    expect(gridSpec(null, null)).toBeNull();
+    expect(gridSpec(undefined, undefined)).toBeNull();
+    expect(gridSpec(0, 0)).toBeNull();
+  });
+});
+
+describe('shape & line geometry', () => {
+  it('circles and pills round themselves regardless of the authored style', () => {
+    expect(shapeBorderRadius('circle', { borderRadius: 4 })).toBe('50%');
+    expect(shapeBorderRadius('pill', undefined)).toBe('999px');
+  });
+
+  it('plain rects keep the authored radius (or none)', () => {
+    expect(shapeBorderRadius('rect', { borderRadius: 12 })).toBe('12px');
+    expect(shapeBorderRadius('rect', {})).toBeUndefined();
+    expect(shapeBorderRadius('rect', undefined)).toBeUndefined();
+  });
+
+  it('diamonds draw their own SVG geometry (no CSS radius)', () => {
+    expect(shapeBorderRadius('diamond', { borderRadius: 12 })).toBeUndefined();
+  });
+
+  it('line endpoints: h/v cross the middle, down = TL→BR, up = BL→TR', () => {
+    expect(lineEndpoints('h')).toEqual({ x1: 0, y1: 50, x2: 100, y2: 50 });
+    expect(lineEndpoints('v')).toEqual({ x1: 50, y1: 0, x2: 50, y2: 100 });
+    expect(lineEndpoints('down')).toEqual({ x1: 0, y1: 0, x2: 100, y2: 100 });
+    expect(lineEndpoints('up')).toEqual({ x1: 0, y1: 100, x2: 100, y2: 0 });
+  });
+
+  it('line color = style.borderColor, falling back to the border token', () => {
+    expect(lineColor({ borderColor: '#f0f' })).toBe('#f0f');
+    expect(lineColor({})).toBe('var(--border-strong)');
+    expect(lineColor(undefined)).toBe('var(--border-strong)');
+  });
+});
+
+describe('spacing math', () => {
+  it('pctToPx converts % of screen width', () => {
+    expect(pctToPx(1000, 2)).toBe(20);
+    expect(pctToPx(1000, undefined)).toBeUndefined();
+  });
+
+  it('fanMarginPx: gap = visible slice per card (negative margin overlaps)', () => {
+    expect(fanMarginPx(80, 20)).toBe(-60);
+    expect(fanMarginPx(80, undefined)).toBeUndefined();
+  });
+
+  it('fitCount floors, clamps to [1, max]', () => {
+    expect(fitCount(300, 80, 10)).toBe(3); // 3*80 + 2*10 = 260 <= 300
+    expect(fitCount(50, 80, 10)).toBe(1);
+    expect(fitCount(10000, 80, 10, 8)).toBe(8);
+  });
+});
+
+describe('pile / duplicate grouping', () => {
+  const cards = {
+    c1: { defId: 'copper', name: 'Copper' },
+    c2: { defId: 'copper', name: 'Copper' },
+    c3: { defId: 'copper', name: 'Copper' },
+    e1: { defId: 'estate', name: 'Estate' },
+    qh1: { defId: null, name: 'Q of hearts' },
+    qh2: { defId: null, name: 'Q of hearts' },
+    ks1: { defId: null, name: 'K of spades' },
+  };
+
+  it('identity: custom cards by defId, standard cards by name', () => {
+    expect(cardIdentity(cards.c1)).toBe('copper');
+    expect(cardIdentity(cards.qh1)).toBe('std:Q of hearts');
+  });
+
+  it('groups in first-appearance order, top = last member (zone order)', () => {
+    const piles = groupPiles(['c1', 'e1', 'c2', 'qh1', 'c3', 'qh2'], cards);
+    expect(piles.map((p) => p.key)).toEqual(['copper', 'estate', 'std:Q of hearts']);
+    const copper = piles[0];
+    expect(copper.cardIds).toEqual(['c1', 'c2', 'c3']);
+    expect(copper.topId).toBe('c3');
+    expect(copper.count).toBe(3);
+    expect(piles[1]).toEqual({ key: 'estate', cardIds: ['e1'], topId: 'e1', count: 1 });
+    expect(piles[2].count).toBe(2);
+  });
+
+  it('two different standard cards never merge; unknown ids are skipped', () => {
+    const piles = groupPiles(['qh1', 'ks1', 'ghost', 'qh2'], cards);
+    expect(piles.map((p) => p.key)).toEqual(['std:Q of hearts', 'std:K of spades']);
+    expect(piles[0].count).toBe(2);
+  });
+
+  it('empty zone groups to no piles', () => {
+    expect(groupPiles([], cards)).toEqual([]);
+  });
+
+  it('topLegalCard picks the TOPMOST legal member (or null)', () => {
+    const legal = new Set(['c1', 'c2']);
+    expect(topLegalCard(['c1', 'c2', 'c3'], (id) => legal.has(id))).toBe('c2');
+    expect(topLegalCard(['c3'], (id) => legal.has(id))).toBeNull();
+    expect(topLegalCard([], () => true)).toBeNull();
+  });
+});
+
+describe('fan transforms', () => {
+  it('the center card of an odd fan stays flat', () => {
+    expect(fanTransform(2, 5, 88)).toEqual({ rot: 0, dy: 0 });
+  });
+
+  it('rotation steps by the default 4° per centered index', () => {
+    expect(fanTransform(0, 5, 88).rot).toBe(-8);
+    expect(fanTransform(4, 5, 88).rot).toBe(8);
+    expect(fanTransform(3, 5, 88).rot).toBe(4);
+  });
+
+  it('an authored fanAngle replaces the default step', () => {
+    expect(fanTransform(0, 3, 88, 10).rot).toBe(-10);
+    expect(fanTransform(2, 3, 88, 10).rot).toBe(10);
+  });
+
+  it('fanAngle 0 = flat (no rotation, no dip)', () => {
+    expect(fanTransform(0, 7, 88, 0)).toEqual({ rot: 0, dy: 0 });
+    expect(fanTransform(6, 7, 88, 0)).toEqual({ rot: 0, dy: 0 });
+  });
+
+  it('the dip is parabolic and symmetric (edges dip more than inner cards)', () => {
+    const edge = fanTransform(0, 5, 88);
+    const inner = fanTransform(1, 5, 88);
+    const otherEdge = fanTransform(4, 5, 88);
+    expect(edge.dy).toBeGreaterThan(inner.dy);
+    expect(inner.dy).toBeGreaterThan(0);
+    expect(edge.dy).toBeCloseTo(otherEdge.dy, 6);
+    expect(edge.dy).toBeCloseTo(4 * inner.dy, 6); // (±2)² vs (±1)²
+  });
+
+  it('single cards and flat counts never transform', () => {
+    expect(fanTransform(0, 1, 88)).toEqual({ rot: 0, dy: 0 });
+    expect(fanTransform(0, 0, 88)).toEqual({ rot: 0, dy: 0 });
+  });
+});
+
+describe('motion spec + speed control', () => {
+  it('resolveMotion defaults to the reference primitive (430/46/4/55)', () => {
+    expect(resolveMotion(undefined)).toEqual(MOTION_DEFAULTS);
+    expect(resolveMotion(null)).toEqual({ flightMs: 430, arc: 46, spin: 4, staggerMs: 55 });
+  });
+
+  it('authored fields override individually, the rest keep defaults', () => {
+    expect(resolveMotion({ flightMs: 600 })).toEqual({ flightMs: 600, arc: 46, spin: 4, staggerMs: 55 });
+    expect(resolveMotion({ arc: 70, spin: 6, staggerMs: 0 }))
+      .toEqual({ flightMs: 430, arc: 70, spin: 6, staggerMs: 0 });
+  });
+
+  it('speedFactor: 1× = 1, 2× = 1/1.9, instant = 0 (skip clones)', () => {
+    expect(speedFactor('1x')).toBe(1);
+    expect(speedFactor('2x')).toBeCloseTo(1 / 1.9, 9);
+    expect(speedFactor('instant')).toBe(0);
+  });
+
+  it('scaleMs scales and rounds durations', () => {
+    expect(scaleMs(430, 1)).toBe(430);
+    expect(scaleMs(430, 1 / 1.9)).toBe(226);
+    expect(scaleMs(55, 1 / 1.9)).toBe(29);
+    expect(scaleMs(430, 0)).toBe(0);
+  });
+
+  it('asSpeed sanitizes persisted values; nextSpeed cycles the toggle', () => {
+    expect(asSpeed('2x')).toBe('2x');
+    expect(asSpeed('instant')).toBe('instant');
+    expect(asSpeed('warp')).toBe('1x');
+    expect(asSpeed(null)).toBe('1x');
+    expect(nextSpeed('1x')).toBe('2x');
+    expect(nextSpeed('2x')).toBe('instant');
+    expect(nextSpeed('instant')).toBe('1x');
+  });
+});
+
+describe('screen variants + stage geometry', () => {
+  const el = (id: string): ScreenElement => ({
+    kind: 'shape', id, name: id, rect: { x: 0, y: 0, w: 10, h: 10 }, shape: 'circle',
+  });
+  const desktop: ScreenLayout = {
+    background: 'navy',
+    aspect: 1.6,
+    elements: [el('d1'), el('d2')],
+  };
+
+  it('without a mobile variant the desktop tree renders at every width', () => {
+    expect(activeScreenVariant(desktop, false)).toEqual({
+      variant: 'desktop', elements: desktop.elements, background: 'navy', aspect: 1.6, scroll: false,
+    });
+    expect(activeScreenVariant(desktop, true).variant).toBe('desktop');
+    expect(activeScreenVariant(desktop, true).elements).toBe(desktop.elements);
+  });
+
+  it('a narrow viewport picks the mobile tree; a wide one ignores it', () => {
+    const layout: ScreenLayout = {
+      ...desktop,
+      mobile: { background: 'black', aspect: 0.4, scroll: true, elements: [el('m1')] },
+    };
+    const mobile = activeScreenVariant(layout, true);
+    expect(mobile.variant).toBe('mobile');
+    expect(mobile.elements.map((e) => e.id)).toEqual(['m1']);
+    expect(mobile.background).toBe('black');
+    expect(mobile.aspect).toBe(0.4);
+    expect(mobile.scroll).toBe(true);
+    expect(activeScreenVariant(layout, false).variant).toBe('desktop');
+  });
+
+  it("the mobile background falls back to the desktop's; aspect does not", () => {
+    const layout: ScreenLayout = { ...desktop, mobile: { elements: [el('m1')] } };
+    const mobile = activeScreenVariant(layout, true);
+    expect(mobile.background).toBe('navy');
+    expect(mobile.aspect).toBeNull(); // fill — never inherits the desktop aspect
+    expect(mobile.scroll).toBe(false);
+  });
+
+  it('scroll only engages with a positive numeric aspect', () => {
+    const noAspect: ScreenLayout = { ...desktop, mobile: { scroll: true, elements: [] } };
+    expect(activeScreenVariant(noAspect, true).scroll).toBe(false);
+    const withAspect: ScreenLayout = {
+      ...desktop, mobile: { scroll: true, aspect: 0.5, elements: [] },
+    };
+    expect(activeScreenVariant(withAspect, true).scroll).toBe(true);
+  });
+
+  it('computeStage: null aspect fills the area', () => {
+    expect(computeStage(800, 600, null, false))
+      .toEqual({ left: 0, top: 0, w: 800, h: 600, scrollable: false });
+  });
+
+  it('computeStage: a numeric aspect letterboxes a centered stage', () => {
+    expect(computeStage(1000, 500, 1, false))
+      .toEqual({ left: 250, top: 0, w: 500, h: 500, scrollable: false });
+    expect(computeStage(500, 1000, 1, false))
+      .toEqual({ left: 0, top: 250, w: 500, h: 500, scrollable: false });
+  });
+
+  it('computeStage: scroll pages span the width, height = width / aspect', () => {
+    expect(computeStage(390, 700, 0.5, true))
+      .toEqual({ left: 0, top: 0, w: 390, h: 780, scrollable: true });
+  });
+
+  it('computeStage: zero-sized areas produce an empty stage', () => {
+    expect(computeStage(0, 600, 1, true)).toEqual({ left: 0, top: 0, w: 0, h: 0, scrollable: false });
+  });
+});

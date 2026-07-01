@@ -1,0 +1,302 @@
+/* ============================================================
+   Dominion — the Crownfall table dress (.dominion-skin).
+
+   Ported from DominionGameTable/styles.css: OKLCH crimson on warm
+   black, Gloock display over Schibsted Grotesk, notched buttons,
+   gold cost diamonds. This skin only re-DRESSES the runner — the
+   layout stays the def's war-table screenLayout. It works by
+   (1) re-pointing Cardsmith's design tokens inside the skin scope,
+   (2) restyling the runner's generic classes (rn-*), and
+   (3) targeting card-face parts via CardView's cv-<elementId> tags.
+   ============================================================ */
+
+.dominion-skin {
+  /* --- the original table's palette --- */
+  --dgt-abyss: oklch(0.13 0.012 20);
+  --dgt-hall: oklch(0.165 0.014 20);
+  --dgt-dais: oklch(0.21 0.018 22);
+  --dgt-rule: oklch(0.3 0.025 22);
+  --dgt-rule-soft: oklch(0.24 0.02 22);
+  --dgt-bone: oklch(0.93 0.012 75);
+  --dgt-bone-dim: oklch(0.82 0.015 70);
+  --dgt-ash: oklch(0.68 0.018 40);
+  --dgt-crimson: oklch(0.5 0.2 22);
+  --dgt-crimson-bright: oklch(0.6 0.225 24);
+  --dgt-crimson-deep: oklch(0.34 0.13 20);
+  --dgt-crimson-whisper: oklch(0.5 0.2 22 / 0.12);
+  --dgt-aurum: oklch(0.78 0.1 85);
+  --dgt-verdict: oklch(0.62 0.14 145);
+  --dgt-display: 'Gloock', 'Georgia', serif;
+  --dgt-grotesk: 'Schibsted Grotesk', 'Segoe UI', system-ui, sans-serif;
+  --dgt-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --dgt-notch: 10px;
+  --dgt-notch-sm: 6px;
+
+  /* --- re-point Cardsmith's tokens so every rn-*/.btn/.chip follows --- */
+  --bg: var(--dgt-abyss);
+  --bg-raised: var(--dgt-hall);
+  --panel: var(--dgt-hall);
+  --panel-2: var(--dgt-dais);
+  --border: var(--dgt-rule-soft);
+  --border-strong: var(--dgt-rule);
+  --text: var(--dgt-bone);
+  --muted: var(--dgt-ash);
+  --faint: oklch(0.52 0.02 35);
+  --accent: var(--dgt-crimson);
+  --accent-soft: var(--dgt-crimson-whisper);
+  --accent-2: var(--dgt-aurum); /* legal targets glow gold, like affordable piles */
+  --danger: var(--dgt-crimson-bright);
+  --warning: var(--dgt-aurum);
+  --ok: var(--dgt-verdict);
+  --felt: var(--dgt-abyss);
+
+  /* Own the viewport: the runner's flex column chains off this height. */
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--dgt-abyss);
+  color: var(--dgt-bone);
+  font-family: var(--dgt-grotesk);
+}
+
+.dominion-skin ::selection {
+  background: var(--dgt-crimson);
+  color: var(--dgt-bone);
+}
+.dominion-skin :focus-visible {
+  outline: 2px solid var(--dgt-crimson-bright);
+  outline-offset: 2px;
+}
+
+/* ---------- table grounds ---------- */
+
+.dominion-skin .rn-table {
+  background-color: var(--dgt-abyss);
+  background-image: radial-gradient(
+    120% 90% at 50% 18%,
+    oklch(0.165 0.014 20 / 0.9) 0%,
+    var(--dgt-abyss) 100%
+  );
+}
+
+/* Un-authored zones (the hand) sit bare on the table, like the original
+   harbor; authored panels carry their own inline war-table chrome. */
+.dominion-skin .rn-zone-fill {
+  background: transparent;
+  border-color: transparent;
+}
+.dominion-skin .rn-empty {
+  border-color: oklch(0.3 0.025 22 / 0.6);
+  color: var(--dgt-ash);
+}
+
+/* Engraved-label idiom for zone captions (DECK / DISCARD / Trash…). */
+.dominion-skin .rn-zone-cap {
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dgt-ash);
+}
+
+/* ---------- legal-target treatment (crimson pulse, gold lift) ---------- */
+
+@keyframes dgt-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 2px var(--dgt-crimson),
+      0 0 10px oklch(0.5 0.2 22 / 0.35);
+  }
+  50% {
+    box-shadow:
+      0 0 0 3px var(--dgt-crimson-bright),
+      0 0 22px oklch(0.6 0.225 24 / 0.6);
+  }
+}
+.dominion-skin .rn-zone.rn-highlight,
+.dominion-skin .rn-spile.rn-pilelegal,
+.dominion-skin .rn-priority {
+  animation-name: dgt-pulse;
+}
+.dominion-skin .rn-cardwrap.rn-glow {
+  box-shadow:
+    0 0 0 2px var(--dgt-aurum),
+    0 4px 18px oklch(0.78 0.1 85 / 0.4);
+}
+.dominion-skin .rn-collapse.rn-grouplegal::after {
+  box-shadow:
+    0 0 0 2px var(--dgt-aurum),
+    0 4px 18px oklch(0.78 0.1 85 / 0.4);
+}
+
+/* ---------- supply piles: gold diamond cost, Gloock counts ---------- */
+
+.dominion-skin .rn-pilecost {
+  background: var(--dgt-abyss);
+  border: 1.5px solid var(--dgt-aurum);
+  border-radius: 3px;
+  box-shadow: 0 2px 6px oklch(0.05 0.01 20 / 0.5);
+}
+.dominion-skin .rn-pilecost > span {
+  font-family: var(--dgt-display);
+  font-weight: 400;
+  font-size: 0.72rem;
+  color: var(--dgt-bone);
+}
+.dominion-skin .rn-badge {
+  background: var(--dgt-hall);
+  border-color: var(--dgt-rule);
+  font-family: var(--dgt-display);
+  font-weight: 400;
+  color: var(--dgt-bone-dim);
+}
+
+/* ---------- card faces (via CardView's cv-<elementId> part tags) ---------- */
+
+/* The signature rotated-diamond cost badge: the stat keeps its inline
+   geometry and upright digit; a rotated square pseudo-element becomes the
+   frame. Inline styles carry the circle look, hence the !importants. */
+.dominion-skin .cv-dom_el_cost {
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  isolation: isolate;
+  font-family: var(--dgt-display);
+  font-weight: 400 !important;
+  color: var(--dgt-bone) !important;
+}
+.dominion-skin .cv-dom_el_cost::before {
+  content: '';
+  position: absolute;
+  inset: 10%;
+  rotate: 45deg;
+  background: var(--dgt-abyss);
+  border: 1.5px solid var(--dgt-aurum);
+  z-index: -1;
+}
+.dominion-skin .cv-dom_el_name {
+  font-family: var(--dgt-display);
+  font-weight: 400 !important;
+}
+.dominion-skin .cv-dom_el_type {
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-style: normal !important;
+  font-size: 0.85em;
+}
+
+/* ---------- the phase seal & screen buttons (notched, crimson) ---------- */
+
+.dominion-skin .rn-sl-btn {
+  border-radius: 0;
+  clip-path: polygon(
+    var(--dgt-notch) 0,
+    100% 0,
+    100% calc(100% - var(--dgt-notch)),
+    calc(100% - var(--dgt-notch)) 100%,
+    0 100%,
+    0 var(--dgt-notch)
+  );
+  font-family: var(--dgt-display);
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  transition: background 0.25s var(--dgt-out-expo), border-color 0.25s var(--dgt-out-expo);
+}
+.dominion-skin .rn-sl-btn:not(:disabled):not(.rn-sl-deco) {
+  background: var(--dgt-crimson);
+  border-color: var(--dgt-crimson-bright);
+  color: var(--dgt-bone);
+  box-shadow: 0 0 14px oklch(0.5 0.2 22 / 0.35);
+}
+.dominion-skin .rn-sl-btn:not(:disabled):not(.rn-sl-deco):hover {
+  background: var(--dgt-crimson-bright);
+}
+.dominion-skin .rn-sl-btn.rn-sl-pass {
+  color: oklch(0.18 0.03 85);
+  font-weight: 700;
+}
+
+/* ---------- shared primitives inside the table ---------- */
+
+.dominion-skin .btn {
+  border-radius: 0;
+  clip-path: polygon(
+    var(--dgt-notch-sm) 0,
+    100% 0,
+    100% calc(100% - var(--dgt-notch-sm)),
+    calc(100% - var(--dgt-notch-sm)) 100%,
+    0 100%,
+    0 var(--dgt-notch-sm)
+  );
+}
+.dominion-skin .btn:hover { background: var(--dgt-dais); }
+.dominion-skin .btn-primary { color: var(--dgt-bone); }
+.dominion-skin .btn-primary:hover { background: var(--dgt-crimson-bright); }
+
+.dominion-skin .rn-status {
+  background: oklch(0.1 0.012 20 / 0.85);
+  border-top: 1px solid var(--dgt-rule-soft);
+}
+.dominion-skin .rn-stat {
+  font-family: var(--dgt-display);
+  font-weight: 400;
+  letter-spacing: 0.03em;
+}
+.dominion-skin .rn-bottom {
+  background: linear-gradient(180deg, oklch(0.1 0.012 20 / 0.4), oklch(0.1 0.012 20 / 0.85));
+  border-top: 1px solid var(--dgt-rule-soft);
+}
+
+/* ---------- chronicle ---------- */
+
+.dominion-skin .rn-sl-logsep {
+  letter-spacing: 0.14em;
+  font-weight: 600;
+  color: var(--dgt-ash);
+}
+.dominion-skin .rn-sl-logsep::after { background: var(--dgt-rule); }
+
+/* ---------- sheets & the verdict (game over) ---------- */
+
+.dominion-skin .rn-sheet {
+  background: var(--dgt-hall);
+  border-color: var(--dgt-rule);
+}
+.dominion-skin .rn-sheet-prompt { font-family: var(--dgt-display); font-weight: 400; }
+
+.dominion-skin .rn-gameover {
+  background:
+    radial-gradient(60% 50% at 50% 40%, oklch(0.5 0.2 22 / 0.18), transparent 70%),
+    oklch(0.08 0.01 20 / 0.94);
+}
+.dominion-skin .rn-gameover-card {
+  background: var(--dgt-hall);
+  border: 1px solid var(--dgt-rule);
+  border-radius: 0;
+  clip-path: polygon(
+    var(--dgt-notch) 0,
+    100% 0,
+    100% calc(100% - var(--dgt-notch)),
+    calc(100% - var(--dgt-notch)) 100%,
+    0 100%,
+    0 var(--dgt-notch)
+  );
+}
+.dominion-skin .rn-gameover-card h2 {
+  font-family: var(--dgt-display);
+  font-weight: 400;
+  color: var(--dgt-bone);
+}
+
+/* ---------- reduced motion ---------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .dominion-skin .rn-zone.rn-highlight,
+  .dominion-skin .rn-spile.rn-pilelegal,
+  .dominion-skin .rn-priority {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--dgt-crimson);
+  }
+  .dominion-skin .rn-sl-btn { transition: none; }
+}

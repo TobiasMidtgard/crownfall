@@ -1,0 +1,39 @@
+/**
+ * The hall's three kingdom sets (lobby banners ↔ Dominion supply).
+ * Canonical data lifted from the original hall (FableTest app.js KINGDOMS).
+ * Shared by the lobby (src/hall) and the Dominion def (src/forge) — keep this
+ * module dependency-free so neither side drags the other into its chunk.
+ */
+export interface KingdomSet {
+  id: string;
+  name: string;
+  /** Hall icon symbol id (see src/hall Icons). */
+  icon: string;
+  motto: string;
+  /** Exactly ten kingdom card names. */
+  cards: string[];
+}
+
+export const KINGDOM_SETS: KingdomSet[] = [
+  {
+    id: 'first-game', name: 'First Game', icon: 'crest-dominion',
+    motto: 'Ten cards. Every lesson.',
+    cards: ['Cellar', 'Market', 'Militia', 'Mine', 'Moat', 'Remodel', 'Smithy', 'Village', 'Workshop', 'Festival'],
+  },
+  {
+    id: 'sharp-coins', name: 'Sharp Coins', icon: 'glyph-coin',
+    motto: 'Silver buys. Gold forgives.',
+    cards: ['Chapel', 'Laboratory', 'Market', 'Festival', 'Council Room', 'Throne Room', 'Mine', 'Workshop', 'Gardens', 'Smithy'],
+  },
+  {
+    id: 'witching-hour', name: 'The Witching Hour', icon: 'crest-veil',
+    motto: 'Curses, dealt at midnight.',
+    cards: ['Witch', 'Moat', 'Chapel', 'Cellar', 'Village', 'Laboratory', 'Throne Room', 'Council Room', 'Remodel', 'Black Market'],
+  },
+];
+
+export const DEFAULT_KINGDOM_ID = 'first-game';
+
+export function kingdomById(id: string | null | undefined): KingdomSet {
+  return KINGDOM_SETS.find((k) => k.id === id) ?? KINGDOM_SETS[0];
+}

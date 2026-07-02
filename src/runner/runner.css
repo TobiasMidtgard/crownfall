@@ -689,6 +689,14 @@ section.rn-bottom.rn-priority { border-top-color: var(--accent); }
    element OUTSIDE the held group dims (class set by ScreenRenderer). */
 .rn-el.rn-kb-dim { opacity: 0.3; }
 
+/* Decorative elements (text / varText / shape) never intercept pointer
+   events — an overlay label sitting on a full-plate button must let the
+   click through to it. Interactive kinds (zone/button/log/group) keep their
+   events, and an interactive element NESTED inside a decorative one wins
+   them back. */
+.rn-el.rn-el-inert { pointer-events: none; }
+.rn-el.rn-el-inert .rn-el:not(.rn-el-inert) { pointer-events: auto; }
+
 /* Zones stretched into an authored rect. */
 .rn-zone-fill {
   flex: 1 1 0;
@@ -909,6 +917,21 @@ section.rn-bottom.rn-priority { border-top-color: var(--accent); }
 }
 .rn-cshadow1 { transform: translate(3px, -3px); }
 .rn-cshadow2 { transform: translate(6px, -6px); }
+
+/* ---------- refuse shake (illegal tap) ---------- */
+
+/* TableScreen attaches .rn-refuse to the tapped card/pile/zone node when the
+   player has legal moves but the target has none (removed on animationend,
+   300ms backstop; a re-tap restarts it). Neutral numbers per the DGT refuse
+   — 280ms ease-out, −5px → 4px → −2px on the `translate` property so
+   transforms (fan slots, lifts) stay untouched. Skins override the rule. */
+.rn-refuse { animation: rnRefuse 280ms ease-out; }
+@keyframes rnRefuse {
+  0%, 100% { translate: 0 0; }
+  25% { translate: -5px 0; }
+  55% { translate: 4px 0; }
+  80% { translate: -2px 0; }
+}
 
 /* ---------- change one-shots (onChangeAnim, varText ticker) ---------- */
 
@@ -1143,10 +1166,11 @@ section.rn-bottom.rn-priority { border-top-color: var(--accent); }
     transition: none;
   }
 
-  /* One-shots, ticker bumps, breathe loops, log entry-ins and embers stay
-     still; fan rotation/dip is static styling and remains. */
+  /* One-shots, ticker bumps, breathe loops, log entry-ins, embers and the
+     refuse shake stay still (TableScreen also skips applying .rn-refuse);
+     fan rotation/dip is static styling and remains. */
   .rn-anim-stamp, .rn-anim-flash, .rn-anim-breathe, .rn-ticker-bump,
-  .rn-sl-logentry, .rn-ember {
+  .rn-sl-logentry, .rn-ember, .rn-refuse {
     animation: none;
   }
   .rn-fanslot { transition: none; }
@@ -1165,7 +1189,7 @@ section.rn-bottom.rn-priority { border-top-color: var(--accent); }
   transition: none;
 }
 .calm .rn-anim-stamp, .calm .rn-anim-flash, .calm .rn-anim-breathe,
-.calm .rn-ticker-bump, .calm .rn-sl-logentry, .calm .rn-ember {
+.calm .rn-ticker-bump, .calm .rn-sl-logentry, .calm .rn-ember, .calm .rn-refuse {
   animation: none;
 }
 .calm .rn-fanslot { transition: none; }

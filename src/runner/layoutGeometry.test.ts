@@ -9,9 +9,10 @@ import { describe, expect, it } from 'vitest';
 import type { ScreenElement, ScreenLayout } from '../shared/types';
 import {
   absToGroupRel, activeScreenVariant, asSpeed, cardIdentity, computeStage, fanMarginPx,
-  fanTransform, fitCount, gridSpec, gridTemplate, groupPiles, groupRelToAbs, layoutStyleCss,
-  lineColor, lineEndpoints, MOTION_DEFAULTS, motionForTag, nextSpeed, pctToPx, rectContains,
-  resolveMotion, resolveSeat, scaleMs, seatOffset, shapeBorderRadius, speedFactor, topLegalCard,
+  fanTransform, fitCount, gridSpec, gridTemplate, groupPiles, groupPilesRemembered,
+  groupRelToAbs, layoutStyleCss, lineColor, lineEndpoints, MOTION_DEFAULTS, motionForTag,
+  nextSpeed, pctToPx, rectContains, resolveMotion, resolveSeat, scaleMs, seatOffset,
+  shapeBorderRadius, speedFactor, topLegalCard,
 } from './layoutGeometry';
 
 const parent = { x: 20, y: 10, w: 50, h: 40 };
@@ -241,6 +242,67 @@ describe('pile / duplicate grouping', () => {
     expect(topLegalCard(['c1', 'c2', 'c3'], (id) => legal.has(id))).toBe('c2');
     expect(topLegalCard(['c3'], (id) => legal.has(id))).toBeNull();
     expect(topLegalCard([], () => true)).toBeNull();
+  });
+});
+
+describe('depleted-pile memory (groupPilesRemembered)', () => {
+  const cards = {
+    c1: { defId: 'copper', name: 'Copper' },
+    c2: { defId: 'copper', name: 'Copper' },
+    e1: { defId: 'estate', name: 'Estate' },
+    s1: { defId: 'silver', name: 'Silver' },
+  };
+
+  it('first sight matches groupPiles and seeds the memory (last-seen tops)', () => {
+    const memory = new Map<string, string>();
+    const piles = groupPilesRemembered(['c1', 'e1', 'c2'], cards, memory);
+    expect(piles).toEqual(groupPiles(['c1', 'e1', 'c2'], cards));
+    expect([...memory.entries()]).toEqual([['copper', 'c2'], ['estate', 'e1']]);
+  });
+
+  it('a depleted identity stays as a count-0 placeholder, in place', () => {
+    const memory = new Map<string, string>();
+    groupPilesRemembered(['c1', 'e1'], cards, memory);
+    const piles = groupPilesRemembered(['e1'], cards, memory); // copper gone
+    expect(piles.map((p) => [p.key, p.count])).toEqual([['copper', 0], ['estate', 1]]);
+    // The placeholder's face is the last-seen top member.
+    expect(piles[0]).toEqual({ key: 'copper', cardIds: [], topId: 'c1', count: 0 });
+  });
+
+  it('keeps first-appearance order stable as piles deplete and new ones arrive', () => {
+    const memory = new Map<string, string>();
+    groupPilesRemembered(['c1', 'e1'], cards, memory);
+    // Both remembered piles empty out; a brand-new identity appears.
+    const piles = groupPilesRemembered(['s1'], cards, memory);
+    expect(piles.map((p) => [p.key, p.count])).toEqual([
+      ['copper', 0], ['estate', 0], ['silver', 1],
+    ]);
+  });
+
+  it('a refilled identity comes back live at its original spot', () => {
+    const memory = new Map<string, string>();
+    groupPilesRemembered(['c1', 'e1'], cards, memory);
+    groupPilesRemembered(['e1'], cards, memory); // copper depleted…
+    const piles = groupPilesRemembered(['e1', 'c2'], cards, memory); // …and back
+    expect(piles.map((p) => [p.key, p.count])).toEqual([['copper', 1], ['estate', 1]]);
+    expect(piles[0].topId).toBe('c2'); // fresh top, and the memory follows it
+    expect(memory.get('copper')).toBe('c2');
+  });
+
+  it('display-filtered identities are omitted, never shown as depleted', () => {
+    const memory = new Map<string, string>();
+    groupPilesRemembered(['c1', 'e1'], cards, memory, ['c1', 'e1']);
+    // Estate is filtered from the display slice but still IN the zone -> no
+    // pile and no placeholder; copper truly left the zone -> placeholder.
+    const piles = groupPilesRemembered([], cards, memory, ['e1']);
+    expect(piles.map((p) => [p.key, p.count])).toEqual([['copper', 0]]);
+    // Back on the slice, estate reappears live where it always was.
+    const back = groupPilesRemembered(['e1'], cards, memory, ['e1']);
+    expect(back.map((p) => [p.key, p.count])).toEqual([['copper', 0], ['estate', 1]]);
+  });
+
+  it('an empty memory and an empty zone group to nothing', () => {
+    expect(groupPilesRemembered([], cards, new Map())).toEqual([]);
   });
 });
 

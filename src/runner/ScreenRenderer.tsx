@@ -96,7 +96,18 @@ function useMeasuredSize(): [React.RefObject<HTMLDivElement>, { w: number; h: nu
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
-    return () => ro.disconnect();
+    // ResizeObserver deliveries are rAF-aligned and starve while the window
+    // is hidden/backgrounded, which could leave the stage at 0×0 until a
+    // remount. A window resize listener plus a visibilitychange re-measure
+    // re-read the rect directly — cheap and idempotent (the setter bails
+    // when nothing changed).
+    window.addEventListener('resize', measure);
+    document.addEventListener('visibilitychange', measure);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', measure);
+      document.removeEventListener('visibilitychange', measure);
+    };
   }, []);
   return [ref, size];
 }
@@ -150,13 +161,16 @@ export function ScreenRenderer({ ctx, screen, buttonMove, onMove }: {
  * `rn-rv-<anim>` animation (incl. on first appearance); leaving keeps the
  * node briefly with `rn-rv-<anim>-out` before removal. 'none' is instant.
  */
-function Reveal({ show, anim, rect, frame, dim, children }: {
+function Reveal({ show, anim, rect, frame, dim, inert, children }: {
   show: boolean;
   anim: ScreenElement['reveal'];
   rect: { x: number; y: number; w: number; h: number };
   frame?: React.CSSProperties;
   /** Keyboard spotlight: this element sits outside the held group. */
   dim?: boolean;
+  /** Decorative kind (text/varText/shape): the wrapper never eats pointer
+   *  events, so overlay labels can't shadow a button underneath. */
+  inert?: boolean;
   children: React.ReactNode;
 }) {
   const [present, setPresent] = useState(show);
@@ -188,7 +202,7 @@ function Reveal({ show, anim, rect, frame, dim, children }: {
     : '';
   return (
     <div
-      className={`rn-el${animClass}${dim === true ? ' rn-kb-dim' : ''}`}
+      className={`rn-el${animClass}${dim === true ? ' rn-kb-dim' : ''}${inert === true ? ' rn-el-inert' : ''}`}
       style={{
         left: `${rect.x}%`,
         top: `${rect.y}%`,
@@ -365,6 +379,12 @@ function ElementView({ ctx, el, screenW, buttonMove, onMove, root }: {
   // Keyboard spotlight: dim top-level elements outside the held group.
   const spotlight = ctx.keySpotlight ?? null;
   const dim = root === true && spotlight !== null && !subtreeHasKeyGroup(el, spotlight);
+  // Display-only kinds never intercept pointer events (a seal label overlay
+  // must not eat the plate button's clicks); zone/button/log/group stay
+  // interactive, and interactive CHILDREN of a decorative element win their
+  // events back via CSS (.rn-el-inert). The collapsible tab/close buttons
+  // render outside this wrapper, so collapsibles keep working either way.
+  const inert = el.kind === 'text' || el.kind === 'varText' || el.kind === 'shape' || el.kind === 'line';
   return (
     <>
       <Reveal
@@ -373,6 +393,7 @@ function ElementView({ ctx, el, screenW, buttonMove, onMove, root }: {
         rect={app.rect}
         frame={spec ? { ...frame, zIndex: 30 } : frame}
         dim={dim}
+        inert={inert}
       >
         {changeAnim === 'breathe'
           ? (

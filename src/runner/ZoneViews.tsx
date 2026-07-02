@@ -14,6 +14,9 @@
  *     supply piles — top card + "× N" badge + optional rotated-lozenge field
  *     badge; the grid honors rows/columns/gap; a pile glows when ANY member
  *     is a legal target and tapping performs on the TOPMOST legal one.
+ *     Identities seen this table mount are remembered (ctx.pileMemory), so a
+ *     DEPLETED pile stays in place as a grayed count-0 placeholder
+ *     (.rn-pile-empty, non-tappable) instead of vanishing.
  *   - display 'carousel': the same piles laid in ONE horizontally
  *     scroll-snapping row (.rn-carousel/.rn-carouselslot) — the touch-first
  *     mobile supply pattern; taps/glow behave exactly like 'piles'.
@@ -35,8 +38,8 @@ import type { CardRectRegistry } from './flip';
 import type { KeyBadge, KeyboardGroup } from './keyboard';
 import { templateOf } from './layout';
 import {
-  DEFAULT_FAN_ANGLE, fanMarginPx, fanTransform, gridSpec, groupPiles, topLegalCard,
-  type CardPile, type FrameCss,
+  DEFAULT_FAN_ANGLE, fanMarginPx, fanTransform, gridSpec, groupPiles, groupPilesRemembered,
+  topLegalCard, type CardPile, type FrameCss,
 } from './layoutGeometry';
 
 /**
@@ -85,8 +88,14 @@ export interface TableCtx {
   keyBadges?: ReadonlyMap<Id, KeyBadge>;
   /** Keyboard group whose modifier is held (its badges light up). */
   keySpotlight?: KeyboardGroup | null;
-  onCardTap: (cardId: Id) => void;
-  onZoneTap: (instKey: string) => void;
+  /** Pile identities seen this table mount, per zone instance key (identity
+   *  -> last-seen top card id) — backs depleted-pile placeholders. View-layer
+   *  session memory only: never engine state, never persisted. */
+  pileMemory: Map<string, Map<string, Id>>;
+  /** Tap handlers double as the illegal-tap path: with no legal moves on the
+   *  target, TableScreen shakes `el` (.rn-refuse) instead of performing. */
+  onCardTap: (cardId: Id, el?: HTMLElement | null) => void;
+  onZoneTap: (instKey: string, el?: HTMLElement | null) => void;
 }
 
 export type ZoneSize = 'strip' | 'center' | 'hand';
@@ -136,7 +145,14 @@ export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, cus
   const isCarousel = custom?.display === 'carousel';
 
   const renderCard = (cardId: Id) => (
-    <TableCard key={cardId} ctx={ctx} cardId={cardId} width={width} dimInactive={zoneHasLegal} />
+    <TableCard
+      key={cardId}
+      ctx={ctx}
+      cardId={cardId}
+      width={width}
+      dimInactive={zoneHasLegal}
+      refuseTap={!tappable}
+    />
   );
   const emptySlot = (
     <div className="rn-empty" style={{ width, height: Math.round(width / 0.714) }}>empty</div>
@@ -182,6 +198,9 @@ export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, cus
         // The × N badge is aria-hidden and the other members never enter the
         // DOM, so the count rides the face card's accessible name.
         nameSuffix={it.n > 1 ? ` × ${it.n}` : undefined}
+        // Refuse illegal taps only when nothing above would handle them (a
+        // tappable zone or a buried-legal collapsed group performs instead).
+        refuseTap={!tappable && !groupLegal}
       />
     );
     const body = it.n > 1
@@ -207,7 +226,14 @@ export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, cus
   if (isPiles || isCarousel) {
     // Supply piles: group by identity; an empty zone renders nothing.
     // 'carousel' renders the same piles in one scroll-snapping row.
-    const piles = groupPiles(ids, ctx.state.cards);
+    // Identities seen earlier this table mount whose cards all left come
+    // back as depleted count-0 placeholders (session memory per instance).
+    let memory = ctx.pileMemory.get(inst.key);
+    if (!memory) {
+      memory = new Map();
+      ctx.pileMemory.set(inst.key, memory);
+    }
+    const piles = groupPilesRemembered(ids, ctx.state.cards, memory, inst.cardIds);
     const anyPileLegal = piles.some((p) => topLegalCard(p.cardIds, hasMoves) !== null);
     const pileEl = (p: CardPile) => (
       <SupplyPile
@@ -217,6 +243,7 @@ export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, cus
         width={width}
         badgeField={custom?.pileBadgeField ?? null}
         dimWhenIdle={anyPileLegal}
+        refusable={!tappable}
       />
     );
     body = piles.length === 0 ? <></> : isCarousel ? (
@@ -278,13 +305,23 @@ export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, cus
     ? { ...custom.frame, ...(custom.padPx !== undefined ? { padding: custom.padPx } : {}) }
     : undefined;
 
+  // Illegal ZONE taps (no zone-target moves) still reach TableScreen so it
+  // can refuse-shake the frame — but only genuine zone taps: clicks landing
+  // on card-level targets (face-down backs, depleted placeholders whose
+  // pointer-events are off, collapsed-group chrome, empty slots) are either
+  // handled at card level or deliberately silent (face-down/decorative).
+  const refuseZoneTap = (e: React.MouseEvent) => {
+    const t = e.target as Element;
+    if (t.closest('.rn-cardwrap, .rn-spile, .rn-collapse, .rn-empty') !== null) return;
+    ctx.onZoneTap(inst.key, e.currentTarget as HTMLElement);
+  };
   return (
     <div
       className={`rn-zone${tappable ? ' rn-highlight rn-tappable' : ''}${fill ? ' rn-zone-fill' : ''}${full ? ' rn-zfull' : ''}`}
       style={frame}
       role={tappable ? 'button' : undefined}
       tabIndex={tappable ? 0 : undefined}
-      onClick={tappable ? () => ctx.onZoneTap(inst.key) : undefined}
+      onClick={tappable ? () => ctx.onZoneTap(inst.key) : refuseZoneTap}
       onKeyDown={tappable ? pressHandler(() => ctx.onZoneTap(inst.key)) : undefined}
     >
       {(caption !== '' || capChip !== null) && (
@@ -299,23 +336,59 @@ export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, cus
  * One supply pile ('piles' display): the top card's face, a × N badge, an
  * optional field badge (rotated-square lozenge, e.g. cost), pile-level legal
  * glow + tap. The face card handles its own tap when IT is the legal target;
- * the pile handles taps that should reach a buried legal member.
+ * the pile handles taps that should reach a buried legal member — and, when
+ * NO member is legal (`refusable`), forwards the tap so TableScreen can
+ * refuse-shake the pile. A count-0 pile (a remembered, depleted identity)
+ * renders as a grayed non-tappable placeholder: the face goes through
+ * CardView directly — never TableCard — so the representative card, which
+ * now lives elsewhere, doesn't double-register in the FLIP rect registry.
  */
-function SupplyPile({ ctx, pile, width, badgeField, dimWhenIdle }: {
+function SupplyPile({ ctx, pile, width, badgeField, dimWhenIdle, refusable }: {
   ctx: TableCtx;
   pile: CardPile;
   width: number;
   badgeField: Id | null;
   dimWhenIdle: boolean;
+  /** No enclosing tappable zone: illegal pile taps may refuse-shake. */
+  refusable: boolean;
 }) {
+  const card = ctx.state.cards[pile.topId];
+  if (!card) return null;
+  const badgeVal = badgeField !== null ? card.fields[badgeField] : undefined;
+  const badgeChip = badgeVal !== undefined && badgeVal !== ''
+    ? <span className="rn-pilecost" aria-hidden="true"><span>{String(badgeVal)}</span></span>
+    : null;
+  const visible = isCardVisibleTo(ctx.def, ctx.state, pile.topId, ctx.viewerId);
+
+  if (pile.count === 0) {
+    // Depleted placeholder: the last-seen face at 0.28/grayscale (runner.css
+    // .rn-pile-empty, pointer-events off). Facing re-resolves against the
+    // card's CURRENT zone so nothing hidden leaks through the memory.
+    const template = templateOf(ctx.def, card);
+    return (
+      <div
+        className="rn-spile rn-pile-empty"
+        role="img"
+        aria-label={`${visible ? card.name : 'Face-down card'}, depleted`}
+      >
+        <CardView
+          card={{ name: card.name, templateId: card.templateId, fields: card.fields, faceUp: visible }}
+          template={template}
+          width={width}
+          accent={ctx.accent}
+        />
+        <span className="rn-badge" aria-hidden="true">× 0</span>
+        {badgeChip}
+      </div>
+    );
+  }
+
   const hasMoves = (id: Id) => (ctx.cardMoves.get(id)?.length ?? 0) > 0;
   const topLegal = topLegalCard(pile.cardIds, hasMoves);
   const faceLegal = hasMoves(pile.topId);
-  const card = ctx.state.cards[pile.topId];
-  const badgeVal = badgeField !== null && card ? card.fields[badgeField] : undefined;
   // The badge lozenge itself is aria-hidden, so its field (e.g. "Cost 3")
   // joins the pile's accessible name instead of vanishing from AT entirely.
-  const badgeName = badgeField !== null && card
+  const badgeName = badgeField !== null
     ? templateOf(ctx.def, card)?.fields.find((f) => f.id === badgeField)?.name
     : undefined;
   const badgePart = badgeVal !== undefined && badgeVal !== ''
@@ -327,13 +400,21 @@ function SupplyPile({ ctx, pile, width, badgeField, dimWhenIdle }: {
         ctx.onCardTap(topLegal);
       }
     : undefined;
+  // Illegal tap on a face-up pile with no legal member: forward to the card
+  // tap path with the PILE's node so the whole pile (badges included) shakes.
+  const refuse = topLegal === null && refusable && visible
+    ? (e: React.MouseEvent) => {
+        e.stopPropagation();
+        ctx.onCardTap(pile.topId, e.currentTarget as HTMLElement);
+      }
+    : undefined;
   return (
     <div
-      className={`rn-spile${topLegal !== null ? ' rn-pilelegal' : ''}${dimWhenIdle && topLegal === null ? ' rn-piledim' : ''}${pile.count === 0 ? ' rn-pile-empty' : ''}`}
+      className={`rn-spile${topLegal !== null ? ' rn-pilelegal' : ''}${dimWhenIdle && topLegal === null ? ' rn-piledim' : ''}`}
       role={tap ? 'button' : undefined}
       tabIndex={tap ? 0 : undefined}
-      aria-label={card ? `${card.name} × ${pile.count}${badgePart}` : undefined}
-      onClick={tap}
+      aria-label={`${card.name} × ${pile.count}${badgePart}`}
+      onClick={tap ?? refuse}
       onKeyDown={tap ? pressHandler(tap) : undefined}
     >
       <TableCard
@@ -344,9 +425,7 @@ function SupplyPile({ ctx, pile, width, badgeField, dimWhenIdle }: {
         nameSuffix={` × ${pile.count}${badgePart}`}
       />
       <span className="rn-badge" aria-hidden="true">× {pile.count}</span>
-      {badgeVal !== undefined && badgeVal !== '' && (
-        <span className="rn-pilecost" aria-hidden="true"><span>{String(badgeVal)}</span></span>
-      )}
+      {badgeChip}
     </div>
   );
 }
@@ -405,13 +484,17 @@ function badgeVisible(v: unknown): boolean {
  * One card on the table: visibility-resolved facing, glow + tap when legal,
  * rotation + badge chips from def.cardState.
  */
-function TableCard({ ctx, cardId, width, dimInactive, nameSuffix }: {
+function TableCard({ ctx, cardId, width, dimInactive, nameSuffix, refuseTap }: {
   ctx: TableCtx;
   cardId: Id;
   width: number;
   dimInactive: boolean;
   /** Joined to the accessible name (collapsed × N counts, pile badges). */
   nameSuffix?: string;
+  /** Forward move-less taps on a FACE-UP card so TableScreen can refuse-
+   *  shake it. Only set when nothing above (a tappable zone, a legal pile
+   *  or collapsed group) would handle the bubbled tap itself. */
+  refuseTap?: boolean;
 }) {
   const card = ctx.state.cards[cardId];
   if (!card) return null;
@@ -426,10 +509,12 @@ function TableCard({ ctx, cardId, width, dimInactive, nameSuffix }: {
   const badges = ctx.badgeVars
     .map((v) => ({ v, val: card.vars[v.id] }))
     .filter(({ val }) => badgeVisible(val));
-  const tap = hasMoves
+  // Face-down cards never refuse (decorative backs stay silent); refuse-only
+  // taps are pointer-only — no role/tabIndex, the card is not interactive.
+  const tap = hasMoves || (refuseTap === true && visible)
     ? (e: React.SyntheticEvent) => {
         e.stopPropagation(); // don't also fire a zone-target tap
-        ctx.onCardTap(cardId);
+        ctx.onCardTap(cardId, e.currentTarget as HTMLElement);
       }
     : undefined;
   return (
@@ -446,7 +531,7 @@ function TableCard({ ctx, cardId, width, dimInactive, nameSuffix }: {
       tabIndex={hasMoves ? 0 : undefined}
       aria-label={`${visible ? card.name : 'Face-down card'}${nameSuffix ?? ''}`}
       onClick={tap}
-      onKeyDown={tap ? pressHandler(tap) : undefined}
+      onKeyDown={hasMoves && tap ? pressHandler(tap) : undefined}
     >
       <div className="rn-rotor" style={rotated ? { width, height } : undefined}>
         <CardView

@@ -164,7 +164,7 @@ export interface ScreenElementBase {
    * Retriggerable one-shot played when the element's resolved content or
    * active state changes ('stamp' = scale 1.07 + brightness flash).
    */
-  onChangeAnim?: 'none' | 'stamp' | 'flash';
+  onChangeAnim?: 'none' | 'stamp' | 'flash' | 'breathe';
   /**
    * Collapsible panel (the chronicle pattern): collapsed, the element shrinks
    * to a tab button docked at `side`; tapping slides the element open over

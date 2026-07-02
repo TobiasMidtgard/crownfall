@@ -34,6 +34,9 @@
   --dgt-notch: 10px;
   --dgt-notch-sm: 6px;
 
+  /* The runner's gold-glow token (rn-pulse-gold) rides the DGT aurum. */
+  --rn-gold: oklch(0.78 0.1 85);
+
   /* --- re-point Cardsmith's tokens so every rn-*/.btn/.chip follows --- */
   --bg: var(--dgt-abyss);
   --bg-raised: var(--dgt-hall);
@@ -121,15 +124,30 @@
 .dominion-skin .rn-priority {
   animation-name: dgt-pulse;
 }
+/* Legal hand cards pulse crimson (the DGT .is-legal/.is-playable treatment). */
 .dominion-skin .rn-cardwrap.rn-glow {
   box-shadow:
-    0 0 0 2px var(--dgt-aurum),
-    0 4px 18px oklch(0.78 0.1 85 / 0.4);
+    0 0 0 2px var(--dgt-crimson),
+    0 0 10px oklch(0.5 0.2 22 / 0.35);
+  animation: dgt-pulse 1.5s var(--dgt-out-expo) infinite;
 }
 .dominion-skin .rn-collapse.rn-grouplegal::after {
   box-shadow:
-    0 0 0 2px var(--dgt-aurum),
-    0 4px 18px oklch(0.78 0.1 85 / 0.4);
+    0 0 0 2px var(--dgt-crimson),
+    0 4px 18px oklch(0.5 0.2 22 / 0.5);
+}
+/* The buy-phase gold light (DGT "reachable" cue): while it is YOUR Buy
+   phase, affordable piles trade the crimson pulse for the aurum one. */
+.dominion-skin .rn-root[data-phase='dom_phase_buy'][data-active='you'] .rn-spile.rn-pilelegal {
+  animation-name: rn-pulse-gold;
+}
+.dominion-skin .rn-spile { transition: translate 0.2s var(--dgt-out-expo); }
+.dominion-skin .rn-spile.rn-pilelegal:hover { translate: 0 -3px; }
+/* Depleted pile (runner's rn-pile-empty hook, live once piles gain
+   placeholders): DGT strikes the name through on the grayed face. */
+.dominion-skin .rn-spile.rn-pile-empty .cv-dom_el_name {
+  text-decoration: line-through;
+  text-decoration-color: var(--dgt-ash);
 }
 /* The stack panel's top entry (every Militia/Witch response window):
    runner.css hardcodes a Cardsmith-teal halo no token re-point can reach —
@@ -240,10 +258,91 @@
 .dominion-skin .rn-sl-btn:not(:disabled):not(.rn-sl-deco):hover {
   background: var(--dgt-crimson-press);
 }
+.dominion-skin .rn-sl-btn:not(:disabled):not(.rn-sl-deco):active {
+  background: var(--dgt-crimson-deep);
+}
 .dominion-skin .rn-sl-btn.rn-sl-pass {
   color: oklch(0.18 0.03 85);
   font-weight: 700;
 }
+
+/* --- the seal's DGT render-states, keyed off the runner root's hooks ---
+   your Action/Buy = live crimson plate (the default above); a pending
+   choice of yours = the disabled dais/ash "Resolve" plate; the foe's
+   turn = the cold hall plate with an inset hairline; game over = the
+   crimson "Fallen" plate even though the button is inert. */
+.dominion-skin .rn-root[data-active='you'] .rn-sl-btn:disabled {
+  opacity: 1;
+  background: var(--dgt-dais);
+  border-color: transparent;
+  color: var(--dgt-ash);
+}
+.dominion-skin .rn-root[data-active='foe'] .rn-sl-btn {
+  opacity: 1;
+  background: var(--dgt-hall);
+  border-color: transparent;
+  color: var(--dgt-ash);
+  box-shadow: inset 0 0 0 1px var(--dgt-rule-soft);
+}
+.dominion-skin .rn-root[data-active='over'] .rn-sl-btn {
+  opacity: 1;
+  background: var(--dgt-crimson);
+  border-color: var(--dgt-crimson-bright);
+  color: var(--dgt-bone);
+}
+/* The seal's dots fade with the plate while the foe holds the table. */
+.dominion-skin .rn-root[data-active='foe'] .rn-sl-shape { opacity: 0.4; }
+
+/* Desktop: the seal's face is drawn by its overlay texts (dots, name, hint,
+   key hint) — the full-plate button's own label is for AT only (!important
+   outranks the per-state color rules above). The mobile variant's Done/End
+   buttons keep their visible labels (no overlays there). */
+@media (min-width: 721px) {
+  .dominion-skin .rn-sl-btn { color: transparent !important; }
+}
+
+/* Overlay texts and shapes never eat the plate's clicks: the RUNNER inerts
+   text/varText/shape wrappers itself (.rn-el-inert in runner.css) — the
+   skin's old :has()-based workaround is gone with it. */
+
+/* Gloock for the seal's face (the texts sharing the seal group with its
+   plate buttons) and for every counter value (varText values render in a
+   span; DGT sets its tallies and tickers in the display face). */
+.dominion-skin .rn-el:has(.rn-sl-btn) .rn-sl-text {
+  font-family: var(--dgt-display);
+  font-weight: 400;
+  letter-spacing: 0.02em;
+}
+.dominion-skin .rn-sl-text > span {
+  font-family: var(--dgt-display);
+  font-weight: 400;
+}
+
+/* ---------- keyboard system (spotlight badges, DGT §2.1) ---------- */
+
+.dominion-skin .rn-keybadge {
+  border-radius: 0;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--dgt-ash);
+  border-color: var(--dgt-rule);
+  background: var(--dgt-abyss);
+}
+.dominion-skin .rn-keybadge.rn-keybadge-lit {
+  color: var(--dgt-bone);
+  border-color: var(--dgt-crimson-bright);
+  background: var(--dgt-crimson-deep);
+}
+
+/* ---------- refuse shake (illegal command, DGT 280ms ease-out) ----------
+   A skin-level primitive: attach .rn-refuse to shake an element once. */
+@keyframes dgt-refuse {
+  0%, 100% { translate: 0 0; }
+  25% { translate: -5px 0; }
+  55% { translate: 4px 0; }
+  80% { translate: -2px 0; }
+}
+.dominion-skin .rn-refuse { animation: dgt-refuse 280ms ease-out; }
 
 /* ---------- shared primitives inside the table ---------- */
 
@@ -302,6 +401,22 @@
 }
 .dominion-skin .rn-sheet-prompt { font-family: var(--dgt-display); font-weight: 400; }
 
+/* The pile-choice sheet (choosePile — Workshop/Remodel/Mine/Black Market):
+   card buttons on the table's ground, the × N badge as the DGT stack-count
+   chip (Gloock on dais, hairline rule). */
+.dominion-skin .rn-cardbtn {
+  border-radius: 0;
+  background: transparent;
+}
+.dominion-skin .rn-cardbtn.rn-pilebtn:hover { translate: 0 -3px; }
+.dominion-skin .rn-msel-count.rn-pile-count {
+  font-family: var(--dgt-display);
+  font-weight: 400;
+  color: var(--dgt-bone-dim);
+  background: var(--dgt-dais);
+  border: 1px solid var(--dgt-rule);
+}
+
 .dominion-skin .rn-gameover {
   background:
     radial-gradient(60% 50% at 50% 40%, oklch(0.5 0.2 22 / 0.18), transparent 70%),
@@ -335,6 +450,17 @@
     animation: none;
     box-shadow: 0 0 0 2px var(--dgt-crimson);
   }
+  /* Static glows in place of the pulses (DGT's static is-legal shadow). */
+  .dominion-skin .rn-root[data-phase='dom_phase_buy'][data-active='you'] .rn-spile.rn-pilelegal {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--rn-gold), 0 0 14px oklch(0.78 0.1 85 / 0.35);
+  }
+  .dominion-skin .rn-cardwrap.rn-glow {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--dgt-crimson), 0 0 14px oklch(0.5 0.2 22 / 0.35);
+  }
+  .dominion-skin .rn-refuse { animation: none; }
+  .dominion-skin .rn-spile { transition: none; }
   .dominion-skin .rn-sl-btn { transition: none; }
 }
 
@@ -346,4 +472,14 @@ html.calm .dominion-skin .rn-priority {
   animation: none;
   box-shadow: 0 0 0 2px var(--dgt-crimson);
 }
+html.calm .dominion-skin .rn-root[data-phase='dom_phase_buy'][data-active='you'] .rn-spile.rn-pilelegal {
+  animation: none;
+  box-shadow: 0 0 0 2px var(--rn-gold), 0 0 14px oklch(0.78 0.1 85 / 0.35);
+}
+html.calm .dominion-skin .rn-cardwrap.rn-glow {
+  animation: none;
+  box-shadow: 0 0 0 2px var(--dgt-crimson), 0 0 14px oklch(0.5 0.2 22 / 0.35);
+}
+html.calm .dominion-skin .rn-refuse { animation: none; }
+html.calm .dominion-skin .rn-spile { transition: none; }
 html.calm .dominion-skin .rn-sl-btn { transition: none; }

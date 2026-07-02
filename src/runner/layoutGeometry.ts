@@ -366,6 +366,47 @@ export function groupPiles(
 }
 
 /**
+ * groupPiles + a session memory of pile identities: live piles refresh
+ * `memory` (identity key -> last-seen top card id; insertion order = first
+ * appearance), and identities remembered from earlier whose cards have ALL
+ * left the zone come back as count-0 placeholder piles — so a depleted
+ * supply pile grays out in place (.rn-pile-empty) instead of vanishing.
+ * Output order = memory insertion order (first appearance, stable across
+ * depletion and refill); brand-new identities append in zone order.
+ *
+ * `zoneCardIds` is the UNFILTERED zone contents when `cardIds` is a display
+ * slice (cardFilter): an identity still present in the zone but filtered out
+ * of the slice is OMITTED (and stays remembered) — filtered ≠ depleted.
+ *
+ * The caller owns `memory` (a per-zone-instance ref map in the VIEW layer,
+ * never engine state, never persisted); this helper mutates it.
+ */
+export function groupPilesRemembered(
+  cardIds: readonly Id[],
+  cards: Readonly<Record<Id, PileCardLike>>,
+  memory: Map<string, Id>,
+  zoneCardIds: readonly Id[] = cardIds,
+): CardPile[] {
+  const live = new Map(groupPiles(cardIds, cards).map((p) => [p.key, p]));
+  for (const p of live.values()) memory.set(p.key, p.topId);
+  // Identities still physically in the zone (display-filtered, not depleted).
+  const present = new Set<string>();
+  if (zoneCardIds !== cardIds) {
+    for (const id of zoneCardIds) {
+      const card = cards[id];
+      if (card) present.add(cardIdentity(card));
+    }
+  }
+  const out: CardPile[] = [];
+  for (const [key, topId] of memory) {
+    const pile = live.get(key);
+    if (pile) out.push(pile);
+    else if (!present.has(key)) out.push({ key, cardIds: [], topId, count: 0 });
+  }
+  return out;
+}
+
+/**
  * The TOPMOST member with a legal move — what tapping the pile performs.
  * Null when no member is currently a legal target.
  */

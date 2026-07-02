@@ -39,7 +39,9 @@ import { GameSession, type SeatSetup, type SessionSnapshot } from './session';
 import { OpponentsStrip, VarChips } from './OpponentsStrip';
 import { ZoneBlock, type TableCtx } from './ZoneViews';
 import { ScreenRenderer, useNarrowViewport } from './ScreenRenderer';
-import { CardRectRegistry, FlightLayer, loadSpeed, saveSpeed, useCardFlights } from './flip';
+import {
+  CardRectRegistry, FlightLayer, loadSpeed, prefersReducedMotion, saveSpeed, useCardFlights,
+} from './flip';
 import { PriorityBanner, StackPanel } from './StackPanel';
 import { ActionPickSheet, ChoiceSheet } from './sheets';
 import {
@@ -173,23 +175,62 @@ function Table({ def, session, snap, navigate, onPlayAgain, homeLabel }: {
     void session.performHumanMove(m);
   }, [session]);
 
-  const onCardTap = useCallback((cardId: Id) => {
+  // A human may act right now (moves only populate then) — also gates the
+  // refuse shake: no feedback when it isn't the player's turn / game over.
+  const humanCanAct = snap.moves.length > 0 && !snap.finished;
+
+  // ----- illegal-tap feedback (the DGT refuse shake) -----
+  // A transient .rn-refuse on the tapped node (runner.css ships neutral
+  // 280ms keyframes; skins override them). Removed on animationend with a
+  // 300ms backstop; a re-tap mid-shake resets and restarts it. Never applied
+  // while stillness is asked for (prefersReducedMotion covers the OS
+  // preference AND a host's html.calm class, checked live).
+  const refusePending = useRef(new WeakMap<HTMLElement, () => void>());
+  const refuse = useCallback((el: HTMLElement | null | undefined) => {
+    if (!el || prefersReducedMotion()) return;
+    refusePending.current.get(el)?.(); // cancel a running shake on this node
+    void el.offsetWidth; // reflow so re-adding the class replays the animation
+    el.classList.add('rn-refuse');
+    let timer = 0;
+    const finish = () => {
+      window.clearTimeout(timer);
+      el.removeEventListener('animationend', onEnd);
+      el.classList.remove('rn-refuse');
+      refusePending.current.delete(el);
+    };
+    // Target-checked: child animations ending must not clear the shake early.
+    const onEnd = (ev: AnimationEvent) => {
+      if (ev.target === el) finish();
+    };
+    el.addEventListener('animationend', onEnd);
+    timer = window.setTimeout(finish, 300);
+    refusePending.current.set(el, finish);
+  }, []);
+
+  const onCardTap = useCallback((cardId: Id, el?: HTMLElement | null) => {
     const ms = cardMoves.get(cardId);
-    if (!ms || ms.length === 0) return;
+    if (!ms || ms.length === 0) {
+      // The view only forwards move-less taps on face-up, unhandled targets.
+      if (humanCanAct) refuse(el);
+      return;
+    }
     if (ms.length === 1) doMove(ms[0]);
     else setPick({ title: state.cards[cardId]?.name ?? 'Choose an action', moves: ms });
-  }, [cardMoves, doMove, state]);
+  }, [cardMoves, doMove, state, humanCanAct, refuse]);
 
-  const onZoneTap = useCallback((instKey: string) => {
+  const onZoneTap = useCallback((instKey: string, el?: HTMLElement | null) => {
     const ms = zoneMoves.get(instKey);
-    if (!ms || ms.length === 0) return;
+    if (!ms || ms.length === 0) {
+      if (humanCanAct) refuse(el);
+      return;
+    }
     if (ms.length === 1) {
       doMove(ms[0]);
       return;
     }
     const zoneId = state.zones[instKey]?.zoneId;
     setPick({ title: def.zones.find((z) => z.id === zoneId)?.name ?? 'Zone', moves: ms });
-  }, [zoneMoves, doMove, state, def]);
+  }, [zoneMoves, doMove, state, def, humanCanAct, refuse]);
 
   // Card-state rendering contract (rotation + badges), resolved once per def.
   const rotateVar = def.cardState?.rotateVar ?? null;
@@ -238,20 +279,27 @@ function Table({ def, session, snap, navigate, onPlayAgain, homeLabel }: {
     cardMoves,
     buttonMove: screenButtonMove,
     overlayOpen,
-    humanCanAct: snap.moves.length > 0 && !snap.finished,
+    humanCanAct,
     narrow,
     onActivateCard: onCardTap,
     onMove: doMove,
   });
 
+  // Pile identities seen this table mount, per zone instance — the depleted-
+  // pile placeholders' session memory (view-layer only; play-again remounts
+  // the table with a fresh map).
+  const pileMemoryRef = useRef<Map<string, Map<string, Id>> | null>(null);
+  pileMemoryRef.current ??= new Map();
+  const pileMemory = pileMemoryRef.current;
+
   const ctx: TableCtx = useMemo(
     () => ({
       def, state, viewerId, accent, cardMoves, zoneMoves, rotateVar, badgeVars, cardRects,
-      keyBadges: keyboard.badges, keySpotlight: keyboard.spotlight,
+      keyBadges: keyboard.badges, keySpotlight: keyboard.spotlight, pileMemory,
       onCardTap, onZoneTap,
     }),
     [def, state, viewerId, accent, cardMoves, zoneMoves, rotateVar, badgeVars, cardRects,
-      keyboard.badges, keyboard.spotlight, onCardTap, onZoneTap],
+      keyboard.badges, keyboard.spotlight, pileMemory, onCardTap, onZoneTap],
   );
 
   // ----- announcement snackbar from new log entries -----

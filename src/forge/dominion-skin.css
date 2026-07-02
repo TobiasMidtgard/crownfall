@@ -141,6 +141,17 @@
 .dominion-skin .rn-root[data-phase='dom_phase_buy'][data-active='you'] .rn-spile.rn-pilelegal {
   animation-name: rn-pulse-gold;
 }
+/* Inside a legal pile the WRAPPER is the cue (crimson normally, aurum on
+   your Buy) — the top card must not stack its own crimson ring on top, so
+   pile faces drop the card-level glow. Hand/in-play cards sit in no
+   .rn-spile and keep the crimson pulse. The 5-class specificity outranks
+   the reduced-motion/calm .rn-cardwrap.rn-glow statics below, so the
+   gold+crimson double ring stays gone there too (the runner's -6px
+   "liftable" translate stays). */
+.dominion-skin .rn-spile.rn-pilelegal .rn-cardwrap.rn-glow {
+  animation: none;
+  box-shadow: none;
+}
 .dominion-skin .rn-spile { transition: translate 0.2s var(--dgt-out-expo); }
 .dominion-skin .rn-spile.rn-pilelegal:hover { translate: 0 -3px; }
 /* Depleted pile (runner's rn-pile-empty hook, live once piles gain
@@ -296,8 +307,12 @@
 /* Desktop: the seal's face is drawn by its overlay texts (dots, name, hint,
    key hint) — the full-plate button's own label is for AT only (!important
    outranks the per-state color rules above). The mobile variant's Done/End
-   buttons keep their visible labels (no overlays there). */
-@media (min-width: 721px) {
+   buttons keep their visible labels (no overlays there).
+   `not all and (max-width: 720px)` is the EXACT complement of the runner's
+   NARROW_QUERY (ScreenRenderer.tsx): a fractional viewport between 720 and
+   721px still renders the desktop tree, and `(min-width: 721px)` would have
+   left the plate label painting over the overlay texts there. */
+@media not all and (max-width: 720px) {
   .dominion-skin .rn-sl-btn { color: transparent !important; }
 }
 
@@ -316,6 +331,25 @@
 .dominion-skin .rn-sl-text > span {
   font-family: var(--dgt-display);
   font-weight: 400;
+}
+
+/* The seal's ENTER chip — the seal's only LABELED shape (the phase dots
+   carry no label; see sealChildren in dominionGame.ts). Restore the retired
+   text element's tone (.rn-sl-shapelabel defaults to 700 / full bone). */
+.dominion-skin .rn-el:has(.rn-sl-btn) .rn-sl-shapelabel {
+  font-weight: 600;
+  color: rgba(236, 228, 216, 0.8);
+}
+/* Hover-incapable devices (iPad/Android tablets at desktop widths): the
+   runner's keyboard system gates on this same (hover: none) query
+   (useTableKeyboard) and never attaches its listeners, so the chip would
+   advertise a dead ENTER key for the whole session — hide it. The child
+   combinator matters: a bare descendant :has(.rn-sl-shapelabel) would also
+   match (and hide) the seal group wrapper itself. */
+@media (hover: none) {
+  .dominion-skin .rn-el:has(.rn-sl-btn) > .rn-el:has(.rn-sl-shapelabel) {
+    display: none;
+  }
 }
 
 /* ---------- keyboard system (spotlight badges, DGT §2.1) ---------- */

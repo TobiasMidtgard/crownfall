@@ -122,6 +122,22 @@ describe('choosePile', () => {
     expect(req.errors.some((e) => e.includes('no piles'))).toBe(true);
   });
 
+  it('the request carries the block’s revealed flag (absent/false → false)', async () => {
+    const pick: ScriptedAnswer = (req) => (req.kind === 'pile' ? req.cardIds[0] : null);
+    // Default: the block has no revealed field — the request says false.
+    const hidden = harness(pileDef(pileBlock()), { answers: [pick] });
+    await hidden.engine.start();
+    const hReq = hidden.choices.requests[0];
+    if (hReq.kind !== 'pile') throw new Error('expected pile');
+    expect(hReq.revealed).toBe(false);
+    // revealed: true (a hidden stock like the Black Market) reaches the UI.
+    const shown = harness(pileDef(pileBlock({ revealed: true })), { answers: [pick] });
+    await shown.engine.start();
+    const sReq = shown.choices.requests[0];
+    if (sReq.kind !== 'pile') throw new Error('expected pile');
+    expect(sReq.revealed).toBe(true);
+  });
+
   it('asks the player named by who', async () => {
     const nextP = { kind: 'nextPlayer', from: { kind: 'currentPlayer' } } as const;
     const h = harness(pileDef(pileBlock({ who: nextP })), {

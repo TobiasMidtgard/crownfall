@@ -332,6 +332,10 @@ export interface CardPile {
   /** The pile's face: its TOP (last) member. */
   topId: Id;
   count: number;
+  /** Count-0 placeholders only: the facing REMEMBERED from when the pile was
+   *  last live — stable while the departed copy wanders through other zones.
+   *  Live piles omit it (the renderer resolves facing per snapshot). */
+  faceUp?: boolean;
 }
 
 /** Grouping identity: custom cards by def, standard cards by name. */
@@ -365,30 +369,44 @@ export function groupPiles(
   return [...byKey.values()];
 }
 
+/** What the depleted-pile memory keeps per identity: the last-seen top card
+ *  and its facing while the pile was still live (the placeholder's face). */
+export interface PileMemoryEntry {
+  topId: Id;
+  faceUp: boolean;
+}
+
 /**
  * groupPiles + a session memory of pile identities: live piles refresh
- * `memory` (identity key -> last-seen top card id; insertion order = first
- * appearance), and identities remembered from earlier whose cards have ALL
- * left the zone come back as count-0 placeholder piles — so a depleted
- * supply pile grays out in place (.rn-pile-empty) instead of vanishing.
- * Output order = memory insertion order (first appearance, stable across
- * depletion and refill); brand-new identities append in zone order.
+ * `memory` (identity key -> last-seen top card id + facing; insertion order
+ * = first appearance), and identities remembered from earlier whose cards
+ * have ALL left the zone come back as count-0 placeholder piles — so a
+ * depleted supply pile grays out in place (.rn-pile-empty) instead of
+ * vanishing. Output order = memory insertion order (first appearance, stable
+ * across depletion and refill); brand-new identities append in zone order.
  *
  * `zoneCardIds` is the UNFILTERED zone contents when `cardIds` is a display
  * slice (cardFilter): an identity still present in the zone but filtered out
  * of the slice is OMITTED (and stays remembered) — filtered ≠ depleted.
  *
- * The caller owns `memory` (a per-zone-instance ref map in the VIEW layer,
- * never engine state, never persisted); this helper mutates it.
+ * `faceUp` resolves a live top card's facing (viewer-bound); the memory
+ * snapshots it so a placeholder's face stays STABLE after depletion instead
+ * of re-resolving against wherever the departed copy currently sits.
+ *
+ * The caller owns `memory` (a per-ELEMENT ref map in the VIEW layer — one
+ * per rendering screen element, so slices of a shared zone never ghost each
+ * other's depleted piles; never engine state, never persisted); this helper
+ * mutates it.
  */
 export function groupPilesRemembered(
   cardIds: readonly Id[],
   cards: Readonly<Record<Id, PileCardLike>>,
-  memory: Map<string, Id>,
+  memory: Map<string, PileMemoryEntry>,
   zoneCardIds: readonly Id[] = cardIds,
+  faceUp: (id: Id) => boolean = () => true,
 ): CardPile[] {
   const live = new Map(groupPiles(cardIds, cards).map((p) => [p.key, p]));
-  for (const p of live.values()) memory.set(p.key, p.topId);
+  for (const p of live.values()) memory.set(p.key, { topId: p.topId, faceUp: faceUp(p.topId) });
   // Identities still physically in the zone (display-filtered, not depleted).
   const present = new Set<string>();
   if (zoneCardIds !== cardIds) {
@@ -398,10 +416,12 @@ export function groupPilesRemembered(
     }
   }
   const out: CardPile[] = [];
-  for (const [key, topId] of memory) {
+  for (const [key, mem] of memory) {
     const pile = live.get(key);
     if (pile) out.push(pile);
-    else if (!present.has(key)) out.push({ key, cardIds: [], topId, count: 0 });
+    else if (!present.has(key)) {
+      out.push({ key, cardIds: [], topId: mem.topId, count: 0, faceUp: mem.faceUp });
+    }
   }
   return out;
 }

@@ -262,7 +262,10 @@ export function PileChoiceSheet({ def, state, choice, accent, onAnswer }: {
         {choice.cardIds.map((id, i) => {
           const card = state.cards[id];
           if (!card) return null;
-          const faceUp = isCardVisibleTo(def, state, id, choice.playerId);
+          // `revealed` piles show their face regardless of zone visibility
+          // (a hidden stock put on offer, e.g. Black Market) — same contract
+          // as the card/cards choices.
+          const faceUp = choice.revealed === true || isCardVisibleTo(def, state, id, choice.playerId);
           const count = choice.counts[i] ?? 0;
           return (
             <button
@@ -303,7 +306,12 @@ export function ActionPickSheet({ def, title, moves, onPick, onCancel }: {
     <SheetBase who="Choose an action" title={title} onClose={onCancel}>
       <div className="rn-sheet-options">
         {moves.map((m, i) => (
-          <button className="btn btn-primary" key={i} onClick={() => onPick(m)}>
+          <button
+            className="btn btn-primary"
+            key={i}
+            data-choice-digit={choiceDigit(i)}
+            onClick={() => onPick(m)}
+          >
             {def.actions.find((a) => a.id === m.actionId)?.name ?? m.actionId}
           </button>
         ))}

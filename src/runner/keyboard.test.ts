@@ -10,8 +10,8 @@ import { describe, expect, it } from 'vitest';
 import type { GameDef, GameState, Id, Move, ScreenElement } from '../shared/types';
 import { cdef, customDeck, harness, makeDef, pzone, zone } from '../engine/testkit';
 import {
-  computeKeyTargets, digitForIndex, firstEnabledButtonMove, groupForDigit, heldGroup,
-  indexFromCode, subtreeHasKeyGroup,
+  computeKeyTargets, digitForIndex, elementCollapsed, firstEnabledButtonMove, groupForDigit,
+  heldGroup, indexFromCode, subtreeHasKeyGroup,
 } from './keyboard';
 import { moveTagOf } from './flip';
 
@@ -228,6 +228,49 @@ describe('Enter → first enabled screen button', () => {
     // Without the seal's move, Enter falls through to the next enabled button.
     expect(firstEnabledButtonMove(def, state, els, 'p0', new Map([['a_late', late]]))).toBe(late);
     expect(firstEnabledButtonMove(def, state, els, 'p0', new Map())).toBeNull();
+  });
+
+  it('skips subtrees whose collapsible is collapsed (their buttons never mount)', async () => {
+    const { def, state } = await kbState();
+    const els: ScreenElement[] = [
+      {
+        kind: 'group', id: 'g_dock', name: 'Dock', rect,
+        collapsible: { side: 'left' },
+        children: [
+          { kind: 'button', id: 'b_docked', name: 'Pass', rect, actionId: 'a_pass', label: 'Pass' },
+        ],
+      },
+      { kind: 'button', id: 'b_seal', name: 'Done', rect, actionId: 'a_done', label: 'Done' },
+    ];
+    const pass: Move = { actionId: 'a_pass' };
+    const done: Move = { actionId: 'a_done' };
+    const moves = new Map<Id, Move>([['a_pass', pass], ['a_done', done]]);
+
+    // Expanded (the default predicate): paint order wins as before.
+    expect(firstEnabledButtonMove(def, state, els, 'p0', moves)).toBe(pass);
+    // Collapsed: the docked button is not rendered — Enter reaches the seal.
+    expect(firstEnabledButtonMove(def, state, els, 'p0', moves, (el) => el.id === 'g_dock'))
+      .toBe(done);
+    // A collapsed BUTTON element itself is skipped too (renders as a tab).
+    const solo: ScreenElement[] = [{
+      kind: 'button', id: 'b_solo', name: 'Solo', rect, actionId: 'a_pass', label: 'Solo',
+      collapsible: { side: 'right' },
+    }];
+    expect(firstEnabledButtonMove(def, state, solo, 'p0', moves, (el) => el.id === 'b_solo'))
+      .toBeNull();
+  });
+
+  it('elementCollapsed: never for non-collapsibles; startCollapsed is the storageless default', () => {
+    const plain: ScreenElement = {
+      kind: 'button', id: 'b1', name: 'B', rect, actionId: 'a', label: 'B',
+    };
+    // Node test env has no localStorage: the walk falls back to the authored
+    // default — exactly what a fresh device shows.
+    expect(elementCollapsed('g', plain)).toBe(false);
+    expect(elementCollapsed('g', { ...plain, collapsible: { side: 'left' } })).toBe(false);
+    expect(elementCollapsed('g', {
+      ...plain, collapsible: { side: 'left', startCollapsed: true },
+    })).toBe(true);
   });
 });
 

@@ -696,7 +696,7 @@ export type Block =
    * Mandatory while any pile exists unless `optional` (decline = skip body).
    * Groups are computed at ask time — no staging zone, no mutation window.
    */
-  | { kind: 'choosePile'; who: Expr | null; from: ZoneRef; filter: Expr | null; groupBy: 'def'; prompt: string; optional: boolean; body: Block[] }
+  | { kind: 'choosePile'; who: Expr | null; from: ZoneRef; filter: Expr | null; groupBy: 'def'; prompt: string; optional: boolean; revealed?: boolean; body: Block[] }
   /**
    * Draw with inline refill: move `count` cards one at a time from the top of
    * `from` to `to`. Whenever `from` is empty and `refillFrom` is not, ALL of
@@ -903,7 +903,7 @@ export type ChoiceRequest =
    * its size (for × N badges). Answer with a representative id, or null to
    * decline when optional.
    */
-  | { id: number; playerId: Id; kind: 'pile'; prompt: string; cardIds: Id[]; counts: number[]; optional: boolean };
+  | { id: number; playerId: Id; kind: 'pile'; prompt: string; cardIds: Id[]; counts: number[]; optional: boolean; revealed?: boolean };
 
 /**
  * Answer: card instance id | option id | player id | boolean | null (declined

@@ -39,7 +39,7 @@ import type { KeyBadge, KeyboardGroup } from './keyboard';
 import { templateOf } from './layout';
 import {
   DEFAULT_FAN_ANGLE, fanMarginPx, fanTransform, gridSpec, groupPiles, groupPilesRemembered,
-  topLegalCard, type CardPile, type FrameCss,
+  topLegalCard, type CardPile, type FrameCss, type PileMemoryEntry,
 } from './layoutGeometry';
 
 /**
@@ -66,6 +66,11 @@ export interface ZoneCustom {
   collapseDuplicates?: boolean;
   /** Fan rotation per card step (0 = flat; default 4). */
   fanAngle?: number;
+  /** Scopes the depleted-pile memory to the RENDERING ELEMENT (the screen
+   *  element id): several elements can slice one shared zone instance with
+   *  disjoint cardFilters, and a pile depleted from one slice must not ghost
+   *  a count-0 placeholder into the others. Absent = per-instance memory. */
+  memoryKey?: string;
 }
 
 /** Everything a zone needs to render + react to taps, bundled once per frame. */
@@ -88,10 +93,11 @@ export interface TableCtx {
   keyBadges?: ReadonlyMap<Id, KeyBadge>;
   /** Keyboard group whose modifier is held (its badges light up). */
   keySpotlight?: KeyboardGroup | null;
-  /** Pile identities seen this table mount, per zone instance key (identity
-   *  -> last-seen top card id) — backs depleted-pile placeholders. View-layer
-   *  session memory only: never engine state, never persisted. */
-  pileMemory: Map<string, Map<string, Id>>;
+  /** Pile identities seen this table mount, per element+instance key
+   *  (identity -> last-seen top card id + facing) — backs depleted-pile
+   *  placeholders. View-layer session memory only: never engine state,
+   *  never persisted. */
+  pileMemory: Map<string, Map<string, PileMemoryEntry>>;
   /** Tap handlers double as the illegal-tap path: with no legal moves on the
    *  target, TableScreen shakes `el` (.rn-refuse) instead of performing. */
   onCardTap: (cardId: Id, el?: HTMLElement | null) => void;
@@ -227,13 +233,24 @@ export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, cus
     // Supply piles: group by identity; an empty zone renders nothing.
     // 'carousel' renders the same piles in one scroll-snapping row.
     // Identities seen earlier this table mount whose cards all left come
-    // back as depleted count-0 placeholders (session memory per instance).
-    let memory = ctx.pileMemory.get(inst.key);
+    // back as depleted count-0 placeholders. The memory is scoped per
+    // RENDERING ELEMENT (custom.memoryKey) + instance: several screen
+    // elements can slice one shared zone with disjoint cardFilters, and a
+    // depletion must only placehold in the slice that showed the pile.
+    const memKey = custom?.memoryKey !== undefined
+      ? `${custom.memoryKey}|${inst.key}`
+      : inst.key;
+    let memory = ctx.pileMemory.get(memKey);
     if (!memory) {
       memory = new Map();
-      ctx.pileMemory.set(inst.key, memory);
+      ctx.pileMemory.set(memKey, memory);
     }
-    const piles = groupPilesRemembered(ids, ctx.state.cards, memory, inst.cardIds);
+    const piles = groupPilesRemembered(
+      ids, ctx.state.cards, memory, inst.cardIds,
+      // Facing snapshot while live (viewer-bound) — keeps a later
+      // placeholder's face stable however the departed copy travels.
+      (id) => isCardVisibleTo(ctx.def, ctx.state, id, ctx.viewerId),
+    );
     const anyPileLegal = piles.some((p) => topLegalCard(p.cardIds, hasMoves) !== null);
     const pileEl = (p: CardPile) => (
       <SupplyPile
@@ -307,8 +324,8 @@ export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, cus
 
   // Illegal ZONE taps (no zone-target moves) still reach TableScreen so it
   // can refuse-shake the frame — but only genuine zone taps: clicks landing
-  // on card-level targets (face-down backs, depleted placeholders whose
-  // pointer-events are off, collapsed-group chrome, empty slots) are either
+  // on card-level targets (face-down backs, depleted placeholders — which
+  // swallow their own taps, collapsed-group chrome, empty slots) are either
   // handled at card level or deliberately silent (face-down/decorative).
   const refuseZoneTap = (e: React.MouseEvent) => {
     const t = e.target as Element;
@@ -362,17 +379,24 @@ function SupplyPile({ ctx, pile, width, badgeField, dimWhenIdle, refusable }: {
 
   if (pile.count === 0) {
     // Depleted placeholder: the last-seen face at 0.28/grayscale (runner.css
-    // .rn-pile-empty, pointer-events off). Facing re-resolves against the
-    // card's CURRENT zone so nothing hidden leaks through the memory.
+    // .rn-pile-empty). Facing is the SNAPSHOT the memory took while the pile
+    // was live (pile.faceUp) — stable however the departed copy travels
+    // through other zones, and it leaks nothing that wasn't already shown
+    // here. Taps are deliberately silent: with no enclosing tappable zone
+    // the placeholder swallows the click so it can't bubble to the zone
+    // frame and refuse-shake the whole panel; inside a tappable zone the
+    // tap bubbles and performs the zone move like the rest of the frame.
+    const shown = pile.faceUp ?? visible;
     const template = templateOf(ctx.def, card);
     return (
       <div
         className="rn-spile rn-pile-empty"
         role="img"
-        aria-label={`${visible ? card.name : 'Face-down card'}, depleted`}
+        aria-label={`${shown ? card.name : 'Face-down card'}, depleted`}
+        onClick={refusable ? (e) => e.stopPropagation() : undefined}
       >
         <CardView
-          card={{ name: card.name, templateId: card.templateId, fields: card.fields, faceUp: visible }}
+          card={{ name: card.name, templateId: card.templateId, fields: card.fields, faceUp: shown }}
           template={template}
           width={width}
           accent={ctx.accent}

@@ -318,6 +318,18 @@ export function ExecFieldControl({ def, block, fieldKey, bindings, onChange }: {
           </button>
         );
       }
+      if (fieldKey === 'revealed') {
+        return (
+          <button
+            type="button"
+            className="blk-chip"
+            title="Show face-down piles' representatives to the chooser? (a hidden stock like the Black Market)"
+            onClick={() => onChange({ ...block, revealed: block.revealed !== true })}
+          >
+            {block.revealed === true ? 'revealed to chooser' : 'faces stay hidden'}
+          </button>
+        );
+      }
       return null;
     case 'triggerAbilities':
       return (

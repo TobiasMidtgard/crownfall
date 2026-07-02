@@ -623,6 +623,7 @@ async function execBlock(ctx: ExecCtx, b: Block): Promise<void> {
       const req: ChoiceRequest = {
         id: ++core.choiceSeq, playerId: askerId, kind: 'pile', prompt: b.prompt,
         cardIds: piles.map((p) => p.rep), counts: piles.map((p) => p.count), optional: b.optional,
+        revealed: b.revealed === true,
       };
       const answer = await askChoice(core, req);
       if (answer === null) return; // declined (optional) — skip the body

@@ -48,7 +48,8 @@ import { isDisplayVisible } from '../engine';
 import { prefersReducedMotion } from './flip';
 import { subtreeHasKeyGroup } from './keyboard';
 import {
-  cardPxFromScale, elementContentSig, formatVarValue, logRows, renderTextParts, zoneInstKey,
+  cardPxFromScale, collapseStorageKey, elementContentSig, formatVarValue, logRows,
+  renderTextParts, zoneInstKey,
 } from './layout';
 import {
   filterDisplayCards, layoutStyleCss, lineColor, lineEndpoints, pctToPx,
@@ -275,10 +276,12 @@ function elementRenders(ctx: TableCtx, el: ScreenElement): boolean {
 /**
  * Collapsed/expanded state for a collapsible element, persisted per game +
  * element on the device (the DGT chronicle pattern). Always called so hook
- * order is stable; non-collapsible elements just never read it.
+ * order is stable; non-collapsible elements just never read it. The storage
+ * key is shared with the keyboard system (collapseStorageKey) so Enter's
+ * first-button walk sees the same collapsed state this renderer does.
  */
 function useCollapsed(defId: Id, elId: Id, startCollapsed: boolean): [boolean, () => void] {
-  const key = `cardsmith.collapse.${defId}.${elId}`;
+  const key = collapseStorageKey(defId, elId);
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem(key);
@@ -574,6 +577,9 @@ function ElementBody({ ctx, el, style, screenW, buttonMove, onMove }: {
             pileBadgeField: el.pileBadgeField ?? null,
             collapseDuplicates: el.collapseDuplicates,
             fanAngle: el.fanAngle,
+            // Depleted-pile memory is per rendering element: slices of one
+            // shared zone must not ghost each other's depleted piles.
+            memoryKey: el.id,
           }}
         />
       );

@@ -207,7 +207,7 @@ const BLOCK_ENTRIES: { [K in Block['kind']]: BlockEntry } = {
     description: 'Group a zone into piles of identical cards (a supply); the player picks one pile, then blocks run with $card = its top copy.',
     make: (def) => ({
       kind: 'choosePile', who: null, from: firstSharedZoneRef(def), filter: null,
-      groupBy: 'def', prompt: 'Choose a pile', optional: false, body: [],
+      groupBy: 'def', prompt: 'Choose a pile', optional: false, revealed: false, body: [],
     }),
   },
   triggerAbilities: {

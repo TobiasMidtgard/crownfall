@@ -129,11 +129,14 @@ function choosePileBlock(opts: {
   filter?: Expr | null;
   prompt: string;
   optional?: boolean;
+  /** Show the representatives' faces to the chooser even in a hidden zone. */
+  revealed?: boolean;
   body: Block[];
 }): Block {
   return {
     kind: 'choosePile', who: opts.who ?? null, from: opts.from, filter: opts.filter ?? null,
-    groupBy: 'def', prompt: opts.prompt, optional: opts.optional ?? false, body: opts.body,
+    groupBy: 'def', prompt: opts.prompt, optional: opts.optional ?? false,
+    revealed: opts.revealed ?? false, body: opts.body,
   };
 }
 
@@ -368,6 +371,9 @@ const EXTRA_CARDS: CardDef[] = [
             who: OWNER, from: zone(RESERVE),
             filter: lte(field(CARD, COST), getVar(COINS, OWNER)),
             optional: true,
+            // RESERVE is visibility 'none': without the reveal the sheet
+            // renders indistinguishable card backs and the buy is blind.
+            revealed: true,
             prompt: 'Black Market: buy a card from under the counter?',
             body: [
               changeVar(COINS, neg(field(CARD, COST)), OWNER),
@@ -670,13 +676,21 @@ function sealChildren(): ScreenElement[] {
     sealHint('dom_el_seal_hint_foe', 'TAKES THEIR TURN', SEAL_FOE, ASH),
     sealHint('dom_el_seal_hint_resolve', 'RESPOND BELOW', SEAL_RESOLVE, ASH),
     sealHint('dom_el_seal_hint_fallen', 'MATCH OVER', GAME_IS_OVER, BONE_SOFT),
-    // The keyboard hint (the runner's primary-action key is Enter).
+    // The keyboard hint (the runner's primary-action key is Enter). A
+    // labeled rect SHAPE rather than a text element: the def language can't
+    // see device capabilities, and the label span (.rn-sl-shapelabel) is the
+    // seal's only class-reachable hook — dominion-skin.css uses it to hide
+    // the chip under (hover: none), where useTableKeyboard never attaches
+    // and ENTER would advertise a dead key. Painted result is unchanged
+    // (the border box moves from the wrapper's inline style to the shape).
     {
-      kind: 'text', id: 'dom_el_seal_key', name: 'Seal key hint',
+      kind: 'shape', id: 'dom_el_seal_key', name: 'Seal key hint', shape: 'rect',
       rect: { x: 73, y: 38, w: 18, h: 22 },
-      text: 'ENTER', fontSize: 0.55, bold: false, align: 'center',
-      color: 'rgba(236, 228, 216, 0.8)',
-      style: { borderColor: 'rgba(236, 228, 216, 0.4)', borderWidth: 1, borderRadius: 2 },
+      label: 'ENTER', fontSize: 0.55,
+      style: {
+        background: 'transparent',
+        borderColor: 'rgba(236, 228, 216, 0.4)', borderWidth: 1, borderRadius: 2,
+      },
       visible: SEAL_MINE,
     },
   ];

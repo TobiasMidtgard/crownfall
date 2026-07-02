@@ -285,10 +285,10 @@ function Table({ def, session, snap, navigate, onPlayAgain, homeLabel }: {
     onMove: doMove,
   });
 
-  // Pile identities seen this table mount, per zone instance — the depleted-
-  // pile placeholders' session memory (view-layer only; play-again remounts
-  // the table with a fresh map).
-  const pileMemoryRef = useRef<Map<string, Map<string, Id>> | null>(null);
+  // Pile identities seen this table mount, per rendering element + zone
+  // instance — the depleted-pile placeholders' session memory (view-layer
+  // only; play-again remounts the table with a fresh map).
+  const pileMemoryRef = useRef<TableCtx['pileMemory'] | null>(null);
   pileMemoryRef.current ??= new Map();
   const pileMemory = pileMemoryRef.current;
 

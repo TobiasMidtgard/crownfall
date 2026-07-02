@@ -767,11 +767,14 @@ section.rn-bottom.rn-priority { border-top-color: var(--accent); }
 .rn-spile.rn-piledim { opacity: 0.55; }
 
 /* Depleted pile (count 0): grayed and inert, the DGT empty-supply look.
-   Applied by SupplyPile whenever a rendered pile's count reaches zero. */
+   Applied by SupplyPile whenever a rendered pile's count reaches zero.
+   Pointer events stay ON: the placeholder swallows its own clicks (a
+   deliberate no-op in SupplyPile) — pointer-events:none would let taps fall
+   through to the zone frame and refuse-shake the whole panel. */
 .rn-spile.rn-pile-empty {
   opacity: 0.28;
   filter: grayscale(0.9);
-  pointer-events: none;
+  cursor: default;
 }
 
 /* Gold variant of the legal glow (the DGT buy-phase "reachable" cue). A

@@ -269,6 +269,7 @@ export function execNodeRows(def: GameDef, block: Block): NodeRow[] {
       data('filter', 'Where', 'boolean', { nullLabel: 'any card', addBindings: ['$card'] }),
       field('prompt'),
       field('optional'),
+      field('revealed'),
       ...lanes,
     ];
     case 'triggerAbilities': return [data('card', 'Card', 'card'), field('zoneId')];

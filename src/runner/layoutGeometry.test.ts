@@ -12,7 +12,7 @@ import {
   fanTransform, fitCount, gridSpec, gridTemplate, groupPiles, groupPilesRemembered,
   groupRelToAbs, layoutStyleCss, lineColor, lineEndpoints, MOTION_DEFAULTS, motionForTag,
   nextSpeed, pctToPx, rectContains, resolveMotion, resolveSeat, scaleMs, seatOffset,
-  shapeBorderRadius, speedFactor, topLegalCard,
+  shapeBorderRadius, speedFactor, topLegalCard, type PileMemoryEntry,
 } from './layoutGeometry';
 
 const parent = { x: 20, y: 10, w: 50, h: 40 };
@@ -253,24 +253,42 @@ describe('depleted-pile memory (groupPilesRemembered)', () => {
     s1: { defId: 'silver', name: 'Silver' },
   };
 
-  it('first sight matches groupPiles and seeds the memory (last-seen tops)', () => {
-    const memory = new Map<string, string>();
+  it('first sight matches groupPiles and seeds the memory (last-seen tops + facing)', () => {
+    const memory = new Map<string, PileMemoryEntry>();
     const piles = groupPilesRemembered(['c1', 'e1', 'c2'], cards, memory);
     expect(piles).toEqual(groupPiles(['c1', 'e1', 'c2'], cards));
-    expect([...memory.entries()]).toEqual([['copper', 'c2'], ['estate', 'e1']]);
+    expect([...memory.entries()]).toEqual([
+      ['copper', { topId: 'c2', faceUp: true }],
+      ['estate', { topId: 'e1', faceUp: true }],
+    ]);
   });
 
   it('a depleted identity stays as a count-0 placeholder, in place', () => {
-    const memory = new Map<string, string>();
+    const memory = new Map<string, PileMemoryEntry>();
     groupPilesRemembered(['c1', 'e1'], cards, memory);
     const piles = groupPilesRemembered(['e1'], cards, memory); // copper gone
     expect(piles.map((p) => [p.key, p.count])).toEqual([['copper', 0], ['estate', 1]]);
-    // The placeholder's face is the last-seen top member.
-    expect(piles[0]).toEqual({ key: 'copper', cardIds: [], topId: 'c1', count: 0 });
+    // The placeholder's face is the last-seen top member, remembered facing.
+    expect(piles[0]).toEqual({ key: 'copper', cardIds: [], topId: 'c1', count: 0, faceUp: true });
+  });
+
+  it('placeholder facing is the snapshot taken while LIVE, never re-resolved', () => {
+    const memory = new Map<string, PileMemoryEntry>();
+    // While the pile stood here its top was visible…
+    groupPilesRemembered(['c1'], cards, memory, ['c1'], () => true);
+    // …after depletion the resolver would now say hidden (the departed copy
+    // was buried in a hidden zone) — the placeholder keeps the snapshot.
+    const piles = groupPilesRemembered([], cards, memory, [], () => false);
+    expect(piles).toEqual([{ key: 'copper', cardIds: [], topId: 'c1', count: 0, faceUp: true }]);
+    // And a pile that was face DOWN while live depletes into a face-down
+    // placeholder (nothing hidden leaks through the memory).
+    const hidden = new Map<string, PileMemoryEntry>();
+    groupPilesRemembered(['e1'], cards, hidden, ['e1'], () => false);
+    expect(groupPilesRemembered([], cards, hidden, [])[0].faceUp).toBe(false);
   });
 
   it('keeps first-appearance order stable as piles deplete and new ones arrive', () => {
-    const memory = new Map<string, string>();
+    const memory = new Map<string, PileMemoryEntry>();
     groupPilesRemembered(['c1', 'e1'], cards, memory);
     // Both remembered piles empty out; a brand-new identity appears.
     const piles = groupPilesRemembered(['s1'], cards, memory);
@@ -280,17 +298,17 @@ describe('depleted-pile memory (groupPilesRemembered)', () => {
   });
 
   it('a refilled identity comes back live at its original spot', () => {
-    const memory = new Map<string, string>();
+    const memory = new Map<string, PileMemoryEntry>();
     groupPilesRemembered(['c1', 'e1'], cards, memory);
     groupPilesRemembered(['e1'], cards, memory); // copper depleted…
     const piles = groupPilesRemembered(['e1', 'c2'], cards, memory); // …and back
     expect(piles.map((p) => [p.key, p.count])).toEqual([['copper', 1], ['estate', 1]]);
     expect(piles[0].topId).toBe('c2'); // fresh top, and the memory follows it
-    expect(memory.get('copper')).toBe('c2');
+    expect(memory.get('copper')).toEqual({ topId: 'c2', faceUp: true });
   });
 
   it('display-filtered identities are omitted, never shown as depleted', () => {
-    const memory = new Map<string, string>();
+    const memory = new Map<string, PileMemoryEntry>();
     groupPilesRemembered(['c1', 'e1'], cards, memory, ['c1', 'e1']);
     // Estate is filtered from the display slice but still IN the zone -> no
     // pile and no placeholder; copper truly left the zone -> placeholder.
@@ -299,6 +317,24 @@ describe('depleted-pile memory (groupPilesRemembered)', () => {
     // Back on the slice, estate reappears live where it always was.
     const back = groupPilesRemembered(['e1'], cards, memory, ['e1']);
     expect(back.map((p) => [p.key, p.count])).toEqual([['copper', 0], ['estate', 1]]);
+  });
+
+  it('per-ELEMENT memories: a depletion only placeholds in the slice that showed it', () => {
+    // One shared zone rendered through two slice elements with disjoint
+    // display filters — each element owns its own memory map (ZoneBlock
+    // keys ctx.pileMemory by element + instance).
+    const victory = new Map<string, PileMemoryEntry>();
+    const treasury = new Map<string, PileMemoryEntry>();
+    const zone = ['c1', 'e1'];
+    groupPilesRemembered(['e1'], cards, victory, zone);
+    groupPilesRemembered(['c1'], cards, treasury, zone);
+    // The estate pile depletes (its cards leave the zone entirely).
+    const after = ['c1'];
+    expect(groupPilesRemembered([], cards, victory, after).map((p) => [p.key, p.count]))
+      .toEqual([['estate', 0]]);
+    // The treasury slice never showed estate: no ghost placeholder leaks in.
+    expect(groupPilesRemembered(['c1'], cards, treasury, after).map((p) => [p.key, p.count]))
+      .toEqual([['copper', 1]]);
   });
 
   it('an empty memory and an empty zone group to nothing', () => {

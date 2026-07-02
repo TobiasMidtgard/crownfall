@@ -30,7 +30,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GameDef, GameState, Id, Move, ScreenElement } from '../shared/types';
 import { isDisplayVisible } from '../engine';
-import { zoneInstKey } from './layout';
+import { collapseStorageKey, zoneInstKey } from './layout';
 import { filterDisplayCards, groupPiles, resolveSeat, topLegalCard } from './layoutGeometry';
 
 export type ModifierGroup = 'shift' | 'ctrl' | 'alt';
@@ -204,8 +204,11 @@ export function subtreeHasKeyGroup(el: ScreenElement, group: KeyboardGroup): boo
 }
 
 /**
- * The first ENABLED screen button in paint order (visibility-gated like the
- * renderer) and its legal move — what Enter performs. Null when none.
+ * The first ENABLED screen button in paint order (gated like the renderer:
+ * visibility AND collapse) and its legal move — what Enter performs. Null
+ * when none. `isCollapsed` mirrors ScreenRenderer's collapsible handling: a
+ * collapsed element renders only its dock tab, so its whole subtree —
+ * buttons included — never mounts and must not receive Enter.
  */
 export function firstEnabledButtonMove(
   def: GameDef,
@@ -213,19 +216,38 @@ export function firstEnabledButtonMove(
   elements: readonly ScreenElement[],
   viewerId: Id,
   buttonMove: ReadonlyMap<Id, Move>,
+  isCollapsed: (el: ScreenElement) => boolean = () => false,
 ): Move | null {
   for (const el of elements) {
     if (!isDisplayVisible(def, state, el.visible ?? null, viewerId)) continue;
+    if (isCollapsed(el)) continue; // collapsed panel: nothing inside is rendered
     if (el.kind === 'button' && el.actionId !== null) {
       const move = buttonMove.get(el.actionId);
       if (move !== undefined) return move;
     }
     if (el.children !== undefined && el.children.length > 0) {
-      const nested = firstEnabledButtonMove(def, state, el.children, viewerId, buttonMove);
+      const nested = firstEnabledButtonMove(def, state, el.children, viewerId, buttonMove, isCollapsed);
       if (nested !== null) return nested;
     }
   }
   return null;
+}
+
+/**
+ * Whether a collapsible screen element is currently collapsed, from the same
+ * persisted source ScreenRenderer's useCollapsed reads and writes (the live
+ * toggle updates localStorage synchronously): the stored flag when present,
+ * else the authored startCollapsed default. Non-collapsible elements are
+ * never collapsed.
+ */
+export function elementCollapsed(defId: Id, el: ScreenElement): boolean {
+  const spec = el.collapsible ?? null;
+  if (!spec) return false;
+  try {
+    const saved = localStorage.getItem(collapseStorageKey(defId, el.id));
+    if (saved !== null) return saved === '1';
+  } catch { /* storage unavailable — fall through to the authored default */ }
+  return spec.startCollapsed === true;
 }
 
 // ---------------------------------------------------------------------------
@@ -369,6 +391,11 @@ export function useTableKeyboard(opts: {
           { shift: e.shiftKey, ctrl: e.ctrlKey, alt: e.altKey },
           s.held,
         );
+        // A digit ROUTED to a modifier group present in the layout is ours
+        // even when that index has no target right now (digits are dense
+        // over LEGAL items, so positional misses are routine) — swallow it,
+        // or Ctrl+3 aimed at an illegal pile switches the browser tab.
+        if (group !== 'plain' && s.index.present.has(group)) e.preventDefault();
         const target = s.index.groups.get(group)?.[idx];
         if (target !== undefined) {
           e.preventDefault();
@@ -378,7 +405,12 @@ export function useTableKeyboard(opts: {
       }
       if (e.key === 'Enter') {
         if (interactiveFocused() || s.elements === null) return;
-        const move = firstEnabledButtonMove(s.def, s.state, s.elements, s.viewerId, s.buttonMove);
+        const move = firstEnabledButtonMove(
+          s.def, s.state, s.elements, s.viewerId, s.buttonMove,
+          // Skip collapsed panels: their buttons are not rendered (the
+          // renderer shows only a dock tab) and must not receive Enter.
+          (el) => elementCollapsed(s.def.meta.id, el),
+        );
         if (move !== null) {
           e.preventDefault();
           s.onMove(move);

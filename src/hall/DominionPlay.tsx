@@ -132,7 +132,11 @@ export default function DominionPlay({ params, navigate }: DominionPlayProps) {
   return (
     <div className="forge-root dominion-skin">
       <TableScreen
-        key={round.n}
+        // Keyed by kingdom AND round: a ?set= hash edit swaps the def without
+        // leaving the route, and per-mount table state (pile memory, the
+        // once-only game-over notification) must not survive into the new
+        // match; Play again bumps the round for the same reason.
+        key={`${kingdom.id}:${round.n}`}
         def={def}
         seats={seats}
         seed={round.seed}

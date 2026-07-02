@@ -22,6 +22,16 @@ export function zoneInstKey(zoneId: Id, ownerId: Id | null): string {
   return ownerId === null ? zoneId : `${zoneId}:${ownerId}`;
 }
 
+/**
+ * localStorage key for a collapsible screen element's collapsed state — the
+ * ONE source of truth shared by ScreenRenderer's useCollapsed (which owns
+ * the live toggle) and the keyboard system's collapsed-subtree check (which
+ * must skip buttons that a collapsed panel never mounts).
+ */
+export function collapseStorageKey(defId: Id, elId: Id): string {
+  return `cardsmith.collapse.${defId}.${elId}`;
+}
+
 export function templateOf(def: GameDef, card: CardInstance): CardTemplate | null {
   if (card.templateId === null) return null;
   return def.templates.find((t) => t.id === card.templateId) ?? null;

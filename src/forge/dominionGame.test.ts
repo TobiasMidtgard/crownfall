@@ -426,6 +426,9 @@ describe('rebuilt card semantics (deterministic probes)', () => {
     expect(requests).toHaveLength(1);
     const req = requests[0] as Extract<ChoiceRequest, { kind: 'pile' }>;
     expect(req.optional).toBe(true);
+    // The stock zone is visibility 'none': the request must reveal the
+    // representatives' faces or the human buys blind at a hidden price.
+    expect(req.revealed).toBe(true);
     // 8 kingdom piles wait in the stock; all cost ≤ 5 (3 coins + the 2 gained).
     expect(req.cardIds).toHaveLength(8);
     expect(req.counts.every((n) => n === 10)).toBe(true);

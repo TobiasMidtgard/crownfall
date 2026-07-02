@@ -18,6 +18,7 @@ import { PlayPage } from '../runner/PlayPage';
 import { ensureDominionSeed, DOMINION_GAME_ID } from './seedDominion';
 import { useUser } from '../hall/state/auth';
 import '../styles.css';
+import './dominion-skin.css';
 
 // Seed the hall's flagship game before any Forge page lists the store.
 ensureDominionSeed();
@@ -70,8 +71,12 @@ export default function ForgeApp({ sub, navigate }: ForgeAppProps) {
     if (editBarred) navigate(`#/forge/play/${DOMINION_GAME_ID}`);
   }, [editBarred, navigate]);
 
+  // The hall's table wears its dress wherever it is played — the Forge's
+  // play route included, not just #/play/dominion.
+  const skinned = page.kind === 'play' && page.id === DOMINION_GAME_ID;
+
   return (
-    <div className="forge-root app-shell">
+    <div className={`forge-root app-shell${skinned ? ' dominion-skin' : ''}`}>
       {page.kind === 'home' && (
         <>
           <header className="app-topbar">

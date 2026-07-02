@@ -92,18 +92,24 @@ export function HomePage({ navigate }: { navigate: (hash: string) => void }) {
         Built with the same blocks you have — open one to learn, clone it to remix.
       </p>
       <div className="game-grid">
-        {exampleGames.map((g) => (
-          <GameTile
-            key={g.meta.id}
-            game={g}
-            onPlay={() => navigate(`#/play/${g.meta.id}`)}
-            onEdit={() => navigate(`#/edit/${g.meta.id}`)}
-            onClone={() => {
-              const copy = cloneGame(g);
-              navigate(`#/edit/${copy.meta.id}`);
-            }}
-          />
-        ))}
+        {exampleGames
+          // The stock Dominion example is superseded by the hall's seeded,
+          // fully-dressed table ('dominion-crownfall' above) — listing both
+          // invites playing the undressed twin. It stays in the bundle
+          // (tests and direct #/play/example_dominion links keep working).
+          .filter((g) => g.meta.id !== 'example_dominion')
+          .map((g) => (
+            <GameTile
+              key={g.meta.id}
+              game={g}
+              onPlay={() => navigate(`#/play/${g.meta.id}`)}
+              onEdit={() => navigate(`#/edit/${g.meta.id}`)}
+              onClone={() => {
+                const copy = cloneGame(g);
+                navigate(`#/edit/${copy.meta.id}`);
+              }}
+            />
+          ))}
       </div>
 
       {confirmDelete && (

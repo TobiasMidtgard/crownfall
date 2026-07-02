@@ -241,6 +241,32 @@
   font-size: 0.85em;
 }
 
+/* Supply piles already wear the runner's cost lozenge (.rn-pilecost, dressed
+   above) — the face's own cost diamond would double the mark. One cost per
+   pile; hand and in-play cards keep their diamond. */
+.dominion-skin .rn-spile .cv-dom_el_cost {
+  display: none !important; /* CardView stats carry an inline display */
+}
+
+/* Narrow screens: a carousel card is ~52px wide — its rules text, type line
+   and empty art box are unreadable noise at that size. The pile face reads
+   as the original's compact tile: name plate + cost lozenge + count. */
+@media (max-width: 720px) {
+  .dominion-skin .rn-spile .cv-dom_el_rules,
+  .dominion-skin .rn-spile .cv-dom_el_type,
+  .dominion-skin .rn-spile .cv-dom_el_art {
+    display: none;
+  }
+  .dominion-skin .rn-spile .cv-dom_el_name {
+    font-size: 8px !important;
+    line-height: 1.15 !important;
+    white-space: normal !important;
+  }
+  .dominion-skin .rn-spile .cv-dom_el_name_plate {
+    height: 26% !important;
+  }
+}
+
 /* ---------- the phase seal & screen buttons (notched, crimson) ---------- */
 
 .dominion-skin .rn-sl-btn {

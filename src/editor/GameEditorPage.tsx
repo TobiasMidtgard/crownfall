@@ -1,6 +1,6 @@
 /**
  * GameEditorPage — tabbed editor over one GameDef:
- * Info | Cards | Zones | Variables | Flow | Actions | Rules.
+ * Info | Cards | Types | Zones | Table | Variables | Flow | Actions | Rules | Filters.
  * Loads the game by id, autosaves edits to the store (~400ms debounce),
  * validates live, and opens built-in examples read-only with "Clone & edit".
  */
@@ -13,11 +13,13 @@ import { CardsTab } from '../designer/CardsTab';
 import { Modal } from './common/Modal';
 import { InfoTab } from './tabs/InfoTab';
 import { TableTab } from './tabs/TableTab';
+import { TypesTab } from './tabs/TypesTab';
 import { ZonesTab } from './tabs/ZonesTab';
 import { VariablesTab } from './tabs/VariablesTab';
 import { FlowTab } from './tabs/FlowTab';
 import { ActionsTab } from './tabs/ActionsTab';
 import { RulesTab } from './tabs/RulesTab';
+import { FiltersTab } from './tabs/FiltersTab';
 import './editor.css';
 
 export interface GameEditorPageProps {
@@ -36,12 +38,14 @@ export interface GameEditorPageProps {
 const TABS = [
   { id: 'info', label: 'Info' },
   { id: 'cards', label: 'Cards' },
+  { id: 'types', label: 'Types' },
   { id: 'zones', label: 'Zones' },
   { id: 'table', label: 'Table' },
   { id: 'variables', label: 'Variables' },
   { id: 'flow', label: 'Flow' },
   { id: 'actions', label: 'Actions' },
   { id: 'rules', label: 'Rules' },
+  { id: 'filters', label: 'Filters' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -188,12 +192,14 @@ export function GameEditorPage({ gameId, navigate, readOnly: forcedReadOnly, rea
 
           {tab === 'info' && <InfoTab def={draft} onChange={onChange} />}
           {tab === 'cards' && <CardsTab def={draft} onChange={onChange} />}
+          {tab === 'types' && <TypesTab def={draft} onChange={onChange} />}
           {tab === 'zones' && <ZonesTab def={draft} onChange={onChange} />}
           {tab === 'table' && <TableTab def={draft} onChange={onChange} />}
           {tab === 'variables' && <VariablesTab def={draft} onChange={onChange} />}
           {tab === 'flow' && <FlowTab def={draft} onChange={onChange} />}
           {tab === 'actions' && <ActionsTab def={draft} onChange={onChange} />}
           {tab === 'rules' && <RulesTab def={draft} onChange={onChange} />}
+          {tab === 'filters' && <FiltersTab def={draft} onChange={onChange} />}
         </div>
       </main>
 

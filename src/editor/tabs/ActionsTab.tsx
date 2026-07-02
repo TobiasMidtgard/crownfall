@@ -5,7 +5,7 @@
 import type { ActionDef, ActionTarget, GameDef } from '../../shared/types';
 import { newAction } from '../../shared/defaults';
 import { BlockScriptEditor } from '../blocks/BlockScriptEditor';
-import { ExpressionEditor } from '../blocks/ExpressionEditor';
+import { ConditionBuilder } from '../blocks/ConditionBuilder';
 import { removeAt, updateAt } from '../lib';
 
 export function ActionsTab({ def, onChange }: { def: GameDef; onChange: (def: GameDef) => void }) {
@@ -53,7 +53,7 @@ export function ActionsTab({ def, onChange }: { def: GameDef; onChange: (def: Ga
 
             <label className="field">
               <span>When is it allowed?{action.target.kind === 'cardInZone' ? ' ($card = the tapped card)' : ''}</span>
-              <ExpressionEditor
+              <ConditionBuilder
                 def={def}
                 value={action.legality}
                 onChange={(legality) => update(i, { ...action, legality })}

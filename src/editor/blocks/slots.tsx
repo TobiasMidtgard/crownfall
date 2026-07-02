@@ -10,6 +10,7 @@ import type {
 import { uid } from '../../shared/defaults';
 import { Modal } from '../common/Modal';
 import { insertAt, removeAt, updateAt } from '../lib';
+import { ConditionBuilder } from './ConditionBuilder';
 import {
   ExpressionEditor, NumberExprField, ZoneRefFields,
 } from './ExpressionEditor';
@@ -165,7 +166,7 @@ export function CardSelectorChip({ def, value, onChange, bindings, title = 'Whic
           {value.kind === 'filter' && (
             <label className="field">
               <span>Cards where ($card = each card)</span>
-              <ExpressionEditor
+              <ConditionBuilder
                 def={def}
                 value={value.filter}
                 onChange={(filter) => filter && onChange({ kind: 'filter', filter })}
@@ -379,7 +380,7 @@ export function ChoiceSpecChip({ def, value, onChange, bindings }: {
               />
               <label className="field">
                 <span>Only cards where ($card = each card)</span>
-                <ExpressionEditor
+                <ConditionBuilder
                   def={def}
                   value={value.filter}
                   onChange={(filter) => onChange({ ...value, filter })}

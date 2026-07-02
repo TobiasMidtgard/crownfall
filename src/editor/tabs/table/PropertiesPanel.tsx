@@ -27,6 +27,7 @@ import type {
 } from '../../../shared/types';
 import { PASS_ACTION_ID } from '../../../shared/types';
 import { BlockScriptEditor } from '../../blocks/BlockScriptEditor';
+import { ConditionBuilder } from '../../blocks/ConditionBuilder';
 import { ExpressionEditor } from '../../blocks/ExpressionEditor';
 import { AnnouncePartsChip } from '../../blocks/slots';
 import { Modal } from '../../common/Modal';
@@ -428,7 +429,7 @@ function ElementProps(props: PropertiesPanelProps & { el: ScreenElement }) {
         <h4>Visibility &amp; animation</h4>
         <label className="field">
           <span>Visible when</span>
-          <ExpressionEditor
+          <ConditionBuilder
             def={def}
             value={el.visible ?? null}
             onChange={(visible) => patchBase({ visible })}
@@ -686,7 +687,7 @@ function ZoneSection(props: PropertiesPanelProps & { el: ZoneEl }) {
 
       <label className="field">
         <span>Card filter</span>
-        <ExpressionEditor
+        <ConditionBuilder
           def={def}
           value={el.cardFilter ?? null}
           onChange={(cardFilter) => patch({ cardFilter: cardFilter ?? undefined })}

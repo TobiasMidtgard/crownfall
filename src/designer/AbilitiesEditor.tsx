@@ -6,7 +6,7 @@
  */
 import type { AbilityDef, CardDef, GameDef } from '../shared/types';
 import { BlockScriptEditor } from '../editor/blocks/BlockScriptEditor';
-import { ExpressionEditor } from '../editor/blocks/ExpressionEditor';
+import { ConditionBuilder } from '../editor/blocks/ConditionBuilder';
 import { newAbility } from './designerUtils';
 
 const ABILITY_BINDINGS = ['$self', '$owner'];
@@ -112,7 +112,7 @@ export function AbilitiesEditor({ def, card, onAbilities }: {
             )}
             <div className="field">
               <span className="dz-field-label">Condition</span>
-              <ExpressionEditor
+              <ConditionBuilder
                 def={def}
                 value={a.condition}
                 onChange={(condition) => update(a.id, { condition })}

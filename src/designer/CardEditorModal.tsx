@@ -1,9 +1,10 @@
 /**
- * CardEditorModal — edits one card: live preview, name, template field
- * values (text / number / image-with-upload), abilities, duplicate/delete.
+ * CardEditorModal — edits one card: live preview, name, type + tags (the
+ * card's type line, from the game's Types tab), template field values
+ * (text / number / image-with-upload), abilities, duplicate/delete.
  */
 import { useRef, useState } from 'react';
-import type { GameDef } from '../shared/types';
+import type { CardDef, GameDef } from '../shared/types';
 import { CardView } from '../components/CardView';
 import { AbilitiesEditor } from './AbilitiesEditor';
 import { cardPreview, deleteCard, duplicateCard, patchCard, setCardField } from './designerUtils';
@@ -58,6 +59,7 @@ export function CardEditorModal({ def, cardId, onChange, onClose, onSwitchCard }
               onChange={(e) => onChange(patchCard(def, card.id, { name: e.target.value }))}
             />
           </label>
+          <TypeLineFields def={def} card={card} onChange={onChange} />
           {template?.fields.map((f) => {
             const raw = card.fields[f.id];
             switch (f.type) {
@@ -106,6 +108,69 @@ export function CardEditorModal({ def, cardId, onChange, onClose, onSwitchCard }
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * The card's type line: a TYPE single-select ("Untyped" allowed) and TAGS
+ * multi-select chips, populated from the game's Types tab. Hidden entirely
+ * while the game defines no types/tags (nothing to pick).
+ */
+function TypeLineFields({ def, card, onChange }: {
+  def: GameDef;
+  card: CardDef;
+  onChange: (def: GameDef) => void;
+}) {
+  const types = def.cardTypes ?? [];
+  const tags = def.cardTags ?? [];
+  const cardTags = card.tags ?? [];
+  if (types.length === 0 && tags.length === 0) return null;
+
+  const toggleTag = (tagId: string) => {
+    const next = cardTags.includes(tagId) ? cardTags.filter((t) => t !== tagId) : [...cardTags, tagId];
+    onChange(patchCard(def, card.id, { tags: next }));
+  };
+
+  return (
+    <>
+      {types.length > 0 && (
+        <label className="field">
+          <span>Type</span>
+          <select
+            className="select"
+            value={card.typeId ?? ''}
+            onChange={(e) => onChange(patchCard(def, card.id, { typeId: e.target.value === '' ? null : e.target.value }))}
+          >
+            <option value="">Untyped</option>
+            {card.typeId != null && !types.some((t) => t.id === card.typeId) && (
+              <option value={card.typeId}>⚠ missing type</option>
+            )}
+            {types.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </label>
+      )}
+      {tags.length > 0 && (
+        <div className="field">
+          <span className="dz-field-label">Tags</span>
+          <div className="row wrap" style={{ gap: 6 }}>
+            {tags.map((t) => {
+              const on = cardTags.includes(t.id);
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  className={on ? 'btn btn-small btn-primary' : 'btn btn-small'}
+                  aria-pressed={on}
+                  onClick={() => toggleTag(t.id)}
+                >
+                  {on ? '✓ ' : ''}{t.name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

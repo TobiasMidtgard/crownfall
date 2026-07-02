@@ -5,7 +5,7 @@
 import type { EndConditionDef, EventSpec, Expr, GameDef, TriggerDef } from '../../shared/types';
 import { newTrigger, uid } from '../../shared/defaults';
 import { BlockScriptEditor } from '../blocks/BlockScriptEditor';
-import { ExpressionEditor } from '../blocks/ExpressionEditor';
+import { ConditionBuilder } from '../blocks/ConditionBuilder';
 import { WinnerSpecFields } from '../blocks/slots';
 import { removeAt, updateAt } from '../lib';
 
@@ -126,7 +126,7 @@ export function RulesTab({ def, onChange }: { def: GameDef; onChange: (def: Game
 
             <label className="field">
               <span>Only if</span>
-              <ExpressionEditor
+              <ConditionBuilder
                 def={def}
                 value={trigger.condition}
                 onChange={(condition) => updateTrigger(i, { ...trigger, condition })}
@@ -187,7 +187,7 @@ export function RulesTab({ def, onChange }: { def: GameDef; onChange: (def: Game
           </div>
           <label className="field">
             <span>The game ends when</span>
-            <ExpressionEditor
+            <ConditionBuilder
               def={def}
               value={ec.condition}
               onChange={(condition) => condition && updateEnd(i, { ...ec, condition })}

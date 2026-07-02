@@ -122,11 +122,24 @@ describe('the schema-v2 vocabulary (no staging machinery left)', () => {
     expect(json(play.script)).toContain('"tag":"play"');
     const buy = def.actions.find((a) => a.id === 'dom_action_buy')!;
     expect(json(buy.script)).toContain('"tag":"buy"');
-    const cleanup = def.phases.find((p) => p.id === 'dom_phase_cleanup')!;
-    expect(json(cleanup.onEnter)).toContain('"tag":"cleanup"');
+    // Cleanup is a manual phase now (Action → Buy → Cleanup): its sweep +
+    // redraw live in the dom_action_cleanup script, not the phase onEnter.
+    const cleanupAction = def.actions.find((a) => a.id === 'dom_action_cleanup')!;
+    expect(json(cleanupAction.script)).toContain('"tag":"cleanup"');
     // Every reshuffling draw is the draw block now — no inline macro left.
-    expect(json(cleanup.onEnter)).toContain('"kind":"draw"');
+    expect(json(cleanupAction.script)).toContain('"kind":"draw"');
     expect(json(def)).not.toContain('"kind":"repeat"');
+  });
+
+  it('cleanup is a third manual phase with its own always-legal action', () => {
+    const cleanup = def.phases.find((p) => p.id === 'dom_phase_cleanup')!;
+    expect(cleanup.mode).toBe('manual');
+    expect(cleanup.actionIds).toEqual(['dom_action_cleanup']);
+    expect(cleanup.onEnter).toEqual([]);
+    const action = def.actions.find((a) => a.id === 'dom_action_cleanup')!;
+    expect(action.target).toEqual({ kind: 'none' });
+    expect(action.legality).toBeNull(); // always available, so the AI can't hang
+    expect(json(action.script)).toContain('"kind":"endPhase"');
   });
 
   it('supply gains are choosePile; Throne Room is triggerAbilities (no reserve bounce)', () => {
@@ -446,8 +459,10 @@ describe('rebuilt card semantics (deterministic probes)', () => {
     def.setup.push(dealNamed('Gardens'), dealNamed('Gardens'), dealNamed('Gardens'));
     const { engine, errors } = probeEngine(def, () => { throw new Error('no choices expected'); });
     await engine.start();
+    // Action → Buy → Cleanup → (turn ends, recount fires).
     await engine.performAction('p0', { actionId: 'dom_action_done' });
     await engine.performAction('p0', { actionId: 'dom_action_end_turn' });
+    await engine.performAction('p0', { actionId: 'dom_action_cleanup' });
     const state = engine.getState();
     expect(errors).toEqual([]);
     expect(state.players[0].vars['dom_var_vp']).toBe(6);
@@ -488,8 +503,14 @@ describe('end-of-turn timing (the original checks the supply only at turn end)',
     expect(engine.finished).toBe(false);
     expect(state.result).toBeNull();
     expect(engine.getLegalMoves('p0').length).toBeGreaterThan(0);
-    // Ending the turn runs cleanup, then the end-of-turn judgement fires.
+    // Leaving the buy phase enters Cleanup (manual) — still not over.
     await engine.performAction('p0', { actionId: 'dom_action_end_turn' });
+    state = engine.getState();
+    expect(engine.finished).toBe(false);
+    expect(state.result).toBeNull();
+    // The cleanup step sweeps + redraws + ends the turn; then the end-of-turn
+    // judgement fires (the original's supply check runs only at turn end).
+    await engine.performAction('p0', { actionId: 'dom_action_cleanup' });
     state = engine.getState();
     expect(errors).toEqual([]);
     expect(engine.finished).toBe(true);
@@ -539,23 +560,23 @@ describe('the screen layout speaks the original table\'s language', () => {
     expect(def.screenLayout!.motion?.flightMs).toBe(430);
   });
 
-  it('the seal is a stamped five-state group: dots, names, hints, key hint, full-plate buttons', () => {
+  it('the seal is a stamped six-state group: three dots, names, hints, key hint, full-plate buttons', () => {
     const seal = findEl(els, 'dom_el_seal')!;
     expect(seal.kind).toBe('group');
     expect(seal.onChangeAnim).toBe('stamp');
     expect(seal.states?.map((s) => s.id)).toEqual([
       'dom_st_seal_over', 'dom_st_seal_resolve', 'dom_st_seal_foe',
-      'dom_st_seal_action', 'dom_st_seal_buy',
+      'dom_st_seal_action', 'dom_st_seal_buy', 'dom_st_seal_cleanup',
     ]);
     const kids = (seal as Extract<ScreenElement, { kind: 'group' }>).children;
     const ids = kids.map((k) => k.id);
     for (const id of [
-      'dom_el_seal_btn_done', 'dom_el_seal_btn_end',
-      'dom_el_seal_dot_action', 'dom_el_seal_dot_buy',
-      'dom_el_seal_name_action', 'dom_el_seal_name_buy', 'dom_el_seal_name_foe',
-      'dom_el_seal_name_resolve', 'dom_el_seal_name_fallen',
-      'dom_el_seal_hint_action', 'dom_el_seal_hint_buy', 'dom_el_seal_hint_foe',
-      'dom_el_seal_hint_resolve', 'dom_el_seal_hint_fallen',
+      'dom_el_seal_btn_done', 'dom_el_seal_btn_end', 'dom_el_seal_btn_cleanup',
+      'dom_el_seal_dot_action', 'dom_el_seal_dot_buy', 'dom_el_seal_dot_cleanup',
+      'dom_el_seal_name_action', 'dom_el_seal_name_buy', 'dom_el_seal_name_cleanup',
+      'dom_el_seal_name_foe', 'dom_el_seal_name_resolve', 'dom_el_seal_name_fallen',
+      'dom_el_seal_hint_action', 'dom_el_seal_hint_buy', 'dom_el_seal_hint_cleanup',
+      'dom_el_seal_hint_foe', 'dom_el_seal_hint_resolve', 'dom_el_seal_hint_fallen',
       'dom_el_seal_key',
     ]) expect(ids, `seal needs ${id}`).toContain(id);
     // The plate buttons fill the whole seal (the DGT seal IS one button).
@@ -649,15 +670,15 @@ describe("the mobile variant is the original's pocket table (one viewport)", () 
     expect(log.rect.h).toBeGreaterThanOrEqual(65);
   });
 
-  it('the compact seal keeps the five states and drops the keyboard hint', () => {
+  it('the compact seal keeps the six states and drops the keyboard hint', () => {
     const seal = findEl(m.elements, 'dom_el_m_seal') as Extract<ScreenElement, { kind: 'group' }>;
     expect(seal.onChangeAnim).toBe('stamp');
-    expect(seal.states?.map((s) => s.name)).toEqual(['Fallen', 'Resolve', 'Foe turn', 'Action', 'Buy']);
+    expect(seal.states?.map((s) => s.name)).toEqual(['Fallen', 'Resolve', 'Foe turn', 'Action', 'Buy', 'Cleanup']);
     const ids = seal.children.map((k) => k.id);
     for (const suffix of [
-      'btn_done', 'btn_end', 'dot_action', 'dot_buy',
-      'name_action', 'name_buy', 'name_foe', 'name_resolve', 'name_fallen',
-      'hint_action', 'hint_buy', 'hint_foe', 'hint_resolve', 'hint_fallen',
+      'btn_done', 'btn_end', 'btn_cleanup', 'dot_action', 'dot_buy', 'dot_cleanup',
+      'name_action', 'name_buy', 'name_cleanup', 'name_foe', 'name_resolve', 'name_fallen',
+      'hint_action', 'hint_buy', 'hint_cleanup', 'hint_foe', 'hint_resolve', 'hint_fallen',
     ]) expect(ids, `mobile seal needs ${suffix}`).toContain(`dom_el_m_seal_${suffix}`);
     // Spec, "Mobile (≤45rem)": .phase-key { display: none; } — no hint chip.
     expect(ids).not.toContain('dom_el_m_seal_key');
@@ -696,12 +717,16 @@ describe('the TURN ticker counts rounds, not per-seat turns', () => {
     const { engine, errors } = probeEngine(def, () => { throw new Error('no choices expected'); });
     await engine.start();
     const shown = () => renderTextParts(def, engine.getState(), desktop, 'p0');
+    const endTurn = async (pid: string) => {
+      // Action → Buy → Cleanup → pass (three manual phases now).
+      await engine.performAction(pid, { actionId: 'dom_action_done' });
+      await engine.performAction(pid, { actionId: 'dom_action_end_turn' });
+      await engine.performAction(pid, { actionId: 'dom_action_cleanup' });
+    };
     expect(shown()).toBe('TURN 1'); // p0's first turn
-    await engine.performAction('p0', { actionId: 'dom_action_done' });
-    await engine.performAction('p0', { actionId: 'dom_action_end_turn' });
+    await endTurn('p0');
     expect(shown()).toBe('TURN 1'); // p1 still plays ROUND 1 (original: turnNo 1)
-    await engine.performAction('p1', { actionId: 'dom_action_done' });
-    await engine.performAction('p1', { actionId: 'dom_action_end_turn' });
+    await endTurn('p1');
     expect(shown()).toBe('TURN 2'); // back to p0 — round 2
     expect(renderTextParts(def, engine.getState(), mobile, 'p0')).toBe('TURN 2');
     expect(errors).toEqual([]);

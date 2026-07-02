@@ -52,9 +52,9 @@ import type {
 import { deepClone } from '../shared/defaults';
 import { dominionGame } from '../examples/dominion';
 import {
-  ALL, CURRENT, STACK_SIZE, TURN_NUMBER, add, allOf, announce, anyOf, bnd, bestCard, changeVar,
-  chooseCard, chooseCardsBlock, countCards, eq, field, forEachPlayer, getVar, gt, gte, iff, lte,
-  move, mul, neg, neq, nextPlayer, not, num, or, setVar, specific, str, sub, zone, zoneCount,
+  ALL, CURRENT, END_PHASE, STACK_SIZE, TURN_NUMBER, add, allOf, announce, anyOf, bnd, bestCard,
+  changeVar, chooseCard, chooseCardsBlock, countCards, eq, field, forEachPlayer, getVar, gt, gte,
+  iff, lte, move, mul, neg, neq, nextPlayer, not, num, or, setVar, specific, str, sub, zone, zoneCount,
 } from '../examples/dsl';
 import { DEFAULT_KINGDOM_ID, kingdomById } from '../shared/kingdoms';
 import { DOMINION_GAME_ID } from './seedDominion';
@@ -91,6 +91,7 @@ const KIND_F = 'dom_field_kind';
 
 const PHASE_ACTION = 'dom_phase_action';
 const PHASE_BUY = 'dom_phase_buy';
+const PHASE_CLEANUP = 'dom_phase_cleanup';
 
 /** The per-player victory-point variable (read by the hall on game over). */
 export const DOMINION_VP_VAR = VP;
@@ -571,6 +572,13 @@ const FOE = nextPlayer(VIEWER);
 
 const IN_ACTION: Expr = { kind: 'phaseIs', phaseId: PHASE_ACTION };
 const IN_BUY: Expr = { kind: 'phaseIs', phaseId: PHASE_BUY };
+const IN_CLEANUP: Expr = { kind: 'phaseIs', phaseId: PHASE_CLEANUP };
+
+// The harbor spots show only when they hold cards (deck/discard are the
+// viewer's; the trash is shared) — no empty boxes standing around.
+const HAS_DECK = gt(zoneCount(zone(DECK, VIEWER)), num(0));
+const HAS_DISCARD = gt(zoneCount(zone(DISCARD, VIEWER)), num(0));
+const HAS_TRASH = gt(zoneCount(zone(TRASH)), num(0));
 
 /** The turn-end judgement has fallen — the DGT seal's "Fallen" state. */
 const GAME_IS_OVER = gte(getVar(GAME_OVER), num(1));
@@ -583,6 +591,7 @@ const SEAL_FOE = allOf(not(GAME_IS_OVER), STACK_QUIET, THEIR_TURN);
 const SEAL_MINE = allOf(not(GAME_IS_OVER), STACK_QUIET, MY_TURN);
 const SEAL_ACTION = allOf(not(GAME_IS_OVER), STACK_QUIET, MY_TURN, IN_ACTION);
 const SEAL_BUY = allOf(not(GAME_IS_OVER), STACK_QUIET, MY_TURN, IN_BUY);
+const SEAL_CLEANUP = allOf(not(GAME_IS_OVER), STACK_QUIET, MY_TURN, IN_CLEANUP);
 
 // Palette — hex approximations of the reference table's OKLCH tokens.
 const INK = '#ece4d8';
@@ -667,7 +676,10 @@ function sealChildren(m: boolean): ScreenElement[] {
   const dotY = m ? 8 : 13;
   const dotW = m ? 3.4 : 3.2;
   const dotH = m ? 9 : 4.6;
-  const dot2X = m ? 14.4 : 13.8;
+  const dot1X = 9;
+  const dotGap = m ? 5.4 : 4.8;
+  const dot2X = dot1X + dotGap;
+  const dot3X = dot1X + dotGap * 2;
   const nameRect: SealRect = m
     ? { x: 9, y: 22, w: 82, h: 42 }
     : { x: 9, y: 24, w: 82, h: 26 };
@@ -689,30 +701,42 @@ function sealChildren(m: boolean): ScreenElement[] {
     // The plate: full-size buttons, phase-gated (End turn also covers the
     // momentary auto Cleanup so the plate never vanishes). Labels are read
     // by AT; visually the overlay texts below carry the seal's face.
+    // One plate button per phase (exactly one is visible at a time — the
+    // three phases partition the turn). Labels are read by AT; the overlay
+    // texts below carry the seal's visible face.
     {
       kind: 'button', id: id('btn_done'), name: 'Done (end actions)',
       rect: { x: 0, y: 0, w: 100, h: 100 },
-      actionId: 'dom_action_done', label: 'Done — to Buy phase', fontSize: 1,
+      actionId: 'dom_action_done', label: 'Done — to the buy phase', fontSize: 1,
       visible: IN_ACTION,
     },
     {
-      kind: 'button', id: id('btn_end'), name: 'End turn',
+      kind: 'button', id: id('btn_end'), name: 'Done buying (to cleanup)',
       rect: { x: 0, y: 0, w: 100, h: 100 },
-      actionId: 'dom_action_end_turn', label: 'End turn', fontSize: 1,
-      visible: not(IN_ACTION),
+      actionId: 'dom_action_end_turn', label: 'Done buying — to cleanup', fontSize: 1,
+      visible: IN_BUY,
     },
-    // The two phase dots — Action and Buy; Cleanup has no dot, per the law.
-    sealDot(id('dot_action'), 'Action dot', PHASE_ACTION, { x: 9, y: dotY, w: dotW, h: dotH }),
+    {
+      kind: 'button', id: id('btn_cleanup'), name: 'Clean up and end the turn',
+      rect: { x: 0, y: 0, w: 100, h: 100 },
+      actionId: 'dom_action_cleanup', label: 'End turn', fontSize: 1,
+      visible: IN_CLEANUP,
+    },
+    // The three phase dots — Action, Buy, Cleanup.
+    sealDot(id('dot_action'), 'Action dot', PHASE_ACTION, { x: dot1X, y: dotY, w: dotW, h: dotH }),
     sealDot(id('dot_buy'), 'Buy dot', PHASE_BUY, { x: dot2X, y: dotY, w: dotW, h: dotH }),
-    // Name line, five render-states.
+    sealDot(id('dot_cleanup'), 'Cleanup dot', PHASE_CLEANUP, { x: dot3X, y: dotY, w: dotW, h: dotH }),
+    // Name line, six render-states.
     sealName(id('name_action'), 'Action', SEAL_ACTION, INK, nameRect, nameFs),
     sealName(id('name_buy'), 'Buy', SEAL_BUY, INK, nameRect, nameFs),
+    sealName(id('name_cleanup'), 'Cleanup', SEAL_CLEANUP, INK, nameRect, nameFs),
     foeName,
     sealName(id('name_resolve'), 'Resolve', SEAL_RESOLVE, ASH, nameRect, nameFs),
     sealName(id('name_fallen'), 'Fallen', GAME_IS_OVER, INK, nameRect, nameFs),
     // Hint line, matching microcopy (uppercase, engraved via size/color).
     sealHint(id('hint_action'), 'TO BUY', SEAL_ACTION, BONE_SOFT, hintRect, hintFs),
-    sealHint(id('hint_buy'), 'END TURN', SEAL_BUY, BONE_SOFT, hintRect, hintFs),
+    sealHint(id('hint_buy'), 'TO CLEANUP', SEAL_BUY, BONE_SOFT, hintRect, hintFs),
+    sealHint(id('hint_cleanup'), 'END TURN', SEAL_CLEANUP, BONE_SOFT, hintRect, hintFs),
     sealHint(id('hint_foe'), 'TAKES THEIR TURN', SEAL_FOE, ASH, hintRect, hintFs),
     sealHint(id('hint_resolve'), 'RESPOND BELOW', SEAL_RESOLVE, ASH, hintRect, hintFs),
     sealHint(id('hint_fallen'), 'MATCH OVER', GAME_IS_OVER, BONE_SOFT, hintRect, hintFs),
@@ -751,6 +775,7 @@ function sealStates(m: boolean): NonNullable<ScreenElement['states']> {
     { id: id('foe'), name: 'Foe turn', when: THEIR_TURN },
     { id: id('action'), name: 'Action', when: IN_ACTION },
     { id: id('buy'), name: 'Buy', when: IN_BUY },
+    { id: id('cleanup'), name: 'Cleanup', when: IN_CLEANUP },
   ];
 }
 
@@ -856,13 +881,12 @@ function mSupplyPanel(
       rect: { x: 0, y: 0, w: 100, h: 100 },
       zoneId: SUPPLY, seat: 'shared', display: 'carousel', pileFace: 'tile',
       cardFilter: filter, pileBadgeField: COST, keyGroup,
-      // Tile width, % of the ~390px phone stage: 20% ≈ 78px — the original
-      // desktop --pile-w band (4.7–5.7rem) with the same makePile anatomy.
-      // Treasury (3 piles) and Victory (4) fit the frame without scrolling
-      // (4×78px + gaps + the carousel's 12px insets < 378px); Kingdom's ten
-      // swipe with scroll-snap (dominion-skin.css anchors the snap at
-      // 'start', so the row opens ON the first pile).
-      cardScale: 20, gap: 2, showName: false,
+      // Tile width, % of the ~390px phone stage: 18% ≈ 70px — the original
+      // makePile anatomy, sized so the tile (aspect 59/91 ≈ 108px tall) clears
+      // the ~150px carousel with headroom. Treasury (3 piles) and Victory (4)
+      // fit the frame without scrolling; Kingdom's ten swipe with scroll-snap
+      // (dominion-skin.css anchors the snap at 'start', opening ON the first).
+      cardScale: 18, gap: 2.5, showName: false,
     }],
   };
 }
@@ -1003,23 +1027,26 @@ function buildMobileScreen(): ScreenVariant {
         gap: 14, showName: false, keyGroup: 'plain',
       },
       // --- the harbor (~80-90%): compact deck / discard / trash spots ---------
+      // The harbor spots appear only when they hold cards (the original's
+      // "a zone shows up when it first gains content") — no empty deck /
+      // discard / trash boxes cluttering the table.
       {
         kind: 'zone', id: 'dom_el_m_deck', name: 'Your deck',
         rect: { x: 2, y: 79.6, w: 22, h: 10.4 },
         zoneId: DECK, seat: 'viewer', cardScale: 7.5, showName: true, showCount: true,
-        style: M_GROUND,
+        style: M_GROUND, visible: HAS_DECK, reveal: 'fade',
       },
       {
         kind: 'zone', id: 'dom_el_m_discard', name: 'Your discard',
         rect: { x: 26, y: 79.6, w: 22, h: 10.4 },
         zoneId: DISCARD, seat: 'viewer', cardScale: 7.5, showName: true, showCount: true,
-        style: M_GROUND,
+        style: M_GROUND, visible: HAS_DISCARD, reveal: 'fade',
       },
       {
         kind: 'zone', id: 'dom_el_m_trash', name: 'Trash',
         rect: { x: 74, y: 79.6, w: 24, h: 10.4 },
         zoneId: TRASH, seat: 'shared', cardScale: 7.5, showName: true, showCount: true,
-        arriveEffect: 'burn', style: M_TRASH,
+        arriveEffect: 'burn', style: M_TRASH, visible: HAS_TRASH, reveal: 'fade',
       },
       // --- the chronicle: a bottom sheet behind a docked toggle ---------------
       // Collapsed (the default) it is ONLY the bottom-center tab — the strip
@@ -1165,19 +1192,34 @@ export function buildDominionDef(): GameDef {
     ];
   }
 
-  // Cleanup: the sweep is tagged 'cleanup' (the runner's discard-sweep
-  // choreography), the redraw is the draw block (tagged 'draw').
-  const cleanup = def.phases.find((p) => p.id === 'dom_phase_cleanup');
+  // Cleanup is its own MANUAL phase now (Action → Buy → Cleanup, three dots on
+  // the seal): entering it leaves your played cards and hand on the table to
+  // review; the seal's "End turn" fires dom_action_cleanup, which sweeps them
+  // to the discard (tagged 'cleanup'), redraws five (the draw block, tagged
+  // 'draw'), resets the counters, and ends the phase — which, being the last
+  // phase, passes the turn (so the turnEnd VP recount + supply judgement keep
+  // their exact timing).
+  const cleanupSweep: Block[] = [
+    tmove(ALL, zone(INPLAY), zone(DISCARD), 'cleanup', { faceUp: true }),
+    tmove(ALL, zone(HAND), zone(DISCARD), 'cleanup', { faceUp: true }),
+    draw(null, 5),
+    setVar(ACTIONS, num(1)),
+    setVar(BUYS, num(1)),
+    setVar(COINS, num(0)),
+  ];
+  const cleanup = def.phases.find((p) => p.id === PHASE_CLEANUP);
   if (cleanup) {
-    cleanup.onEnter = [
-      tmove(ALL, zone(INPLAY), zone(DISCARD), 'cleanup', { faceUp: true }),
-      tmove(ALL, zone(HAND), zone(DISCARD), 'cleanup', { faceUp: true }),
-      draw(null, 5),
-      setVar(ACTIONS, num(1)),
-      setVar(BUYS, num(1)),
-      setVar(COINS, num(0)),
-    ];
+    cleanup.mode = 'manual';
+    cleanup.actionIds = ['dom_action_cleanup'];
+    cleanup.onEnter = [];
   }
+  def.actions.push({
+    id: 'dom_action_cleanup',
+    name: 'Clean up',
+    target: { kind: 'none' },
+    legality: null,
+    script: [...cleanupSweep, END_PHASE],
+  });
 
   // Triggers: the Gardens-aware recount runs at turn end AND on every
   // tagged 'gain' (Workshop / Remodel / Mine / Witch's Curse) — the old
@@ -1266,6 +1308,13 @@ export function buildDominionDef(): GameDef {
       reveal: 'fade',
       states: [],
     });
+    // The harbor spots (and their captions) appear only when they hold cards —
+    // no empty deck / discard / trash boxes standing around.
+    patchZoneEl(layout.elements, 'dom_el_my_deck', { visible: HAS_DECK, reveal: 'fade' });
+    patchTextEl(layout.elements, 'dom_el_my_deck_label', { visible: HAS_DECK });
+    patchZoneEl(layout.elements, 'dom_el_my_discard', { visible: HAS_DISCARD, reveal: 'fade' });
+    patchTextEl(layout.elements, 'dom_el_my_discard_label', { visible: HAS_DISCARD });
+    patchZoneEl(layout.elements, 'dom_el_trash', { visible: HAS_TRASH, reveal: 'fade' });
     // Foe in-play: 0.82× the own-row card width, hanging off the foe strip's
     // right edge (the strip is absolute-positioned, so the row floats where
     // the original's strip would have grown). Visible while the foe acts or

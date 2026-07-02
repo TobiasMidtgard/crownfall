@@ -42,6 +42,12 @@ export interface GameDef {
   triggers: TriggerDef[];
   /** Checked after every action/trigger resolution; first match ends the game. */
   endConditions: EndConditionDef[];
+  /** Card primary types (one per card via CardDef.typeId). Seeded [] by migrate. */
+  cardTypes?: CardTypeDef[];
+  /** Card tags (multi-assign via CardDef.tags). Seeded [] by migrate. */
+  cardTags?: TagDef[];
+  /** Reusable named filters (see NamedFilterDef). Seeded [] by migrate. */
+  filters?: NamedFilterDef[];
   /**
    * Rendering contract for per-card state (engine ignores it): a perCard
    * boolean var that rotates the card 90° while truthy (tapped / defense
@@ -161,6 +167,12 @@ export interface ScreenElementBase {
   /** Conditional appearances (first match wins). */
   states?: ElementState[];
   /**
+   * Render only while this selector BUTTON (a 'selector'-role button element
+   * in the same screen) is the selected one of its group. Composes with
+   * `visible` — both must hold. Absent = always (subject to `visible`).
+   */
+  showForSelector?: Id;
+  /**
    * Retriggerable one-shot played when the element's resolved content or
    * active state changes ('stamp' = scale 1.07 + brightness flash).
    */
@@ -268,6 +280,17 @@ export type ScreenElement =
       actionId: Id | null;
       label: string;
       fontSize?: number;
+      /**
+       * 'selector' buttons switch CLIENT-side view state instead of performing
+       * a game action (actionId is ignored): buttons sharing a selectorGroup
+       * form a radio set — exactly one selected, persisted per device at
+       * cardsmith.sel.<defId>.<groupId>; the first in paint order is the
+       * default. Elements opt into a selection via showForSelector. The
+       * runner marks the active one rn-sel-on. Default role: 'action'.
+       */
+      role?: 'action' | 'selector';
+      /** The radio-set name this selector button belongs to (role 'selector'). */
+      selectorGroup?: string;
     })
   /** A styled shape; states drive its fill/border (indicators, slots, markers). */
   | (ScreenElementBase & {
@@ -354,6 +377,12 @@ export interface ScreenLayout {
   motion?: MotionSpec;
   /** Alternate layout for narrow screens (<1024px). Absent = same layout. */
   mobile?: ScreenVariant | null;
+  /**
+   * The runner status bar. 'pinned' (default) = always visible. 'peek' =
+   * collapses to a slim safe-area-clear handle after ~2s idle; expands on
+   * hover / tap / drag-up / any focus within (reduced-motion: instant).
+   */
+  statusBar?: 'pinned' | 'peek';
 }
 
 export interface GameMeta {
@@ -453,6 +482,39 @@ export interface CardDef {
   /** Values keyed by CardFieldDef id. Image fields hold a URL or data URL. */
   fields: Record<Id, string | number>;
   abilities: AbilityDef[];
+  /** The card's single primary type (see GameDef.cardTypes). null/absent = untyped. */
+  typeId?: Id | null;
+  /** Any number of tags (see GameDef.cardTags) — the rest of the type line. */
+  tags?: Id[];
+}
+
+/**
+ * A card's primary category ("Action", "Treasure"…): exactly one per card,
+ * drives the card's accent color. Authored in the Types & tags panel.
+ */
+export interface CardTypeDef {
+  id: Id;
+  name: string;
+  /** CSS color for the type's accent (borders, type line). */
+  color: string;
+}
+
+/** A multi-assign card label ("Attack", "Kingdom"…) — the type line's rest. */
+export interface TagDef {
+  id: Id;
+  name: string;
+}
+
+/**
+ * A reusable named condition ("The basic cards"): authored once in the
+ * Filters panel, referenced anywhere via the filterRef expression.
+ * `condition` is authored with $card bound. Cycles are rejected by
+ * validateGameDef and evaluate to false at runtime.
+ */
+export interface NamedFilterDef {
+  id: Id;
+  name: string;
+  condition: Expr;
 }
 
 /** Per-card triggered script. Runs with $self = this card, $owner = its zone's owner (or current player). */

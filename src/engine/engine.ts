@@ -51,6 +51,7 @@ function initialState(def: GameDef, opts: EngineOptions): GameState {
     currentPlayerIdx: 0,
     phaseIdx: 0,
     turnNumber: 1,
+    moveTags: {},
     log: [],
     result: null,
     stack: [],
@@ -206,6 +207,15 @@ async function resolveTop(core: Core): Promise<void> {
   resetBudget(core);
   core.control = 'none';
   await runScript(core, entry.script, entry.snapshot);
+  await settle(core);
+  if (core.finished) return;
+  // Stack lifecycle: effectResolved fires AFTER the entry's script settles
+  // and BEFORE the caller's window-reopen decision. The entry is already
+  // popped — a cancelTopEffect in a listener targets the NEXT entry.
+  core.queue.push({
+    kind: 'effectResolved', label: entry.label,
+    sourceCardId: entry.sourceCardId, byPlayerId: entry.byPlayerId,
+  });
   await settle(core);
 }
 

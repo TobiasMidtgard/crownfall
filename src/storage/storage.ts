@@ -16,7 +16,7 @@ const KEY = 'cardsmith.games.v1';
 export function isStructurallySound(g: unknown): g is GameDef {
   if (!g || typeof g !== 'object') return false;
   const d = g as GameDef;
-  if (d.schemaVersion !== 1) return false;
+  if (d.schemaVersion !== 1 && d.schemaVersion !== 2) return false;
   if (!d.meta || typeof d.meta !== 'object' || typeof d.meta.id !== 'string' || !d.meta.id) return false;
   if (typeof d.meta.name !== 'string' || typeof d.meta.minPlayers !== 'number' || typeof d.meta.maxPlayers !== 'number') return false;
   const arrays: (keyof GameDef)[] = [

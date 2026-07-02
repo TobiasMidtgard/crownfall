@@ -123,7 +123,7 @@ export function burnZoneKeys(
         continue;
       }
       if (el.seat === 'shared') continue;
-      const pid = resolveSeat(playerIds, viewerId, el.seat);
+      const pid = resolveSeat(playerIds, viewerId, el.seat, state.currentPlayerIdx);
       if (pid !== null) out.add(zoneInstKey(zone.id, pid));
     }
   };
@@ -178,7 +178,7 @@ export function varTextValue(
   if (!vd || vd.scope === 'perCard') return undefined;
   if (vd.scope === 'global') return state.globalVars[el.varId];
   if (el.seat === 'shared') return undefined;
-  const pid = resolveSeat(state.players.map((p) => p.id), viewerId, el.seat);
+  const pid = resolveSeat(state.players.map((p) => p.id), viewerId, el.seat, state.currentPlayerIdx);
   if (pid === null) return undefined;
   return state.players.find((p) => p.id === pid)?.vars[el.varId];
 }

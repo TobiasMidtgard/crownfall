@@ -69,6 +69,9 @@ function aiAnswer(req: ChoiceRequest): ChoiceAnswer {
     case 'card':
       if (req.optional && Math.random() < AI_DECLINE_CHANCE) return null;
       return randomItem(req.cardIds);
+    case 'pile':
+      if (req.optional && Math.random() < AI_DECLINE_CHANCE) return null;
+      return randomItem(req.cardIds);
     case 'option':
       return randomItem(req.options).id;
     case 'player':

@@ -15,8 +15,16 @@ export type RuntimeValue = number | string | boolean | null;
 // Game definition
 // ---------------------------------------------------------------------------
 
+/**
+ * Current schema version. v2 adds move-cause tags, the draw / choosePile /
+ * triggerAbilities blocks, the effectResolved event, the sumCards expression
+ * and the 'contains' compare op — all additive, so v1 documents load
+ * unchanged (migrateGameDef stamps them to v2).
+ */
+export const SCHEMA_VERSION = 2;
+
 export interface GameDef {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   meta: GameMeta;
   variables: VariableDef[];
   zones: ZoneDef[];
@@ -115,7 +123,9 @@ export interface TableLayout {
  * viewer: 'viewer' = the viewing seat, 'oppN' = the Nth seat after the viewer
  * in seating order. 'shared' for shared zones (ignored elsewhere).
  */
-export type SeatRef = 'shared' | 'viewer' | 'opp1' | 'opp2' | 'opp3';
+/** 'current' follows the acting turn: the element rebinds to whichever
+ *  player's turn it is (e.g. an in-play row that always shows the mover). */
+export type SeatRef = 'shared' | 'viewer' | 'current' | 'opp1' | 'opp2' | 'opp3';
 
 export type RevealAnim = 'none' | 'fade' | 'scale' | 'slide-up' | 'slide-down';
 
@@ -210,6 +220,12 @@ export type ScreenElement =
       fanAngle?: number;
       /** Cards arriving in this zone play an effect ('burn' = char + embers). */
       arriveEffect?: 'none' | 'burn';
+      /**
+       * Keyboard spotlight group (DGT-style): holding the modifier dims every
+       * other zone and shows digit badges on this zone's tappable cards;
+       * 'plain' badges without a modifier. Absent = no keyboard marking.
+       */
+      keyGroup?: 'plain' | 'shift' | 'ctrl' | 'alt';
     })
   | (ScreenElementBase & {
       kind: 'text';
@@ -289,6 +305,12 @@ export interface MotionSpec {
   spin?: number;
   /** Stagger between grouped flights ms (default 55). */
   staggerMs?: number;
+  /**
+   * Per-move-cause overrides keyed by the move's tag ('draw', 'play',
+   * 'gain', 'discard', …): each overrides the base numbers for flights whose
+   * move carries that tag, so a draw can be brisk while a gain lingers.
+   */
+  byTag?: Record<string, { flightMs?: number; arc?: number; spin?: number; staggerMs?: number }>;
 }
 
 /** An alternate element tree for narrow screens (below 1024px). */
@@ -430,6 +452,11 @@ export interface AbilityDef {
   zoneId: Id | null;
   /** For phaseStart/phaseEnd: restrict to a phase (null = any). */
   phaseId?: Id | null;
+  /**
+   * For enter/leaveZone: only fire when the move carries this cause tag
+   * (see MOVE_TAGS). null/absent = any move (tagged or not).
+   */
+  tagFilter?: string | null;
   condition: Expr | null;
   script: Block[];
   /** Push onto the stack instead of running inline. */
@@ -559,12 +586,25 @@ export type EventSpec =
   | { kind: 'turnEnd' }
   | { kind: 'phaseStart'; phaseId: Id | null }
   | { kind: 'phaseEnd'; phaseId: Id | null }
-  /** $card, plus $fromZone/$toZone zone ids, bound in condition+script. */
-  | { kind: 'cardEnterZone'; zoneId: Id | null }
-  | { kind: 'cardLeaveZone'; zoneId: Id | null }
+  /**
+   * $card, plus $fromZone/$toZone zone ids and $tag (the move's cause tag or
+   * null), bound in condition+script. `tag` filters on the move's cause:
+   * null/absent matches ANY move (back-compat), a string matches only moves
+   * carrying exactly that tag.
+   */
+  | { kind: 'cardEnterZone'; zoneId: Id | null; tag?: string | null }
+  | { kind: 'cardLeaveZone'; zoneId: Id | null; tag?: string | null }
   /** Fires when a zone instance becomes empty. $owner bound for perPlayer zones. */
   | { kind: 'zoneEmptied'; zoneId: Id | null }
-  | { kind: 'varChanged'; varId: Id | null };
+  | { kind: 'varChanged'; varId: Id | null }
+  /**
+   * Fires after a pending stack entry's script resolves and settles, BEFORE
+   * the response window reopens. Binds $card (the entry's source card, when
+   * present) and $player (who pushed it, when known). Cancelled entries do
+   * NOT fire this. A `cancelTopEffect` inside this rule targets the NEXT
+   * entry (the resolved one is already gone).
+   */
+  | { kind: 'effectResolved' };
 
 export interface TriggerDef {
   id: Id;
@@ -619,8 +659,16 @@ export type ChoiceSpec =
   | { kind: 'player'; prompt: string; includeSelf: boolean }
   | { kind: 'yesNo'; prompt: string };
 
+/**
+ * Canonical move-cause tags surfaced in the editor (stored free-form).
+ * A tagged move carries its tag on the cardEnterZone/cardLeaveZone events so
+ * triggers/abilities can react to WHY a card moved, not just where.
+ */
+export const MOVE_TAGS = ['gain', 'buy', 'trash', 'discard', 'play', 'draw', 'cleanup'] as const;
+
 export type Block =
-  | { kind: 'moveCards'; from: ZoneRef; to: ZoneRef; cards: CardSelector; toPosition: 'top' | 'bottom'; faceUp: boolean | null }
+  /** `tag`: optional cause tag carried on the move's events (see MOVE_TAGS). */
+  | { kind: 'moveCards'; from: ZoneRef; to: ZoneRef; cards: CardSelector; toPosition: 'top' | 'bottom'; faceUp: boolean | null; tag?: string | null }
   | { kind: 'shuffle'; zone: ZoneRef }
   /** Deal `count` cards from a shared zone to each player's instance of a perPlayer zone, round-robin. */
   | { kind: 'deal'; from: ZoneRef; toZoneId: Id; count: Expr }
@@ -641,6 +689,32 @@ export type Block =
    */
   | { kind: 'chooseCards'; who: Expr | null; from: ZoneRef; filter: Expr | null; min: Expr; max: Expr; prompt: string; revealed: boolean; body: Block[] }
   /**
+   * Pile choice (supply gains): the (filtered) zone's cards are grouped into
+   * one pile per distinct card identity (custom cards by defId, standard
+   * cards by name), in first-appearance order (bottom→top). `who` picks one
+   * pile; `body` runs once with $card bound to that pile's TOP copy.
+   * Mandatory while any pile exists unless `optional` (decline = skip body).
+   * Groups are computed at ask time — no staging zone, no mutation window.
+   */
+  | { kind: 'choosePile'; who: Expr | null; from: ZoneRef; filter: Expr | null; groupBy: 'def'; prompt: string; optional: boolean; body: Block[] }
+  /**
+   * Draw with inline refill: move `count` cards one at a time from the top of
+   * `from` to `to`. Whenever `from` is empty and `refillFrom` is not, ALL of
+   * `refillFrom` moves into `from` face-down and is shuffled (seeded game
+   * RNG) before drawing continues; stops early when both are empty. Each
+   * drawn card charges budget and emits move events tagged `tag` (default
+   * 'draw'). `who` sets the contextual player for owner-less zone refs.
+   */
+  | { kind: 'draw'; who: Expr | null; count: Expr; from: ZoneRef; refillFrom: ZoneRef | null; to: ZoneRef; faceUp: boolean | null; tag?: string | null }
+  /**
+   * Re-fire a card's enter-zone moment WITHOUT moving it (Throne Room):
+   * enqueues a synthetic cardEnterZone event for `zoneId` tagged 'play'
+   * (fromZoneId = the card's current zone). Runs through the normal drain,
+   * so stacked abilities still stack — and global triggers watching that
+   * zone ALSO fire (it IS "the card is played again"). Missing card = no-op.
+   */
+  | { kind: 'triggerAbilities'; card: Expr; on: 'enterZone'; zoneId: Id }
+  /**
    * Counter/negate: drop the top pending stack entry without running it; its
    * source card (if any) moves to `cardTo` (null = leave the card alone).
    */
@@ -658,7 +732,14 @@ export type Block =
 // ---------------------------------------------------------------------------
 
 export type MathOp = '+' | '-' | '*' | '/' | '%';
-export type CompareOp = '==' | '!=' | '<' | '<=' | '>' | '>=';
+/**
+ * 'contains' = whole-word membership for multi-value text fields: true when
+ * the RIGHT value appears as a whole whitespace-separated word inside the
+ * LEFT value (case-sensitive). "action attack" contains "action" → true;
+ * "action attack" contains "act" → false. Non-strings coerce via String();
+ * null on either side → false.
+ */
+export type CompareOp = '==' | '!=' | '<' | '<=' | '>' | '>=' | 'contains';
 
 export type Expr =
   | { kind: 'num'; value: number }
@@ -694,6 +775,12 @@ export type Expr =
    * any outer $card binding) — compare against variables, not outer $card.
    */
   | { kind: 'countCards'; zone: ZoneRef; filter: Expr | null }
+  /**
+   * Sum of a numeric card field over a zone's (filtered) cards → number.
+   * Non-numeric / missing field values count 0. Filter binds $card per
+   * candidate (shadowing, like countCards).
+   */
+  | { kind: 'sumCards'; zone: ZoneRef; fieldId: Id; filter: Expr | null }
   /** Uniform random integer in [1, max]. Uses the seeded game RNG. */
   | { kind: 'random'; max: Expr }
   /** Number of pending (unresolved) effects on the stack. */
@@ -778,6 +865,13 @@ export interface GameState {
   currentPlayerIdx: number;
   phaseIdx: number;
   turnNumber: number;
+  /**
+   * Cause tag of the move that most recently placed each card in its current
+   * zone (null = untagged move; absent key = never moved). Rendering surface
+   * for per-tag flight tuning (MotionSpec.byTag / flip layer) — the engine
+   * writes it in performMove and never reads it back.
+   */
+  moveTags?: Record<Id, string | null>;
   log: LogEntry[];
   result: GameResult | null;
   /** Pending (unresolved) effects, bottom→top. Empty in games that never stack. */
@@ -803,7 +897,13 @@ export type ChoiceRequest =
   | { id: number; playerId: Id; kind: 'player'; prompt: string; playerIds: Id[] }
   | { id: number; playerId: Id; kind: 'yesNo'; prompt: string }
   /** Multi-select: answer with a JSON array string of min..max distinct ids from cardIds. */
-  | { id: number; playerId: Id; kind: 'cards'; prompt: string; cardIds: Id[]; min: number; max: number; revealed?: boolean };
+  | { id: number; playerId: Id; kind: 'cards'; prompt: string; cardIds: Id[]; min: number; max: number; revealed?: boolean }
+  /**
+   * Pile choice: cardIds[i] is pile i's representative (top copy), counts[i]
+   * its size (for × N badges). Answer with a representative id, or null to
+   * decline when optional.
+   */
+  | { id: number; playerId: Id; kind: 'pile'; prompt: string; cardIds: Id[]; counts: number[]; optional: boolean };
 
 /**
  * Answer: card instance id | option id | player id | boolean | null (declined

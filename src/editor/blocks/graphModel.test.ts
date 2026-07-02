@@ -12,9 +12,9 @@ import type { Block, Expr, GameDef } from '../../shared/types';
 import { deepClone } from '../../shared/defaults';
 import {
   appendLoc, blockDataSlots, blockNodeId, describePin, duplicateBlockAt,
-  execNodeRows, exprNodeId, exprWeight, getBlockAt, getExprAt, getNode,
-  insertBlockAt, moveBlock, pinsCompatible, projectGraph, removeBlock,
-  setExprAt,
+  execNodeRows, exprKindOutType, exprNodeId, exprNodeRows, exprWeight,
+  getBlockAt, getExprAt, getNode, insertBlockAt, moveBlock, pinsCompatible,
+  projectGraph, removeBlock, setExprAt,
 } from './graphModel';
 
 function fixture(): GameDef {
@@ -189,6 +189,41 @@ describe('exec node rows (pins + lanes)', () => {
   it('setVar value pin takes its type from the variable', () => {
     const slots = blockDataSlots(def, { kind: 'setVar', varId: 'v_score', target: null, value: num(0) });
     expect(slots).toEqual([{ key: 'value', label: 'Value', type: 'number' }]);
+  });
+
+  it('choosePile exposes who/filter pins and a Body lane binding $card', () => {
+    const block: Block = {
+      kind: 'choosePile', who: null, from: { zoneId: 'z_trick', owner: null }, filter: null,
+      groupBy: 'def', prompt: 'Gain', optional: false, body: [{ kind: 'endPhase' }],
+    };
+    const rows = execNodeRows(def, block);
+    const dataKeys = rows.flatMap((r) => (r.kind === 'data' ? [r.slot.key] : []));
+    expect(dataKeys).toEqual(['who', 'filter']);
+    expect(rows[rows.length - 1]).toEqual({ kind: 'lane', lane: 'body', label: 'Body' });
+    const g = projectGraph(def, [block], []);
+    expect(getNode(g, 'b:0.body.0')?.bindings).toEqual(['$card']);
+  });
+
+  it('draw exposes who/count pins plus zone, facing and tag fields', () => {
+    const block: Block = {
+      kind: 'draw', who: null, count: num(1),
+      from: { zoneId: 'z_trick', owner: null }, refillFrom: null,
+      to: { zoneId: 'z_hand', owner: null }, faceUp: null,
+    };
+    const rows = execNodeRows(def, block);
+    expect(rows.flatMap((r) => (r.kind === 'data' ? [r.slot.key] : []))).toEqual(['who', 'count']);
+    expect(rows.flatMap((r) => (r.kind === 'field' ? [r.field] : [])))
+      .toEqual(['from', 'refillFrom', 'to', 'facing', 'tag']);
+  });
+
+  it('sumCards is a number-typed data node', () => {
+    expect(exprKindOutType('sumCards')).toBe('number');
+    const rows = exprNodeRows(def, { kind: 'sumCards', zone: { zoneId: 'z_hand', owner: null }, fieldId: 'rank', filter: null });
+    const filterRow = rows.find((r) => r.kind === 'data');
+    expect(filterRow).toEqual({
+      kind: 'data',
+      slot: { key: 'filter', label: 'Where', type: 'boolean', nullLabel: 'every card', addBindings: ['$card'] },
+    });
   });
 });
 

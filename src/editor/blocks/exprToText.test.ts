@@ -34,17 +34,17 @@ function fixture(): GameDef {
 }
 
 const ALL_BLOCK_KINDS: Block['kind'][] = [
-  'moveCards', 'shuffle', 'deal', 'setVar', 'changeVar', 'if', 'repeat',
-  'forEachPlayer', 'forEachCard', 'choose', 'chooseCards', 'announce',
-  'flipCards', 'cancelTopEffect', 'endPhase', 'endTurn', 'setNextPlayer',
-  'endGame',
+  'moveCards', 'draw', 'shuffle', 'deal', 'setVar', 'changeVar', 'if', 'repeat',
+  'forEachPlayer', 'forEachCard', 'choose', 'chooseCards', 'choosePile',
+  'triggerAbilities', 'announce', 'flipCards', 'cancelTopEffect', 'endPhase',
+  'endTurn', 'setNextPlayer', 'endGame',
 ];
 
 const ALL_EXPR_KINDS: Expr['kind'][] = [
   'num', 'str', 'bool', 'getVar', 'zoneCount', 'cardField', 'topCard',
   'binding', 'currentPlayer', 'playerCount', 'turnNumber', 'nextPlayer',
   'cardOwner', 'cardZoneId', 'math', 'compare', 'logic', 'not', 'bestCard',
-  'countCards', 'random', 'stackSize', 'stackTopCard',
+  'countCards', 'sumCards', 'random', 'stackSize', 'stackTopCard',
 ];
 
 describe('registry block factories', () => {
@@ -157,5 +157,19 @@ describe('exprToText', () => {
     expect(exprToText(def, { kind: 'bestCard', zone: { zoneId: 'z_trick', owner: null }, by: 'highest', fieldId: 'rank', filter: null }))
       .toBe('highest rank card in Trick');
     expect(exprToText(def, { kind: 'random', max: { kind: 'num', value: 6 } })).toBe('random 1 to 6');
+  });
+
+  it('renders sumCards and the contains op readably', () => {
+    expect(exprToText(def, { kind: 'sumCards', zone: { zoneId: 'z_hand', owner: null }, fieldId: 'rank', filter: null }))
+      .toBe('sum of rank in Hand (mine)');
+    expect(exprToText(def, {
+      kind: 'sumCards', zone: { zoneId: 'z_trick', owner: null }, fieldId: 'rank',
+      filter: { kind: 'compare', op: '==', left: cardSuit, right: { kind: 'str', value: 'hearts' } },
+    })).toBe('sum of rank in Trick where suit of $card = "hearts"');
+    expect(exprToText(def, {
+      kind: 'compare', op: 'contains',
+      left: { kind: 'cardField', card: { kind: 'binding', name: '$card' }, fieldId: 'suit' },
+      right: { kind: 'str', value: 'action' },
+    })).toBe('suit of $card contains "action"');
   });
 });

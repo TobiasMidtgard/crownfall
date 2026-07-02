@@ -416,12 +416,14 @@ function ElementProps(props: PropertiesPanelProps & { el: ScreenElement }) {
             <option value="none">Nothing</option>
             <option value="stamp">Stamp (press + flash)</option>
             <option value="flash">Flash</option>
+            <option value="breathe">Breathe (loop while a state is active)</option>
           </select>
         </label>
         <p className="faint tt-prop-hint">
           Conditional elements dim to 40% here in the editor; players only see them while the
-          expression is true. "When the content changes" replays each time the element's text
-          or active state changes — the phase-seal stamp.
+          expression is true. "Stamp"/"Flash" replay each time the element's text or active
+          state changes — the phase-seal stamp. "Breathe" instead pulses slowly for as long as
+          one of the element's states matches — the foe-turn idle.
         </p>
       </section>
 
@@ -511,11 +513,16 @@ function ElementProps(props: PropertiesPanelProps & { el: ScreenElement }) {
 
 function seatOptions(def: GameDef): SeatRef[] {
   const opps = Math.max(1, Math.min(3, (def.meta.maxPlayers || 2) - 1));
-  return ['viewer', ...Array.from({ length: opps }, (_, i) => `opp${i + 1}` as SeatRef)];
+  return ['viewer', 'current', ...Array.from({ length: opps }, (_, i) => `opp${i + 1}` as SeatRef)];
 }
 
 const SEAT_LABELS: Record<SeatRef, string> = {
-  shared: 'Shared', viewer: 'You (the viewer)', opp1: 'Opponent 1', opp2: 'Opponent 2', opp3: 'Opponent 3',
+  shared: 'Shared',
+  viewer: 'You (the viewer)',
+  current: 'Current turn',
+  opp1: 'Opponent 1',
+  opp2: 'Opponent 2',
+  opp3: 'Opponent 3',
 };
 
 function ZoneSection(props: PropertiesPanelProps & { el: ZoneEl }) {
@@ -642,6 +649,30 @@ function ZoneSection(props: PropertiesPanelProps & { el: ZoneEl }) {
           <option value="burn">Burn (char + embers)</option>
         </select>
       </label>
+
+      <label className="field">
+        <span>Keyboard group</span>
+        <select
+          className="select"
+          value={el.keyGroup ?? 'off'}
+          onChange={(e) => patch({
+            keyGroup: e.target.value === 'off'
+              ? undefined
+              : e.target.value as 'plain' | 'shift' | 'ctrl' | 'alt',
+          })}
+        >
+          <option value="off">No keyboard marking</option>
+          <option value="plain">Digits (no modifier)</option>
+          <option value="shift">Shift + digits</option>
+          <option value="ctrl">Ctrl + digits</option>
+          <option value="alt">Alt + digits</option>
+        </select>
+      </label>
+      <p className="faint tt-prop-hint">
+        Desktop keyboard play: holding the modifier spotlights this zone (everything else
+        dims) and its playable cards show 1–9/0 badges; the digit plays the card. "Digits"
+        works without a modifier — the hand.
+      </p>
 
       <Check label="Show zone name" checked={el.showName !== false} onChange={(showName) => patch({ showName })} />
       <Check label="Show card count" checked={el.showCount === true} onChange={(showCount) => patch({ showCount: showCount || undefined })} />

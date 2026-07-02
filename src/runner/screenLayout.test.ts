@@ -312,15 +312,31 @@ describe('seat refs against real zone instances', () => {
     const state = h.state();
     const ids = state.players.map((p) => p.id);
 
-    expect(resolveSeat(ids, 'p0', 'viewer')).toBe('p0');
-    const opp = resolveSeat(ids, 'p0', 'opp1');
+    expect(resolveSeat(ids, 'p0', 'viewer', state.currentPlayerIdx)).toBe('p0');
+    const opp = resolveSeat(ids, 'p0', 'opp1', state.currentPlayerIdx);
     expect(opp).toBe('p1');
     expect(state.zones[zoneInstKey('hand', opp)]).toBeDefined();
     expect(state.zones[zoneInstKey('hand', 'p0')]).toBeDefined();
     expect(state.zones[zoneInstKey('deck', null)]).toBeDefined();
     // 2-player table: opp2/opp3 elements skip rendering.
-    expect(resolveSeat(ids, 'p0', 'opp2')).toBeNull();
-    expect(resolveSeat(ids, 'p0', 'opp3')).toBeNull();
+    expect(resolveSeat(ids, 'p0', 'opp2', state.currentPlayerIdx)).toBeNull();
+    expect(resolveSeat(ids, 'p0', 'opp3', state.currentPlayerIdx)).toBeNull();
+  });
+
+  it("'current' rebinds to the acting seat's instance as the turn passes", async () => {
+    const def = screenDef();
+    const h = harness(def, { players: ['Alice', 'Bob'] });
+    await h.engine.start();
+    const state = h.state();
+    const ids = state.players.map((p) => p.id);
+
+    // Whoever views, 'current' follows state.currentPlayerIdx.
+    const now = resolveSeat(ids, 'p1', 'current', state.currentPlayerIdx);
+    expect(now).toBe(ids[state.currentPlayerIdx]);
+    expect(state.zones[zoneInstKey('hand', now)]).toBeDefined();
+    const passed: GameState = { ...state, currentPlayerIdx: 1 };
+    expect(resolveSeat(ids, 'p0', 'current', passed.currentPlayerIdx)).toBe('p1');
+    expect(resolveSeat(ids, 'p1', 'current', passed.currentPlayerIdx)).toBe('p1');
   });
 });
 

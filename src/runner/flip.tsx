@@ -12,11 +12,17 @@
  * The flight is the reference 3-keyframe arc (ease-out-expo): source rect →
  * midpoint raised by `arc`px at half spin with averaged scale → target rect
  * at full spin. ScreenLayout.motion tunes flightMs/arc/spin/staggerMs
- * (defaults 430/46/4/55); the automatic layout uses the defaults. Flights
- * started by one update stagger by `staggerMs`. Cards arriving in a burn
- * zone (arriveEffect 'burn') fly with the burn profile (420ms, arc 70,
- * spin 6) then char in place (~620ms brightness flash → darken → collapse)
- * under 12-16 rising ember particles.
+ * (defaults 430/46/4/55); the automatic layout uses the defaults. Per-move-
+ * cause overrides (motion.byTag) apply when the flying card's most recent
+ * tagged enter-zone is known: each flight captures `moveTagOf(state, cardId)`
+ * — the engine's public `state.moveTags[cardId]` stamp, read defensively so
+ * the layer works with or without the wave-1a engine feature — and
+ * motionForTag merges that tag's numbers over the base (draw brisk, gain
+ * lingering). Flights started by one update stagger by the tag-resolved
+ * `staggerMs`. Cards arriving in a burn zone (arriveEffect 'burn') fly with
+ * the burn profile (420ms, arc 70, spin 6 — it wins over byTag) then char in
+ * place (~620ms brightness flash → darken → collapse) under 12-16 rising
+ * ember particles.
  *
  * Constraints honored: at most MAX_FLIGHTS concurrent clones per update (the
  * rest just appear), prefers-reduced-motion collapses every flight to a 90ms
@@ -29,7 +35,7 @@ import { isCardVisibleTo } from '../engine';
 import { CardView } from '../components/CardView';
 import { templateOf } from './layout';
 import {
-  asSpeed, BURN_CHAR_MS, BURN_FLIGHT, EASE_OUT_EXPO, scaleMs,
+  asSpeed, BURN_CHAR_MS, BURN_FLIGHT, EASE_OUT_EXPO, motionForTag, scaleMs,
   type ResolvedMotion, type SpeedSetting,
 } from './layoutGeometry';
 import type { TableCtx } from './ZoneViews';
@@ -51,6 +57,23 @@ export interface Flight {
   order: number;
   /** The destination zone plays the burn choreography on arrival. */
   burn: boolean;
+  /** Move-cause tag of the enter-zone that caused this flight (or null). */
+  tag: string | null;
+}
+
+/**
+ * Move-cause tag of a card's most recent tagged enter-zone, read from the
+ * engine's public stamp `state.moveTags[cardId]` (wave-1a move tags). Read
+ * DEFENSIVELY through an optional shape: while the engine feature (or a def
+ * that tags its moves) is absent the map is simply missing and every flight
+ * keeps the base motion numbers.
+ */
+export function moveTagOf(state: GameState, cardId: Id): string | null {
+  const tags = (state as GameState & {
+    moveTags?: Readonly<Record<Id, string | null | undefined>>;
+  }).moveTags;
+  const tag = tags?.[cardId];
+  return typeof tag === 'string' && tag !== '' ? tag : null;
 }
 
 /**
@@ -193,6 +216,8 @@ export function useCardFlights(
           to,
           order: started.length,
           burn: burnKeys?.has(instKey) ?? false,
+          // The state that moved the card carries its enter-zone tag.
+          tag: moveTagOf(state, cardId),
         });
       }
     }
@@ -300,9 +325,12 @@ function FlightCard({ ctx, flight, registry, motion, factor, onDone }: {
       fade.onfinish = done;
       anims.push(fade);
     } else {
-      const m = flight.burn ? BURN_FLIGHT : motion;
+      // Tag-resolved tuning; the burn profile overrides the flight numbers
+      // (arc/spin/duration) but the stagger stays tag-resolved.
+      const tuned = motionForTag(motion, flight.tag);
+      const m = flight.burn ? { ...tuned, ...BURN_FLIGHT } : tuned;
       const duration = Math.max(1, scaleMs(m.flightMs, factor));
-      const delay = scaleMs(flight.order * motion.staggerMs, factor);
+      const delay = scaleMs(flight.order * tuned.staggerMs, factor);
       const dx = flight.from.left - flight.to.left;
       const dy = flight.from.top - flight.to.top;
       const sx = flight.to.width > 0 ? flight.from.width / flight.to.width : 1;

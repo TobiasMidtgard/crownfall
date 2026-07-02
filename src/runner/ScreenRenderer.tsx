@@ -13,7 +13,8 @@
  *     cardScale/fontSize are % of the SCREEN width so phones and desktops
  *     share the authored design.
  *   - Seat refs resolve viewer-relative (layoutGeometry.resolveSeat); seats
- *     beyond the player count render nothing.
+ *     beyond the player count render nothing; 'current' follows the acting
+ *     turn (the element rebinds to the mover every turn).
  *   - `visible` display expressions gate each element; toggles play the
  *     element's reveal transition (exit runs before unmount).
  *   - Element STATES (resolveElementAppearance): the first state whose `when`
@@ -22,7 +23,11 @@
  *     States compose with `visible` (visibility mounts, states style). They
  *     re-evaluate per engine snapshot (React render), never per anim frame.
  *   - onChangeAnim ('stamp'/'flash') replays a one-shot whenever the
- *     element's resolved content or active state changes (elementContentSig).
+ *     element's resolved content or active state changes (elementContentSig);
+ *     'breathe' instead loops (2.6s foe-breathe) WHILE any state matches.
+ *   - Keyboard spotlight (ctx.keySpotlight, keyboard.tsx): while a keyGroup
+ *     modifier is held, every TOP-LEVEL element whose subtree lacks a zone of
+ *     that group gets `rn-kb-dim` (opacity 0.3, CSS-transitioned).
  *   - text elements with `parts` interpolate display expressions (ids render
  *     as names, like announce); varText readouts bump on value change
  *     (ticker, default on); 'log' renders the scrolling chronicle with
@@ -41,6 +46,7 @@ import type { Id, LayoutStyle, Move, ScreenElement } from '../shared/types';
 import { PASS_ACTION_ID } from '../shared/types';
 import { isDisplayVisible } from '../engine';
 import { prefersReducedMotion } from './flip';
+import { subtreeHasKeyGroup } from './keyboard';
 import {
   cardPxFromScale, elementContentSig, formatVarValue, logRows, renderTextParts, zoneInstKey,
 } from './layout';
@@ -126,6 +132,7 @@ export function ScreenRenderer({ ctx, screen, buttonMove, onMove }: {
               screenW={stage.w}
               buttonMove={buttonMove}
               onMove={onMove}
+              root
             />
           ))}
         </div>
@@ -143,11 +150,13 @@ export function ScreenRenderer({ ctx, screen, buttonMove, onMove }: {
  * `rn-rv-<anim>` animation (incl. on first appearance); leaving keeps the
  * node briefly with `rn-rv-<anim>-out` before removal. 'none' is instant.
  */
-function Reveal({ show, anim, rect, frame, children }: {
+function Reveal({ show, anim, rect, frame, dim, children }: {
   show: boolean;
   anim: ScreenElement['reveal'];
   rect: { x: number; y: number; w: number; h: number };
   frame?: React.CSSProperties;
+  /** Keyboard spotlight: this element sits outside the held group. */
+  dim?: boolean;
   children: React.ReactNode;
 }) {
   const [present, setPresent] = useState(show);
@@ -179,7 +188,7 @@ function Reveal({ show, anim, rect, frame, children }: {
     : '';
   return (
     <div
-      className={`rn-el${animClass}`}
+      className={`rn-el${animClass}${dim === true ? ' rn-kb-dim' : ''}`}
       style={{
         left: `${rect.x}%`,
         top: `${rect.y}%`,
@@ -235,14 +244,14 @@ function elementRenders(ctx: TableCtx, el: ScreenElement): boolean {
       if (!zone) return false;
       if (zone.owner === 'shared') return true;
       if (el.seat === 'shared') return false;
-      return resolveSeat(playerIds, ctx.viewerId, el.seat) !== null;
+      return resolveSeat(playerIds, ctx.viewerId, el.seat, ctx.state.currentPlayerIdx) !== null;
     }
     case 'varText': {
       const vd = ctx.def.variables.find((v) => v.id === el.varId);
       if (!vd || vd.scope === 'perCard') return false;
       if (vd.scope === 'global') return true;
       if (el.seat === 'shared') return false;
-      return resolveSeat(playerIds, ctx.viewerId, el.seat) !== null;
+      return resolveSeat(playerIds, ctx.viewerId, el.seat, ctx.state.currentPlayerIdx) !== null;
     }
     default:
       return true;
@@ -274,12 +283,14 @@ function useCollapsed(defId: Id, elId: Id, startCollapsed: boolean): [boolean, (
 
 const COLLAPSE_GLYPH = { left: '‹', right: '›', top: '⌃', bottom: '⌄' } as const;
 
-function ElementView({ ctx, el, screenW, buttonMove, onMove }: {
+function ElementView({ ctx, el, screenW, buttonMove, onMove, root }: {
   ctx: TableCtx;
   el: ScreenElement;
   screenW: number;
   buttonMove: ReadonlyMap<Id, Move>;
   onMove: (m: Move) => void;
+  /** Top-level element (keyboard spotlight dims at this granularity). */
+  root?: boolean;
 }) {
   const spec = el.collapsible ?? null;
   const [collapsed, toggleCollapsed] = useCollapsed(
@@ -346,9 +357,14 @@ function ElementView({ ctx, el, screenW, buttonMove, onMove }: {
     // Expanded collapsible: slide in from its edge; panel floats above peers.
     body = <div className={`rn-collapse-open rn-from-${spec.side}`}>{body}</div>;
   }
+  // 'breathe' is a state-held loop, not a change one-shot ('breathe' rides the
+  // same field; the stored union gains it via the editor — see keyboard/wave-1).
   const changeAnim = el.onChangeAnim !== undefined && el.onChangeAnim !== 'none'
-    ? el.onChangeAnim
+    ? el.onChangeAnim as 'stamp' | 'flash' | 'breathe'
     : null;
+  // Keyboard spotlight: dim top-level elements outside the held group.
+  const spotlight = ctx.keySpotlight ?? null;
+  const dim = root === true && spotlight !== null && !subtreeHasKeyGroup(el, spotlight);
   return (
     <>
       <Reveal
@@ -356,17 +372,26 @@ function ElementView({ ctx, el, screenW, buttonMove, onMove }: {
         anim={el.reveal}
         rect={app.rect}
         frame={spec ? { ...frame, zIndex: 30 } : frame}
+        dim={dim}
       >
-        {changeAnim !== null
+        {changeAnim === 'breathe'
           ? (
-            <ChangeAnim
-              sig={elementContentSig(ctx.def, ctx.state, el, ctx.viewerId, app.stateId)}
-              anim={changeAnim}
-            >
+            // The foe-breathe idle: loops while ANY element state matches
+            // (e.g. the seal's "foe turn" state); base appearance sits still.
+            <div className={`rn-changewrap${app.stateId !== null ? ' rn-anim-breathe' : ''}`}>
               {body}
-            </ChangeAnim>
+            </div>
           )
-          : body}
+          : changeAnim !== null
+            ? (
+              <ChangeAnim
+                sig={elementContentSig(ctx.def, ctx.state, el, ctx.viewerId, app.stateId)}
+                anim={changeAnim}
+              >
+                {body}
+              </ChangeAnim>
+            )
+            : body}
       </Reveal>
       {spec && show && (
         <button
@@ -407,7 +432,9 @@ function VarTextView({ ctx, el, screenW }: {
   } else if (el.seat === 'shared') {
     invalid = true;
   } else {
-    const pid = resolveSeat(state.players.map((p) => p.id), ctx.viewerId, el.seat);
+    const pid = resolveSeat(
+      state.players.map((p) => p.id), ctx.viewerId, el.seat, state.currentPlayerIdx,
+    );
     if (pid === null) invalid = true;
     else value = state.players.find((p) => p.id === pid)?.vars[el.varId];
   }
@@ -490,7 +517,7 @@ function ElementBody({ ctx, el, style, screenW, buttonMove, onMove }: {
       let ownerName: string | null = null;
       if (zone.owner === 'perPlayer') {
         if (el.seat === 'shared') return null; // validation error — skip
-        ownerId = resolveSeat(playerIds, ctx.viewerId, el.seat);
+        ownerId = resolveSeat(playerIds, ctx.viewerId, el.seat, state.currentPlayerIdx);
         if (ownerId === null) return null; // seat exceeds player count
         if (el.seat !== 'viewer') {
           ownerName = state.players.find((p) => p.id === ownerId)?.name ?? null;

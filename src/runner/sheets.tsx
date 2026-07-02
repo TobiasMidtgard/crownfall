@@ -1,16 +1,26 @@
 /**
  * Bottom sheets: blocking choice prompts from the engine (card / option /
- * player / yes-no / multi-select cards) and the action picker shown when
- * several actions apply to the same tapped card or zone.
+ * player / yes-no / multi-select cards / pile) and the action picker shown
+ * when several actions apply to the same tapped card or zone.
  *
  * `revealed` choices show candidates face up to the answering human
  * regardless of normal zone visibility (deck searches).
+ *
+ * Every candidate button carries `data-choice-digit` (DOM order, 1-based,
+ * "0" = the tenth) — the runner's keyboard system bridges number keys to a
+ * click on the matching button. Items past the tenth have no digit.
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type { ChoiceAnswer, ChoiceRequest, GameDef, GameState, Id, Move } from '../shared/types';
 import { isCardVisibleTo } from '../engine';
 import { CardView } from '../components/CardView';
 import { templateOf } from './layout';
+
+/** Keyboard digit for the i-th candidate: 1–9, "0" for the tenth, none after. */
+function choiceDigit(i: number): string | undefined {
+  if (i < 9) return String(i + 1);
+  return i === 9 ? '0' : undefined;
+}
 
 function SheetBase({ who, title, onClose, children }: {
   who?: string;
@@ -100,7 +110,7 @@ export function ChoiceSheet({ def, state, choice, accent, onAnswer }: {
       {choice.kind === 'card' && (
         <>
           <div className="rn-sheet-cards">
-            {choice.cardIds.map((id) => {
+            {choice.cardIds.map((id, i) => {
               const card = state.cards[id];
               if (!card) return null;
               const faceUp = choice.revealed === true || isCardVisibleTo(def, state, id, choice.playerId);
@@ -109,6 +119,7 @@ export function ChoiceSheet({ def, state, choice, accent, onAnswer }: {
                   key={id}
                   type="button"
                   className="rn-cardbtn"
+                  data-choice-digit={choiceDigit(i)}
                   aria-label={`Choose ${faceUp ? card.name : 'face-down card'}`}
                   onClick={() => onAnswer(id)}
                 >
@@ -132,17 +143,24 @@ export function ChoiceSheet({ def, state, choice, accent, onAnswer }: {
           )}
         </>
       )}
+      {choice.kind === 'pile' && (
+        // Piles as mini-cards: the representative's face (its template shows
+        // cost etc.) plus a × N badge from the per-pile counts.
+        <PileChoiceSheet def={def} state={state} choice={choice} accent={accent} onAnswer={onAnswer} />
+      )}
       {choice.kind === 'option' && (
         <div className="rn-sheet-options">
-          {choice.options.map((o) => (
-            <button className="btn" key={o.id} onClick={() => onAnswer(o.id)}>{o.label}</button>
+          {choice.options.map((o, i) => (
+            <button className="btn" key={o.id} data-choice-digit={choiceDigit(i)} onClick={() => onAnswer(o.id)}>
+              {o.label}
+            </button>
           ))}
         </div>
       )}
       {choice.kind === 'player' && (
         <div className="rn-sheet-options">
-          {choice.playerIds.map((pid) => (
-            <button className="btn" key={pid} onClick={() => onAnswer(pid)}>
+          {choice.playerIds.map((pid, i) => (
+            <button className="btn" key={pid} data-choice-digit={choiceDigit(i)} onClick={() => onAnswer(pid)}>
               {state.players.find((p) => p.id === pid)?.name ?? pid}
             </button>
           ))}
@@ -189,7 +207,7 @@ function CardsPicker({ def, state, choice, accent, onAnswer }: {
         Pick {need} card{choice.max === 1 ? '' : 's'} · <b>{picked.length}</b> selected
       </div>
       <div className="rn-sheet-cards">
-        {choice.cardIds.map((id) => {
+        {choice.cardIds.map((id, i) => {
           const card = state.cards[id];
           if (!card) return null;
           const faceUp = choice.revealed === true || isCardVisibleTo(def, state, id, choice.playerId);
@@ -199,6 +217,7 @@ function CardsPicker({ def, state, choice, accent, onAnswer }: {
               key={id}
               type="button"
               className={`rn-cardbtn rn-mselbtn${idx >= 0 ? ' rn-msel-on' : ''}`}
+              data-choice-digit={choiceDigit(i)}
               aria-pressed={idx >= 0}
               aria-label={`${idx >= 0 ? 'Deselect' : 'Select'} ${faceUp ? card.name : 'face-down card'}`}
               onClick={() => toggle(id)}
@@ -221,6 +240,53 @@ function CardsPicker({ def, state, choice, accent, onAnswer }: {
       >
         Confirm{picked.length > 0 ? ` (${picked.length})` : ''}
       </button>
+    </>
+  );
+}
+
+/**
+ * Pile choice ('pile') body: one mini-card per pile (the representative's
+ * face — its template carries cost etc.) with a × N count badge; tapping a
+ * pile answers with its representative id. Skip appears when optional.
+ */
+export function PileChoiceSheet({ def, state, choice, accent, onAnswer }: {
+  def: GameDef;
+  state: GameState;
+  choice: Extract<ChoiceRequest, { kind: 'pile' }>;
+  accent: string;
+  onAnswer: (a: ChoiceAnswer) => void;
+}) {
+  return (
+    <>
+      <div className="rn-sheet-cards">
+        {choice.cardIds.map((id, i) => {
+          const card = state.cards[id];
+          if (!card) return null;
+          const faceUp = isCardVisibleTo(def, state, id, choice.playerId);
+          const count = choice.counts[i] ?? 0;
+          return (
+            <button
+              key={id}
+              type="button"
+              className="rn-cardbtn rn-mselbtn rn-pilebtn"
+              data-choice-digit={choiceDigit(i)}
+              aria-label={`Choose ${faceUp ? card.name : 'face-down pile'} (${count} in pile)`}
+              onClick={() => onAnswer(id)}
+            >
+              <CardView
+                card={{ name: card.name, templateId: card.templateId, fields: card.fields, faceUp }}
+                template={templateOf(def, card)}
+                width={88}
+                accent={accent}
+              />
+              <span className="rn-msel-count rn-pile-count">×{count}</span>
+            </button>
+          );
+        })}
+      </div>
+      {choice.optional && (
+        <button className="btn" onClick={() => onAnswer(null)}>Skip</button>
+      )}
     </>
   );
 }

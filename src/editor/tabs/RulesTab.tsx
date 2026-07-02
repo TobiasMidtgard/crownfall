@@ -18,6 +18,7 @@ const EVENT_KINDS: { kind: EventSpec['kind']; label: string }[] = [
   { kind: 'cardLeaveZone', label: 'A card leaves a zone' },
   { kind: 'zoneEmptied', label: 'A zone becomes empty' },
   { kind: 'varChanged', label: 'A variable changes' },
+  { kind: 'effectResolved', label: 'A stacked effect resolves' },
 ];
 
 function makeEvent(kind: EventSpec['kind']): EventSpec {
@@ -26,10 +27,11 @@ function makeEvent(kind: EventSpec['kind']): EventSpec {
     case 'turnEnd': return { kind: 'turnEnd' };
     case 'phaseStart': return { kind: 'phaseStart', phaseId: null };
     case 'phaseEnd': return { kind: 'phaseEnd', phaseId: null };
-    case 'cardEnterZone': return { kind: 'cardEnterZone', zoneId: null };
-    case 'cardLeaveZone': return { kind: 'cardLeaveZone', zoneId: null };
+    case 'cardEnterZone': return { kind: 'cardEnterZone', zoneId: null, tag: null };
+    case 'cardLeaveZone': return { kind: 'cardLeaveZone', zoneId: null, tag: null };
     case 'zoneEmptied': return { kind: 'zoneEmptied', zoneId: null };
     case 'varChanged': return { kind: 'varChanged', varId: null };
+    case 'effectResolved': return { kind: 'effectResolved' };
   }
 }
 
@@ -38,9 +40,11 @@ function eventBindings(def: GameDef, ev: EventSpec): string[] {
   switch (ev.kind) {
     case 'cardEnterZone':
     case 'cardLeaveZone':
-      return ['$card', '$fromZone', '$toZone', '$owner'];
+      return ['$card', '$fromZone', '$toZone', '$owner', '$tag'];
     case 'zoneEmptied':
       return ['$zone', '$owner'];
+    case 'effectResolved':
+      return ['$card', '$player'];
     case 'varChanged': {
       const scope = ev.varId ? def.variables.find((v) => v.id === ev.varId)?.scope : undefined;
       if (scope === 'perPlayer') return ['$player'];
@@ -225,6 +229,32 @@ function EventSubSelect({ def, event, onChange }: {
       );
     case 'cardEnterZone':
     case 'cardLeaveZone':
+      return (
+        <>
+          <label className="field">
+            <span>Which zone</span>
+            <select
+              className="select"
+              value={event.zoneId ?? ''}
+              onChange={(e) => onChange({ ...event, zoneId: e.target.value || null })}
+            >
+              <option value="">Any zone</option>
+              {def.zones.map((z) => <option key={z.id} value={z.id}>{z.name}</option>)}
+            </select>
+          </label>
+          <label className="field">
+            <span>With move tag</span>
+            <input
+              type="text"
+              className="input"
+              value={event.tag ?? ''}
+              placeholder="any move (e.g. gain, play, draw)"
+              title="Only fire for moves carrying exactly this cause tag. Canonical tags: gain, buy, trash, discard, play, draw, cleanup. Empty = any move."
+              onChange={(e) => onChange({ ...event, tag: e.target.value === '' ? null : e.target.value })}
+            />
+          </label>
+        </>
+      );
     case 'zoneEmptied':
       return (
         <label className="field">
@@ -255,6 +285,7 @@ function EventSubSelect({ def, event, onChange }: {
       );
     case 'turnStart':
     case 'turnEnd':
+    case 'effectResolved':
       return null;
   }
 }

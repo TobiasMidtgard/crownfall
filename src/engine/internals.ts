@@ -13,10 +13,13 @@ export type Frame = Record<string, RuntimeValue>;
 export type EngineEvent =
   | { kind: 'turnStart' | 'turnEnd'; playerId: Id }
   | { kind: 'phaseStart' | 'phaseEnd'; phaseId: Id; playerId: Id }
-  | { kind: 'cardEnterZone'; cardId: Id; fromZoneId: Id | null; toZoneId: Id; toOwner: Id | null }
-  | { kind: 'cardLeaveZone'; cardId: Id; fromZoneId: Id; toZoneId: Id | null; fromOwner: Id | null }
+  /** `tag` = the move's cause tag (null for untagged moves). */
+  | { kind: 'cardEnterZone'; cardId: Id; fromZoneId: Id | null; toZoneId: Id; toOwner: Id | null; tag: string | null }
+  | { kind: 'cardLeaveZone'; cardId: Id; fromZoneId: Id; toZoneId: Id | null; fromOwner: Id | null; tag: string | null }
   | { kind: 'zoneEmptied'; zoneId: Id; owner: Id | null }
-  | { kind: 'varChanged'; varId: Id; playerId: Id | null; cardId: Id | null };
+  | { kind: 'varChanged'; varId: Id; playerId: Id | null; cardId: Id | null }
+  /** A pending stack entry's script resolved and settled (never for cancels). */
+  | { kind: 'effectResolved'; label: string; sourceCardId: Id | null; byPlayerId: Id | null };
 
 /** Max block executions per settle (action / setup / transition). */
 export const BLOCK_BUDGET = 10_000;

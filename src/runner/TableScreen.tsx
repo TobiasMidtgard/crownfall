@@ -14,6 +14,12 @@
  * Card moves animate in BOTH modes via the FLIP layer (see flip.tsx), tuned
  * by the layout's motion spec and the persisted status-bar speed toggle
  * (1× / 2× / instant — instant skips clones entirely).
+ *
+ * Screen mode also mounts the keyboard system (keyboard.tsx): keyGroup zones
+ * get digit badges + modifier spotlighting, Enter fires the first enabled
+ * screen button; everything suspends while a sheet/choice/dialog is open.
+ * The root carries data-phase (phase id) and data-active ('you'/'foe'/'over')
+ * so skin CSS can scope phase/turn-conditional styling.
  */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 // TableScreen owns its stylesheet: hosts that mount the table directly
@@ -22,12 +28,13 @@ import './runner.css';
 import type { GameDef, GameState, Id, Move } from '../shared/types';
 import { PASS_ACTION_ID } from '../shared/types';
 import {
-  bucketZones, burnZoneKeys, buttonMoves, formatVarValue, movesByCard, movesByZoneInstance,
-  noneTargetMoveByAction, pickViewer, visibleButtonActionIds, zoneInstKey,
+  actingSeat, bucketZones, burnZoneKeys, buttonMoves, formatVarValue, movesByCard,
+  movesByZoneInstance, noneTargetMoveByAction, pickViewer, visibleButtonActionIds, zoneInstKey,
 } from './layout';
 import {
   activeScreenVariant, nextSpeed, resolveMotion, speedFactor, type SpeedSetting,
 } from './layoutGeometry';
+import { useTableKeyboard } from './keyboard';
 import { GameSession, type SeatSetup, type SessionSnapshot } from './session';
 import { OpponentsStrip, VarChips } from './OpponentsStrip';
 import { ZoneBlock, type TableCtx } from './ZoneViews';
@@ -216,13 +223,35 @@ function Table({ def, session, snap, navigate, onPlayAgain, homeLabel }: {
     burnKeys,
   );
 
+  // ----- keyboard system (desktop only; keyGroup zones, Enter = first seal) --
+  const [logOpen, setLogOpen] = useState(false);
+  const choice = snap.choice;
+  // Any sheet/choice/dialog (or the curtain) suspends the bindings; digit
+  // selection of sheet options keeps working via [data-choice-digit].
+  const overlayOpen = pick !== null || choice !== null || logOpen
+    || state.result !== null || showCurtain;
+  const keyboard = useTableKeyboard({
+    def,
+    state,
+    viewerId,
+    elements: active?.elements ?? null,
+    cardMoves,
+    buttonMove: screenButtonMove,
+    overlayOpen,
+    humanCanAct: snap.moves.length > 0 && !snap.finished,
+    narrow,
+    onActivateCard: onCardTap,
+    onMove: doMove,
+  });
+
   const ctx: TableCtx = useMemo(
     () => ({
       def, state, viewerId, accent, cardMoves, zoneMoves, rotateVar, badgeVars, cardRects,
+      keyBadges: keyboard.badges, keySpotlight: keyboard.spotlight,
       onCardTap, onZoneTap,
     }),
     [def, state, viewerId, accent, cardMoves, zoneMoves, rotateVar, badgeVars, cardRects,
-      onCardTap, onZoneTap],
+      keyboard.badges, keyboard.spotlight, onCardTap, onZoneTap],
   );
 
   // ----- announcement snackbar from new log entries -----
@@ -240,9 +269,7 @@ function Table({ def, session, snap, navigate, onPlayAgain, homeLabel }: {
     return () => window.clearTimeout(t);
   }, [snack]);
 
-  const [logOpen, setLogOpen] = useState(false);
   const globalVars = def.variables.filter((v) => v.scope === 'global');
-  const choice = snap.choice;
 
   // Screen-reader page heading: the table itself has no visible headings
   // until the game-over h2, so heading navigation needs this landmark.
@@ -296,6 +323,14 @@ function Table({ def, session, snap, navigate, onPlayAgain, homeLabel }: {
     </div>
   );
 
+  // Skin hooks (DGT body[data-phase]/[data-active] pattern): the current
+  // phase id and whether the ACTING seat (window holder, else the current
+  // player) is the viewer — lets skin CSS scope phase/turn styling, e.g. a
+  // buy-phase rn-glow-gold retarget of the supply's legal glow.
+  const actor = actingSeat(state);
+  const activeAttr = state.result !== null ? 'over'
+    : actor !== null && actor.id === viewerId ? 'you' : 'foe';
+
   const actionBar = barMoves.length > 0 && (
     <div className="rn-actionbar">
       {barMoves.map(({ move, name }) => (
@@ -311,7 +346,7 @@ function Table({ def, session, snap, navigate, onPlayAgain, homeLabel }: {
   );
 
   return (
-    <div className="rn-root">
+    <div className="rn-root" data-phase={phase?.id} data-active={activeAttr}>
       {tableHeading}
       <div className="rn-table">
         {active ? (

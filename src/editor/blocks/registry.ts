@@ -86,6 +86,12 @@ function firstSharedZoneRef(def: GameDef): ZoneRef {
   return { zoneId: (def.zones.find((z) => z.owner === 'shared') ?? def.zones[0])?.id ?? '', owner: null };
 }
 
+/** First zone whose name matches, else null (draw block defaults). */
+function zoneRefByName(def: GameDef, pattern: RegExp): ZoneRef | null {
+  const zone = def.zones.find((z) => pattern.test(z.name));
+  return zone ? { zoneId: zone.id, owner: null } : null;
+}
+
 /** Sensible default comparison: "card count in <first zone> = 0". */
 export function defaultCompare(def: GameDef): Expr {
   return { kind: 'compare', op: '==', left: { kind: 'zoneCount', zone: firstZoneRef(def) }, right: num(0) };
@@ -120,6 +126,20 @@ const BLOCK_ENTRIES: { [K in Block['kind']]: BlockEntry } = {
       kind: 'moveCards', from: firstZoneRef(def), to: secondZoneRef(def),
       cards: { kind: 'top', count: num(1) }, toPosition: 'top', faceUp: null,
     }),
+  },
+  draw: {
+    category: 'cards', label: 'Draw cards',
+    description: 'Move cards one at a time (deck → hand), reshuffling a refill zone in when the source runs out. Moves are tagged "draw".',
+    make: (def) => {
+      const from = zoneRefByName(def, /deck|draw|library|stock/i) ?? firstZoneRef(def);
+      const refill = zoneRefByName(def, /discard|grave/i);
+      return {
+        kind: 'draw', who: null, count: num(1), from,
+        refillFrom: refill && refill.zoneId !== from.zoneId ? refill : null,
+        to: zoneRefByName(def, /hand/i) ?? secondZoneRef(def),
+        faceUp: null, tag: 'draw',
+      };
+    },
   },
   deal: {
     category: 'cards', label: 'Deal',
@@ -182,6 +202,22 @@ const BLOCK_ENTRIES: { [K in Block['kind']]: BlockEntry } = {
       min: num(1), max: num(1), prompt: 'Choose cards', revealed: false, body: [],
     }),
   },
+  choosePile: {
+    category: 'players', label: 'Ask to choose a pile',
+    description: 'Group a zone into piles of identical cards (a supply); the player picks one pile, then blocks run with $card = its top copy.',
+    make: (def) => ({
+      kind: 'choosePile', who: null, from: firstSharedZoneRef(def), filter: null,
+      groupBy: 'def', prompt: 'Choose a pile', optional: false, body: [],
+    }),
+  },
+  triggerAbilities: {
+    category: 'cards', label: 'Trigger card abilities',
+    description: 'Fire a card’s enter-zone moment again WITHOUT moving it (play it again, like Throne Room). The event is tagged "play".',
+    make: (def) => ({
+      kind: 'triggerAbilities', card: { kind: 'binding', name: '$card' },
+      on: 'enterZone', zoneId: def.zones[0]?.id ?? '',
+    }),
+  },
   cancelTopEffect: {
     category: 'game', label: 'Cancel top effect',
     description: 'Counter/negate: remove the top pending effect from the stack without resolving it.',
@@ -221,10 +257,10 @@ const BLOCK_ENTRIES: { [K in Block['kind']]: BlockEntry } = {
 };
 
 const BLOCK_ORDER: Block['kind'][] = [
-  'moveCards', 'deal', 'shuffle', 'flipCards',
+  'moveCards', 'draw', 'deal', 'shuffle', 'flipCards', 'triggerAbilities',
   'setVar', 'changeVar',
   'if', 'repeat', 'forEachPlayer', 'forEachCard',
-  'choose', 'chooseCards', 'setNextPlayer',
+  'choose', 'chooseCards', 'choosePile', 'setNextPlayer',
   'announce', 'cancelTopEffect', 'endPhase', 'endTurn', 'endGame',
 ];
 
@@ -270,6 +306,11 @@ const EXPR_ENTRIES: { [K in Expr['kind']]: ExprEntry } = {
   countCards: {
     category: 'zones', label: 'Count matching cards', description: 'How many cards in a zone match a condition.',
     make: (def) => ({ kind: 'countCards', zone: firstZoneRef(def), filter: defaultCardFilter(def) }),
+  },
+  sumCards: {
+    category: 'zones', label: 'Sum a card field',
+    description: 'Add up a number field across a zone’s (matching) cards — hand coin totals, victory points. Non-numbers count 0.',
+    make: (def) => ({ kind: 'sumCards', zone: firstZoneRef(def), fieldId: 'rank', filter: null }),
   },
   topCard: {
     category: 'zones', label: 'Top card', description: 'The card on top of a zone.',
@@ -332,7 +373,8 @@ const EXPR_ENTRIES: { [K in Expr['kind']]: ExprEntry } = {
     make: () => ({ kind: 'turnNumber' }),
   },
   compare: {
-    category: 'logic', label: 'Compare', description: 'Compare two values (=, ≠, <, ≤, >, ≥).',
+    category: 'logic', label: 'Compare',
+    description: 'Compare two values (=, ≠, <, ≤, >, ≥) — or "contains word": true when the right value is a whole space-separated word inside the left text ("action attack" contains "action", not "act").',
     make: (def) => defaultCompare(def),
   },
   math: {
@@ -352,7 +394,7 @@ const EXPR_ENTRIES: { [K in Expr['kind']]: ExprEntry } = {
 const EXPR_ORDER: Expr['kind'][] = [
   'num', 'str', 'bool', 'random',
   'getVar',
-  'zoneCount', 'countCards', 'topCard', 'bestCard',
+  'zoneCount', 'countCards', 'sumCards', 'topCard', 'bestCard',
   'cardField', 'cardOwner', 'cardZoneId',
   'currentPlayer', 'nextPlayer', 'playerCount', 'binding',
   'turnNumber', 'stackSize', 'stackTopCard',

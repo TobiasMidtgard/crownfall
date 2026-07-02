@@ -33,7 +33,7 @@ export function validateGameDef(def: GameDef): ValidationIssue[] {
       case 'num': return 'number';
       case 'str': return 'string';
       case 'bool': return 'boolean';
-      case 'math': case 'zoneCount': case 'countCards': case 'random':
+      case 'math': case 'zoneCount': case 'countCards': case 'sumCards': case 'random':
       case 'turnNumber': case 'playerCount': case 'phaseIndex': case 'phasePos':
         return 'number';
       case 'compare': case 'logic': case 'not': case 'phaseIs': return 'boolean';
@@ -54,6 +54,27 @@ export function validateGameDef(def: GameDef): ValidationIssue[] {
 
   const err = (where: string, message: string) => issues.push({ severity: 'error', where, message });
   const warn = (where: string, message: string) => issues.push({ severity: 'warning', where, message });
+
+  // Every move-cause tag any block in the def can emit (typo detection for
+  // tag filters): moveCards' explicit tags, draw's tag (default 'draw'),
+  // and 'play' when any triggerAbilities block exists (synthetic events).
+  const emittedTags = new Set<string>();
+  {
+    const scanTags = (blocks: Block[]) => {
+      for (const b of blocks) {
+        if (b.kind === 'moveCards' && b.tag != null) emittedTags.add(b.tag);
+        if (b.kind === 'draw') emittedTags.add(b.tag ?? 'draw');
+        if (b.kind === 'triggerAbilities') emittedTags.add('play');
+        if (b.kind === 'if') { scanTags(b.then); scanTags(b.else); }
+        if ('body' in b && Array.isArray((b as { body?: Block[] }).body)) scanTags((b as { body: Block[] }).body);
+      }
+    };
+    scanTags(def.setup);
+    def.phases.forEach((p) => scanTags(p.onEnter));
+    def.actions.forEach((a) => { scanTags(a.script); if (a.announce) scanTags(a.announce); });
+    def.triggers.forEach((t) => scanTags(t.script));
+    def.cards.forEach((c) => c.abilities.forEach((a) => scanTags(a.script)));
+  }
 
   if (!def.meta.name.trim()) warn('Game info', 'The game has no name.');
   if (def.meta.minPlayers < 1) err('Game info', 'Minimum players must be at least 1.');
@@ -84,6 +105,13 @@ export function validateGameDef(def: GameDef): ValidationIssue[] {
         err(where, `A "${ab.on}" ability needs a "while in zone" — without one it never fires.`);
       }
       if (ab.phaseId != null && !phaseIds.has(ab.phaseId)) err(where, 'References a phase that no longer exists.');
+      if (ab.tagFilter != null) {
+        if (ab.on !== 'enterZone' && ab.on !== 'leaveZone') {
+          warn(where, 'A move-tag filter only applies to enter/leave-zone abilities — it is ignored here.');
+        } else if (!emittedTags.has(ab.tagFilter)) {
+          warn(where, `Filters on move tag "${ab.tagFilter}" but nothing in this game emits it — the ability never fires.`);
+        }
+      }
       if (ab.condition) walkExpr(ab.condition, where);
       walkBlocks(ab.script, where);
     }
@@ -234,6 +262,12 @@ export function validateGameDef(def: GameDef): ValidationIssue[] {
     if ('zoneId' in ev && ev.zoneId !== null && !zoneIds.has(ev.zoneId)) err(where, 'Watches a missing zone.');
     if ('varId' in ev && ev.varId !== null && !varIds.has(ev.varId)) err(where, 'Watches a missing variable.');
     if ('phaseId' in ev && ev.phaseId !== null && !phaseIds.has(ev.phaseId)) err(where, 'Watches a phase that no longer exists.');
+    if ((ev.kind === 'cardEnterZone' || ev.kind === 'cardLeaveZone') && ev.tag != null && !emittedTags.has(ev.tag)) {
+      warn(where, `Filters on move tag "${ev.tag}" but nothing in this game emits it — the rule never fires.`);
+    }
+    if (ev.kind === 'effectResolved' && trigger.stacked === true) {
+      warn(where, 'A stacked "effect resolved" rule pushes a new effect whenever one resolves — this can loop until the stack cap.');
+    }
     if (trigger.condition) walkExpr(trigger.condition, `${where} > condition`);
     walkBlocks(trigger.script, where);
   }
@@ -338,6 +372,28 @@ export function validateGameDef(def: GameDef): ValidationIssue[] {
         walkExpr(b.max, where);
         walkBlocks(b.body, where);
         break;
+      case 'choosePile':
+        if (b.who) walkExpr(b.who, where);
+        checkZoneRef(b.from, where);
+        if (b.filter) walkExpr(b.filter, where);
+        walkBlocks(b.body, where);
+        break;
+      case 'draw':
+        if (b.who) walkExpr(b.who, where);
+        walkExpr(b.count, where);
+        checkZoneRef(b.from, where);
+        checkZoneRef(b.to, where);
+        if (b.refillFrom) {
+          checkZoneRef(b.refillFrom, where);
+          if (b.refillFrom.zoneId === b.from.zoneId) {
+            err(where, 'Draw refills from its own source zone — pick a different refill zone (or none).');
+          }
+        }
+        break;
+      case 'triggerAbilities':
+        walkExpr(b.card, where);
+        if (!zoneIds.has(b.zoneId)) err(where, 'Fires enter-zone abilities for a zone that no longer exists.');
+        break;
       case 'cancelTopEffect':
         if (b.cardTo !== null && !zoneIds.has(b.cardTo)) {
           err(where, 'Sends the cancelled card to a zone that no longer exists.');
@@ -376,10 +432,22 @@ export function validateGameDef(def: GameDef): ValidationIssue[] {
         checkZoneRef(e.zone, where);
         if (e.filter) walkExpr(e.filter, where);
         break;
+      case 'sumCards':
+        checkZoneRef(e.zone, where);
+        if (!fieldIds.has(e.fieldId)) warn(where, `Field "${e.fieldId}" is not defined on any template.`);
+        if (e.filter) walkExpr(e.filter, where);
+        break;
       case 'compare': {
         walkExpr(e.left, where); walkExpr(e.right, where);
         const lt = typeOf(e.left);
         const rt = typeOf(e.right);
+        if (e.op === 'contains') {
+          // Whole-word text membership — a statically numeric side is a bug.
+          if (lt === 'number' || rt === 'number') {
+            warn(where, '"contains" looks for a whole word inside text — a number on either side will never match.');
+          }
+          break;
+        }
         if (lt && rt && lt !== rt) {
           warn(where, `Compares a ${lt} with a ${rt} — this can never match.`);
         } else if (e.op !== '==' && e.op !== '!=') {

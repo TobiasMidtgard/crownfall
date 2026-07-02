@@ -566,21 +566,28 @@ export function patchMobileVariant(layout: ScreenLayout, patch: Partial<ScreenVa
 // Motion (card-flight tuning; layout-level)
 // ---------------------------------------------------------------------------
 
-/** Runner defaults (DGT reference timings) — shown as stepper baselines. */
-export const MOTION_DEFAULTS: Required<MotionSpec> = {
+/**
+ * Runner defaults (DGT reference timings) — shown as stepper baselines.
+ * Numeric fields only: `byTag` (per-move-tag overrides) is def-authored,
+ * not stepper-edited, and rides through patchMotion untouched.
+ */
+export const MOTION_DEFAULTS: Required<Omit<MotionSpec, 'byTag'>> = {
   flightMs: 430, arc: 46, spin: 4, staggerMs: 55,
 };
 
+const MOTION_NUMERIC_KEYS = ['flightMs', 'arc', 'spin', 'staggerMs'] as const;
+
 /**
  * Merge a motion patch into the layout. Values matching the runner default
- * aren't stored (the def stays minimal); an all-default spec removes the
- * `motion` key entirely.
+ * aren't stored (the def stays minimal); an all-default spec (with no byTag
+ * overrides) removes the `motion` key entirely.
  */
 export function patchMotion(layout: ScreenLayout, patch: Partial<MotionSpec>): ScreenLayout {
   const next: MotionSpec = { ...(layout.motion ?? {}), ...patch };
-  (Object.keys(next) as (keyof MotionSpec)[]).forEach((k) => {
+  MOTION_NUMERIC_KEYS.forEach((k) => {
     if (next[k] === undefined || next[k] === MOTION_DEFAULTS[k]) delete next[k];
   });
+  if (next.byTag !== undefined && Object.keys(next.byTag).length === 0) delete next.byTag;
   if (Object.keys(next).length === 0) {
     const { motion: _gone, ...rest } = layout;
     return rest;

@@ -17,13 +17,18 @@ function matchesTrigger(spec: EventSpec, ev: EngineEvent): boolean {
     case 'phaseStart': case 'phaseEnd':
       return ev.kind === spec.kind && (spec.phaseId === null || spec.phaseId === ev.phaseId);
     case 'cardEnterZone':
-      return ev.kind === 'cardEnterZone' && (spec.zoneId === null || spec.zoneId === ev.toZoneId);
+      // spec.tag null/absent = any move; a string matches only that cause.
+      return ev.kind === 'cardEnterZone' && (spec.zoneId === null || spec.zoneId === ev.toZoneId)
+        && (spec.tag == null || spec.tag === ev.tag);
     case 'cardLeaveZone':
-      return ev.kind === 'cardLeaveZone' && (spec.zoneId === null || spec.zoneId === ev.fromZoneId);
+      return ev.kind === 'cardLeaveZone' && (spec.zoneId === null || spec.zoneId === ev.fromZoneId)
+        && (spec.tag == null || spec.tag === ev.tag);
     case 'zoneEmptied':
       return ev.kind === 'zoneEmptied' && (spec.zoneId === null || spec.zoneId === ev.zoneId);
     case 'varChanged':
       return ev.kind === 'varChanged' && (spec.varId === null || spec.varId === ev.varId);
+    case 'effectResolved':
+      return ev.kind === 'effectResolved';
   }
 }
 
@@ -34,15 +39,21 @@ function eventBindings(ev: EngineEvent): Frame {
     case 'phaseStart': case 'phaseEnd':
       return { $player: ev.playerId };
     case 'cardEnterZone':
-      return { $card: ev.cardId, $fromZone: ev.fromZoneId, $toZone: ev.toZoneId, $owner: ev.toOwner };
+      return { $card: ev.cardId, $fromZone: ev.fromZoneId, $toZone: ev.toZoneId, $owner: ev.toOwner, $tag: ev.tag };
     case 'cardLeaveZone':
-      return { $card: ev.cardId, $fromZone: ev.fromZoneId, $toZone: ev.toZoneId, $owner: ev.fromOwner };
+      return { $card: ev.cardId, $fromZone: ev.fromZoneId, $toZone: ev.toZoneId, $owner: ev.fromOwner, $tag: ev.tag };
     case 'zoneEmptied':
       return { $zone: ev.zoneId, $owner: ev.owner };
     case 'varChanged': {
       const frame: Frame = {};
       if (ev.playerId !== null) frame['$player'] = ev.playerId;
       if (ev.cardId !== null) frame['$card'] = ev.cardId;
+      return frame;
+    }
+    case 'effectResolved': {
+      const frame: Frame = {};
+      if (ev.sourceCardId !== null) frame['$card'] = ev.sourceCardId;
+      if (ev.byPlayerId !== null) frame['$player'] = ev.byPlayerId;
       return frame;
     }
   }
@@ -98,6 +109,8 @@ async function runAbilities(core: Core, ev: EngineEvent): Promise<void> {
     for (const ab of abilitiesOf(core, card)) {
       if (ab.on !== on) continue;
       if (ab.zoneId !== null && ab.zoneId !== evZone) continue;
+      // Cause filter: null/absent = any move; a string = only that cause.
+      if (ab.tagFilter != null && ab.tagFilter !== ev.tag) continue;
       await runEventScript(core, abilityFrame(core, ev, card), ab.condition, ab.script, {
         label: `${card.name}: ${ab.name}`, stacked: ab.stacked === true, sourceCardId: card.instanceId,
       });
@@ -134,7 +147,7 @@ async function runAbilities(core: Core, ev: EngineEvent): Promise<void> {
       });
     }
   }
-  // zoneEmptied / varChanged have no ability hooks.
+  // zoneEmptied / varChanged / effectResolved have no ability hooks.
 }
 
 /** Drain the event queue (FIFO), running triggers then abilities per event. */

@@ -12,7 +12,7 @@ import type {
 } from '../../shared/types';
 
 const COMPARE_TEXT: Record<CompareOp, string> = {
-  '==': '=', '!=': '≠', '<': '<', '<=': '≤', '>': '>', '>=': '≥',
+  '==': '=', '!=': '≠', '<': '<', '<=': '≤', '>': '>', '>=': '≥', contains: 'contains',
 };
 const MATH_TEXT: Record<MathOp, string> = { '+': '+', '-': '−', '*': '×', '/': '÷', '%': 'mod' };
 
@@ -104,6 +104,10 @@ export function exprToText(def: GameDef, expr: Expr): string {
     }
     case 'countCards': {
       const base = `count of cards in ${zoneRefToText(def, expr.zone)}`;
+      return expr.filter ? `${base} where ${exprToText(def, expr.filter)}` : base;
+    }
+    case 'sumCards': {
+      const base = `sum of ${fieldName(def, expr.fieldId)} in ${zoneRefToText(def, expr.zone)}`;
       return expr.filter ? `${base} where ${exprToText(def, expr.filter)}` : base;
     }
     case 'random': return `random 1 to ${exprToText(def, expr.max)}`;

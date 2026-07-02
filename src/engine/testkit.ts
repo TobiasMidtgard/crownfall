@@ -95,7 +95,7 @@ export const selFilter = (filter: Expr): CardSelector => ({ kind: 'filter', filt
 export const selSpec = (card: Expr): CardSelector => ({ kind: 'specific', card });
 export const selRandom = (n: number): CardSelector => ({ kind: 'random', count: num(n) });
 
-export function mv(from: ZoneRef, to: ZoneRef, cards: CardSelector, over: Partial<{ toPosition: 'top' | 'bottom'; faceUp: boolean | null }> = {}): Block {
+export function mv(from: ZoneRef, to: ZoneRef, cards: CardSelector, over: Partial<{ toPosition: 'top' | 'bottom'; faceUp: boolean | null; tag: string | null }> = {}): Block {
   return { kind: 'moveCards', from, to, cards, toPosition: 'top', faceUp: null, ...over };
 }
 

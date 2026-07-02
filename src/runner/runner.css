@@ -680,9 +680,14 @@ section.rn-bottom.rn-priority { border-top-color: var(--accent); }
     width 0.2s ease,
     height 0.2s ease,
     background-color 0.2s ease,
-    border-color 0.2s ease;
+    border-color 0.2s ease,
+    opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .rn-el > * { flex: 1; min-height: 0; }
+
+/* Keyboard spotlight: while a keyGroup modifier is held, every top-level
+   element OUTSIDE the held group dims (class set by ScreenRenderer). */
+.rn-el.rn-kb-dim { opacity: 0.3; }
 
 /* Zones stretched into an authored rect. */
 .rn-zone-fill {
@@ -752,6 +757,74 @@ section.rn-bottom.rn-priority { border-top-color: var(--accent); }
   animation: rn-pulse 1.4s ease-in-out infinite;
 }
 .rn-spile.rn-piledim { opacity: 0.55; }
+
+/* Depleted pile (count 0): grayed and inert, the DGT empty-supply look.
+   Applied by SupplyPile whenever a rendered pile's count reaches zero. */
+.rn-spile.rn-pile-empty {
+  opacity: 0.28;
+  filter: grayscale(0.9);
+  pointer-events: none;
+}
+
+/* Gold variant of the legal glow (the DGT buy-phase "reachable" cue). A
+   visual primitive: the runner never sets it by itself — skins retarget or
+   attach it, scoped by the root's data attributes, e.g.
+   .skin [data-phase="buy"] .rn-spile.rn-pilelegal { animation-name: rn-pulse-gold; } */
+.rn-cardwrap.rn-glow.rn-glow-gold {
+  box-shadow:
+    0 0 0 2px var(--rn-gold, #e2b455),
+    0 4px 18px rgba(226, 180, 85, 0.45);
+}
+.rn-spile.rn-pilelegal.rn-glow-gold { animation-name: rn-pulse-gold; }
+@keyframes rn-pulse-gold {
+  0%, 100% { box-shadow: 0 0 0 2px var(--rn-gold, #e2b455), 0 0 10px rgba(226, 180, 85, 0.3); }
+  50% { box-shadow: 0 0 0 3px var(--rn-gold, #e2b455), 0 0 22px rgba(226, 180, 85, 0.6); }
+}
+
+/* ---------- keyboard digit badges (zone keyGroup; keyboard.tsx) ---------- */
+
+/* Digit badge on a tappable card/pile face. Modifier-group badges hide until
+   their modifier spotlights the group; 'plain' badges stay discoverable
+   (DGT hand badges). Lit: scale 1.25 + accent tokens. */
+.rn-keybadge {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  z-index: 3;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--bg-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.8);
+  transition:
+    opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.rn-keybadge.rn-keybadge-plain {
+  opacity: 0.85;
+  transform: none;
+}
+.rn-keybadge.rn-keybadge-lit {
+  opacity: 1;
+  transform: scale(1.25);
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
 
 /* Field badge (e.g. cost): a small rotated-square lozenge on the corner. */
 .rn-pilecost {
@@ -849,11 +922,11 @@ section.rn-bottom.rn-priority { border-top-color: var(--accent); }
 }
 .rn-changewrap > * { flex: 1; min-height: 0; }
 
-/* The phase-seal stamp: scale + brightness flash. */
+/* The phase-seal stamp (DGT seal-stamp): lands at scale 1.07 / brightness
+   1.5 and settles to rest over 0.5s out-expo. */
 .rn-anim-stamp { animation: rnStamp 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
 @keyframes rnStamp {
-  0% { transform: scale(1); filter: brightness(1); }
-  30% { transform: scale(1.07); filter: brightness(1.65); }
+  0% { transform: scale(1.07); filter: brightness(1.5); }
   100% { transform: scale(1); filter: brightness(1); }
 }
 .rn-anim-flash { animation: rnFlash 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
@@ -861,6 +934,13 @@ section.rn-bottom.rn-priority { border-top-color: var(--accent); }
   0% { filter: brightness(1); }
   30% { filter: brightness(1.8); }
   100% { filter: brightness(1); }
+}
+
+/* The foe-breathe idle (DGT): loops while one of the element's states is
+   active (onChangeAnim 'breathe'; class held, not retriggered). */
+.rn-anim-breathe { animation: rnBreathe 2.6s cubic-bezier(0.16, 1, 0.3, 1) infinite; }
+@keyframes rnBreathe {
+  50% { opacity: 0.45; }
 }
 
 /* varText ticker bump: scale 1.35 + accent flash at 30%, 0.45s. */
@@ -1063,12 +1143,17 @@ section.rn-bottom.rn-priority { border-top-color: var(--accent); }
     transition: none;
   }
 
-  /* One-shots, ticker bumps, log entry-ins and embers stay still; fan
-     rotation/dip is static styling and remains. */
-  .rn-anim-stamp, .rn-anim-flash, .rn-ticker-bump, .rn-sl-logentry, .rn-ember {
+  /* One-shots, ticker bumps, breathe loops, log entry-ins and embers stay
+     still; fan rotation/dip is static styling and remains. */
+  .rn-anim-stamp, .rn-anim-flash, .rn-anim-breathe, .rn-ticker-bump,
+  .rn-sl-logentry, .rn-ember {
     animation: none;
   }
   .rn-fanslot { transition: none; }
+
+  /* Key badges snap on/off without the scale animation. */
+  .rn-keybadge { transition: none; }
+  .rn-keybadge.rn-keybadge-lit { transform: none; }
 }
 .calm .rn-rv-fade, .calm .rn-rv-scale, .calm .rn-rv-slide-up, .calm .rn-rv-slide-down,
 .calm .rn-rv-fade-out, .calm .rn-rv-scale-out, .calm .rn-rv-slide-up-out,
@@ -1079,11 +1164,13 @@ section.rn-bottom.rn-priority { border-top-color: var(--accent); }
 .calm .rn-sl-line line, .calm .rn-sl-line path, .calm .rn-sl-shape polygon {
   transition: none;
 }
-.calm .rn-anim-stamp, .calm .rn-anim-flash, .calm .rn-ticker-bump,
-.calm .rn-sl-logentry, .calm .rn-ember {
+.calm .rn-anim-stamp, .calm .rn-anim-flash, .calm .rn-anim-breathe,
+.calm .rn-ticker-bump, .calm .rn-sl-logentry, .calm .rn-ember {
   animation: none;
 }
 .calm .rn-fanslot { transition: none; }
+.calm .rn-keybadge { transition: none; }
+.calm .rn-keybadge.rn-keybadge-lit { transform: none; }
 
 /* ---------- FLIP card-move overlay ---------- */
 

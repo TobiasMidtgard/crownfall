@@ -10,8 +10,8 @@ import type { ScreenElement, ScreenLayout } from '../shared/types';
 import {
   absToGroupRel, activeScreenVariant, asSpeed, cardIdentity, computeStage, fanMarginPx,
   fanTransform, fitCount, gridSpec, gridTemplate, groupPiles, groupRelToAbs, layoutStyleCss,
-  lineColor, lineEndpoints, MOTION_DEFAULTS, nextSpeed, pctToPx, rectContains, resolveMotion,
-  resolveSeat, scaleMs, seatOffset, shapeBorderRadius, speedFactor, topLegalCard,
+  lineColor, lineEndpoints, MOTION_DEFAULTS, motionForTag, nextSpeed, pctToPx, rectContains,
+  resolveMotion, resolveSeat, scaleMs, seatOffset, shapeBorderRadius, speedFactor, topLegalCard,
 } from './layoutGeometry';
 
 const parent = { x: 20, y: 10, w: 50, h: 40 };
@@ -52,34 +52,47 @@ describe('seat resolution', () => {
   const seats = ['p0', 'p1', 'p2'];
 
   it("'viewer' is the viewer's own seat", () => {
-    expect(resolveSeat(seats, 'p1', 'viewer')).toBe('p1');
+    expect(resolveSeat(seats, 'p1', 'viewer', 0)).toBe('p1');
   });
 
   it('oppN counts seats after the viewer, wrapping past the last seat', () => {
-    expect(resolveSeat(seats, 'p1', 'opp1')).toBe('p2');
-    expect(resolveSeat(seats, 'p1', 'opp2')).toBe('p0'); // wrapped
-    expect(resolveSeat(seats, 'p2', 'opp1')).toBe('p0'); // wrapped
-    expect(resolveSeat(seats, 'p0', 'opp2')).toBe('p2');
+    expect(resolveSeat(seats, 'p1', 'opp1', 0)).toBe('p2');
+    expect(resolveSeat(seats, 'p1', 'opp2', 0)).toBe('p0'); // wrapped
+    expect(resolveSeat(seats, 'p2', 'opp1', 0)).toBe('p0'); // wrapped
+    expect(resolveSeat(seats, 'p0', 'opp2', 0)).toBe('p2');
   });
 
   it('seats beyond the player count resolve to null (element renders nothing)', () => {
-    expect(resolveSeat(seats, 'p0', 'opp3')).toBeNull();
-    expect(resolveSeat(['p0', 'p1'], 'p0', 'opp2')).toBeNull();
-    expect(resolveSeat(['p0'], 'p0', 'opp1')).toBeNull();
+    expect(resolveSeat(seats, 'p0', 'opp3', 0)).toBeNull();
+    expect(resolveSeat(['p0', 'p1'], 'p0', 'opp2', 0)).toBeNull();
+    expect(resolveSeat(['p0'], 'p0', 'opp1', 0)).toBeNull();
   });
 
   it("'shared' never resolves to a player", () => {
-    expect(resolveSeat(seats, 'p0', 'shared')).toBeNull();
+    expect(resolveSeat(seats, 'p0', 'shared', 0)).toBeNull();
     expect(seatOffset('shared')).toBeNull();
   });
 
+  it("'current' follows the acting turn, ignoring the viewer", () => {
+    expect(resolveSeat(seats, 'p0', 'current', 0)).toBe('p0');
+    expect(resolveSeat(seats, 'p0', 'current', 1)).toBe('p1');
+    expect(resolveSeat(seats, 'p2', 'current', 1)).toBe('p1'); // any viewer, same seat
+    expect(resolveSeat(seats, '', 'current', 2)).toBe('p2'); // spectators too
+    expect(seatOffset('current')).toBeNull(); // no fixed viewer offset
+  });
+
+  it("'current' with an out-of-range index resolves nothing", () => {
+    expect(resolveSeat(seats, 'p0', 'current', 3)).toBeNull();
+    expect(resolveSeat([], 'p0', 'current', 0)).toBeNull();
+  });
+
   it('a spectator viewer (not seated) watches from seat 0', () => {
-    expect(resolveSeat(seats, '', 'viewer')).toBe('p0');
-    expect(resolveSeat(seats, '', 'opp1')).toBe('p1');
+    expect(resolveSeat(seats, '', 'viewer', 0)).toBe('p0');
+    expect(resolveSeat(seats, '', 'opp1', 0)).toBe('p1');
   });
 
   it('an empty table resolves nothing', () => {
-    expect(resolveSeat([], 'p0', 'viewer')).toBeNull();
+    expect(resolveSeat([], 'p0', 'viewer', 0)).toBeNull();
   });
 });
 
@@ -269,15 +282,42 @@ describe('fan transforms', () => {
 });
 
 describe('motion spec + speed control', () => {
-  it('resolveMotion defaults to the reference primitive (430/46/4/55)', () => {
+  it('resolveMotion defaults to the reference primitive (430/46/4/55, no tags)', () => {
     expect(resolveMotion(undefined)).toEqual(MOTION_DEFAULTS);
     expect(resolveMotion(null)).toEqual({ flightMs: 430, arc: 46, spin: 4, staggerMs: 55 });
   });
 
   it('authored fields override individually, the rest keep defaults', () => {
-    expect(resolveMotion({ flightMs: 600 })).toEqual({ flightMs: 600, arc: 46, spin: 4, staggerMs: 55 });
+    expect(resolveMotion({ flightMs: 600 }))
+      .toEqual({ flightMs: 600, arc: 46, spin: 4, staggerMs: 55 });
     expect(resolveMotion({ arc: 70, spin: 6, staggerMs: 0 }))
       .toEqual({ flightMs: 430, arc: 70, spin: 6, staggerMs: 0 });
+  });
+
+  it('resolveMotion keeps an authored byTag table (absent otherwise)', () => {
+    expect(resolveMotion({ flightMs: 600 }).byTag).toBeUndefined();
+    expect(resolveMotion({ byTag: { draw: { flightMs: 300 } } }).byTag)
+      .toEqual({ draw: { flightMs: 300 } });
+  });
+
+  it('motionForTag: a tagged flight takes its byTag numbers over the base', () => {
+    const m = resolveMotion({
+      flightMs: 400,
+      byTag: { draw: { flightMs: 300, arc: 22, staggerMs: 45 }, play: { arc: 38 } },
+    });
+    expect(motionForTag(m, 'draw'))
+      .toEqual({ flightMs: 300, arc: 22, spin: 4, staggerMs: 45 });
+    // Partial override: unset fields keep the base numbers.
+    expect(motionForTag(m, 'play'))
+      .toEqual({ flightMs: 400, arc: 38, spin: 4, staggerMs: 55 });
+  });
+
+  it('motionForTag: untagged moves and unlisted tags keep the base', () => {
+    const m = resolveMotion({ byTag: { draw: { flightMs: 300 } } });
+    expect(motionForTag(m, null)).toMatchObject({ flightMs: 430, arc: 46 });
+    expect(motionForTag(m, undefined)).toMatchObject({ flightMs: 430 });
+    expect(motionForTag(m, 'gain')).toMatchObject({ flightMs: 430 });
+    expect(motionForTag(resolveMotion(undefined), 'draw')).toMatchObject({ flightMs: 430 });
   });
 
   it('speedFactor: 1× = 1, 2× = 1/1.9, instant = 0 (skip clones)', () => {

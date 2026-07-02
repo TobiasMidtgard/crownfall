@@ -14,6 +14,7 @@
 import type {
   GameDef, LayoutRect, ScreenElement, SeatRef, TableLayout,
 } from './types';
+import { SCHEMA_VERSION } from './types';
 import { uid } from './defaults';
 import { phaseTrackGroup } from './screenTemplates';
 
@@ -133,6 +134,13 @@ function hasPhaseDots(elements: AnyElement[]): boolean {
 /** Migrate in place-of: returns a NEW def when migration applies. */
 export function migrateGameDef(def: GameDef): GameDef {
   let out = def;
+  if (out.schemaVersion !== SCHEMA_VERSION) {
+    // v1 → v2 is a pure pass-through: every v2 addition (move tags, draw /
+    // choosePile / triggerAbilities blocks, effectResolved, sumCards,
+    // 'contains') is an optional field or a new union member, so v1
+    // documents load unchanged apart from the stamp.
+    out = { ...out, schemaVersion: SCHEMA_VERSION };
+  }
   if (out.tableLayout && !out.screenLayout) {
     const tl = out.tableLayout;
     out = {

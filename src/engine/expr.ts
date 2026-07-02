@@ -201,6 +201,14 @@ export function evalExpr(ctx: EvalCtx, e: Expr): RuntimeValue {
         const r = evalExpr(ctx, e.right);
         return e.op === '==' ? l === r : l !== r;
       }
+      if (e.op === 'contains') {
+        // Whole-word membership: right appears as a whitespace-separated
+        // word inside left ("action attack" contains "action", not "act").
+        const l = evalExpr(ctx, e.left);
+        const r = evalExpr(ctx, e.right);
+        if (l === null || r === null) return false;
+        return String(l).trim().split(/\s+/).includes(String(r));
+      }
       const l = toNum(ctx, evalExpr(ctx, e.left));
       const r = toNum(ctx, evalExpr(ctx, e.right));
       switch (e.op) {
@@ -252,6 +260,23 @@ export function evalExpr(ctx: EvalCtx, e: Expr): RuntimeValue {
         ctx.frames.pop();
       }
       return n;
+    }
+    case 'sumCards': {
+      const inst = resolveZoneInst(ctx, e.zone);
+      if (!inst) return 0;
+      let sum = 0;
+      for (const cid of inst.cardIds) {
+        if (e.filter) {
+          ctx.frames.push({ $card: cid });
+          const ok = truthy(evalExpr(ctx, e.filter));
+          ctx.frames.pop();
+          if (!ok) continue;
+        }
+        const card = ctx.core.state.cards[cid];
+        const val = Number(card?.fields[e.fieldId]);
+        if (!Number.isNaN(val)) sum += val; // non-numeric values count 0
+      }
+      return sum;
     }
     case 'random': {
       const max = Math.floor(toNum(ctx, evalExpr(ctx, e.max)));

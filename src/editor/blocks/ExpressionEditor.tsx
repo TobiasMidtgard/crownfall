@@ -293,6 +293,24 @@ function ExprFields({ def, draft, setDraft, bindings }: {
           </label>
         </>
       );
+    case 'sumCards':
+      return (
+        <>
+          <FieldSelect def={def} value={draft.fieldId} onChange={(fieldId) => setDraft({ ...draft, fieldId })} label="Field to sum (non-numbers count 0)" />
+          <ZoneRefFields def={def} value={draft.zone} onChange={(zone) => setDraft({ ...draft, zone })} bindings={bindings} />
+          <label className="field">
+            <span>Only sum cards where ($card = each card)</span>
+            <ExpressionEditor
+              def={def}
+              value={draft.filter}
+              onChange={(filter) => setDraft({ ...draft, filter })}
+              bindings={[...bindings, '$card']}
+              allowNull
+              nullLabel="sum every card"
+            />
+          </label>
+        </>
+      );
     case 'bestCard':
       return (
         <>
@@ -403,7 +421,7 @@ function ExprFields({ def, draft, setDraft, bindings }: {
           def={def} bindings={bindings}
           left={draft.left} right={draft.right}
           op={draft.op}
-          ops={[['==', '= equals'], ['!=', '≠ not equal'], ['<', '< less than'], ['<=', '≤ at most'], ['>', '> greater than'], ['>=', '≥ at least']]}
+          ops={[['==', '= equals'], ['!=', '≠ not equal'], ['<', '< less than'], ['<=', '≤ at most'], ['>', '> greater than'], ['>=', '≥ at least'], ['contains', 'contains word — right value is a whole word in the left text']]}
           onChange={(left, op, right) => setDraft({ kind: 'compare', op: op as typeof draft.op, left, right })}
         />
       );

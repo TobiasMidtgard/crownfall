@@ -36,6 +36,10 @@ engine, the example games, and the tests agree exactly.
 ## Blocks
 
 - `moveCards`: resolve `from`/`to` instances; pick cards by selector; move as a group **preserving relative order** (source top stays on top when `toPosition: 'top'`; group goes under when `'bottom'`). `faceUp: null` keeps each card's facing. For `specific` selectors the card's *actual* current zone is used as the source (the `from` ref is advisory). Selectors: `top`/`bottom`/`random` take `count` (clamped to available); `filter` binds `$card` per candidate; `all` takes everything.
+- **Move-cause tags**: `moveCards` (and `draw`) carry an optional `tag` (free-form string; canonical vocabulary `gain`/`buy`/`trash`/`discard`/`play`/`draw`/`cleanup`). The tag rides on the move's `cardEnterZone`/`cardLeaveZone` events (`null` for untagged moves): trigger `EventSpec`s and ability `tagFilter`s with a tag match only moves carrying exactly that tag; a null/absent filter matches any move. Scripts read the cause via the `$tag` binding. The engine also stamps `state.moveTags[cardId]` with each card's most recent move tag (rendering surface for per-tag flight tuning; never read back by rules).
+- `draw { who, count, from, refillFrom, to, faceUp, tag }`: move `count` cards one at a time from the top of `from` to `to`. Whenever `from` is empty and `refillFrom` (optional) is not, ALL of `refillFrom` moves into `from` face-down (untagged move) and is shuffled with the game RNG, then drawing continues; stops early when both are empty. A refill ref resolving to the source instance is skipped. Each drawn card charges budget (like `deal`) and emits move events tagged `tag` (default `'draw'`). `who` (player expr, null = contextual) sets the contextual player for owner-less zone refs.
+- `choosePile { who, from, filter, groupBy: 'def', prompt, optional, body }`: the (filtered, `$card` bound per candidate) zone's cards group into one pile per distinct identity — custom cards by `defId`, standard cards by name — in first-appearance order (bottom→top), each represented by its TOP copy. Asks `who` via a `'pile'` ChoiceRequest (`cardIds` = representatives, `counts` = pile sizes); the answer is a representative id (or null to decline when `optional`). `body` runs once with `$card` = the chosen representative. No piles: optional is silent, mandatory reports and skips. Groups are computed at ask time (no staging zone). The usual 3-retry/first-pile-fallback applies.
+- `triggerAbilities { card, on: 'enterZone', zoneId }`: enqueue a **synthetic** `cardEnterZone` event for `zoneId` tagged `'play'` WITHOUT moving the card (`fromZoneId` = its current zone; `toOwner` = its holder's owner when it already sits in that zone, else the contextual player). It drains normally, so the card's enter-zone abilities re-fire, **global triggers watching that zone also fire** (it *is* "the card is played again"), and stacked abilities still stack; cascades are bounded by DRAIN_ROUNDS/STACK_CAP. A null card expr is a silent no-op; a non-card value or unknown zone reports and no-ops. No `cardLeaveZone` is emitted and `state.moveTags` is untouched.
 - `shuffle`: Fisher-Yates with the game RNG.
 - `deal`: from a shared (or resolved) zone, round-robin starting at the current player: one card from the top to each player's instance of `toZoneId`, repeated `count` times (each player gets `count` cards). Stops early when the source empties. Facing kept.
 - `setVar`/`changeVar`: `target` (player expr for perPlayer, card expr for perCard) — when null, perPlayer uses contextual player, perCard uses `$card` then `$self` (error if neither bound). `changeVar` adds `by` numerically.
@@ -48,6 +52,8 @@ engine, the example games, and the tests agree exactly.
 ## Expressions
 
 - Numeric ops coerce with `Number()`; `null` coerces to 0; `NaN` reports a script error and yields 0. `/` by 0 → 0 with script error. `compare` `==`/`!=` are value equality on primitives; `<` etc. numeric. `logic`/`not` use JS truthiness.
+- `compare` op `'contains'`: **whole-word membership** for multi-value text fields — true when the RIGHT value equals one of the whitespace-separated words of the LEFT value (case-sensitive; the left is trimmed and split on runs of whitespace). `"action attack" contains "action"` → true; `contains "act"` → false. Non-strings coerce via `String()`; null on either side → false.
+- `sumCards { zone, fieldId, filter }`: sum of a numeric card field over a zone's (filtered, `$card` bound per candidate) cards. Non-numeric / missing values contribute 0; missing zone → 0.
 - `cardField` on a null card → null. Unknown field → null.
 - `topCard` of empty zone → null. `bestCard`: numeric compare of `fieldId` among (filtered) cards; empty → null; ties → the one nearest the top.
 - `countCards`: filter binds `$card` per candidate (shadows outer `$card`).
@@ -90,11 +96,12 @@ Event bindings available in `condition` and `script`:
 
 | event | bindings |
 |---|---|
-| `cardEnterZone` / `cardLeaveZone` | `$card`, `$fromZone`, `$toZone` (zone def ids or null), `$owner` (dest/src zone owner or null) |
+| `cardEnterZone` / `cardLeaveZone` | `$card`, `$fromZone`, `$toZone` (zone def ids or null), `$owner` (dest/src zone owner or null), `$tag` (move-cause tag or null) |
 | `zoneEmptied` | `$zone` (zone def id), `$owner` |
 | `varChanged` | `$player` (for perPlayer), `$card` (for perCard) |
 | `turnStart`/`turnEnd` | `$player` (whose turn) |
 | `phaseStart`/`phaseEnd` | `$player` (current player) |
+| `effectResolved` | `$card` (the entry's source card, when present), `$player` (who pushed it, when known) |
 
 Abilities additionally bind `$self` (the card) and `$owner` (the holding zone instance's owner, else current player). Ability matching: `enterZone`/`leaveZone` fire when **this card** enters/leaves `zoneId`; turn/phase abilities fire when the card is currently in `zoneId` (any owner's instance).
 
@@ -152,6 +159,14 @@ machinery and behave exactly as the sections above describe.
   thing it was cast in response to — which is exactly counterspell behavior.)
 - **Expressions.** `stackSize` → number; `stackTopCard` → the top entry's
   source card id or null (spell-speed/legality rules read its fields).
+- **`effectResolved` lifecycle event.** After a popped entry's script runs and
+  settles (all its cascades included), and BEFORE the window-reopen decision,
+  the engine fires `effectResolved { label, sourceCardId, byPlayerId }`.
+  Cancelled entries never fire it. The resolved entry is already gone, so a
+  `cancelTopEffect` inside a listener targets the NEXT entry. A `stacked`
+  listener pushes a new entry whose resolution fires `effectResolved` again —
+  guard it with a condition (validation warns; STACK_CAP bounds the loop).
+  Typical use: reset per-attack flags (IMMUNE) after every attack resolves.
 - **End conditions** are still checked after every settle, including between
   resolutions. `endGame` inside a resolution wins immediately; the rest of the
   stack is discarded.
@@ -174,6 +189,15 @@ string of instance ids (`ChoiceAnswer` stays a string) — the engine validates
 ids, bounds, and uniqueness with the usual 3-retry rule, falling back to the
 first `min` candidates.
 
+## Pile choice (`choosePile`)
+
+ChoiceRequest kind `'pile'`: `{ cardIds, counts, optional }` where
+`cardIds[i]` is pile i's representative (its top copy) and `counts[i]` its
+size (for × N badges). The answer is a representative id, or null to decline
+when optional; any other card id — even a real member of a pile — is invalid.
+Fallback after 3 bad answers: the first pile. See the `choosePile` block above
+for grouping semantics.
+
 ## Zone capacity & card state rendering
 
 - `ZoneDef.capacity?: number` — a move that would exceed capacity moves only
@@ -186,4 +210,12 @@ first `min` candidates.
 
 ## RNG & determinism
 
-`mulberry32(seed)`. Same def + same seed + same choice answers ⇒ identical game. `getState()`/`onUpdate` deliver deep clones; `onUpdate` fires after every visible mutation (card moves, flips, var changes, log entries, phase/turn changes, game end).
+`mulberry32(seed)`. Same def + same seed + same choice answers ⇒ identical game. `getState()`/`onUpdate` deliver deep clones; `onUpdate` fires after every visible mutation (card moves, flips, var changes, log entries, phase/turn changes, game end). `choosePile` grouping iterates zone order (never object-key order); `draw`'s refill shuffle consumes game RNG — all new sampling stays on `core.rng`.
+
+## Schema versioning
+
+`GameDef.schemaVersion` is `1 | 2` (current: `SCHEMA_VERSION = 2`). v2 added
+move-cause tags, `draw`, `choosePile`, `triggerAbilities`, `effectResolved`,
+`sumCards` and the `'contains'` op — all additive optional fields / new union
+members, so v1 documents load unchanged: `migrateGameDef` stamps them to v2
+(pure pass-through) and the storage soundness gate accepts both versions.

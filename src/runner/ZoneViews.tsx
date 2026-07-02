@@ -32,6 +32,7 @@ import type { GameDef, GameState, Id, Move, VariableDef, ZoneDef, ZoneInstance }
 import { isCardVisibleTo } from '../engine';
 import { CardView } from '../components/CardView';
 import type { CardRectRegistry } from './flip';
+import type { KeyBadge, KeyboardGroup } from './keyboard';
 import { templateOf } from './layout';
 import {
   DEFAULT_FAN_ANGLE, fanMarginPx, fanTransform, gridSpec, groupPiles, topLegalCard,
@@ -80,6 +81,10 @@ export interface TableCtx {
   badgeVars: VariableDef[];
   /** FLIP registry: every rendered table card reports its DOM node here. */
   cardRects: CardRectRegistry;
+  /** Keyboard digit badges by rendered FACE card id (keyboard.tsx). */
+  keyBadges?: ReadonlyMap<Id, KeyBadge>;
+  /** Keyboard group whose modifier is held (its badges light up). */
+  keySpotlight?: KeyboardGroup | null;
   onCardTap: (cardId: Id) => void;
   onZoneTap: (instKey: string) => void;
 }
@@ -324,7 +329,7 @@ function SupplyPile({ ctx, pile, width, badgeField, dimWhenIdle }: {
     : undefined;
   return (
     <div
-      className={`rn-spile${topLegal !== null ? ' rn-pilelegal' : ''}${dimWhenIdle && topLegal === null ? ' rn-piledim' : ''}`}
+      className={`rn-spile${topLegal !== null ? ' rn-pilelegal' : ''}${dimWhenIdle && topLegal === null ? ' rn-piledim' : ''}${pile.count === 0 ? ' rn-pile-empty' : ''}`}
       role={tap ? 'button' : undefined}
       tabIndex={tap ? 0 : undefined}
       aria-label={card ? `${card.name} × ${pile.count}${badgePart}` : undefined}
@@ -411,6 +416,9 @@ function TableCard({ ctx, cardId, width, dimInactive, nameSuffix }: {
   const card = ctx.state.cards[cardId];
   if (!card) return null;
   const hasMoves = (ctx.cardMoves.get(cardId)?.length ?? 0) > 0;
+  // Keyboard digit badge (keyed by the rendered face, so piles and collapsed
+  // stacks — which render their face through TableCard — carry it too).
+  const keyBadge = ctx.keyBadges?.get(cardId);
   const visible = isCardVisibleTo(ctx.def, ctx.state, cardId, ctx.viewerId);
   const template = templateOf(ctx.def, card);
   const height = Math.round(width / (template?.aspect ?? 0.714));
@@ -457,6 +465,14 @@ function TableCard({ ctx, cardId, width, dimInactive, nameSuffix }: {
             </span>
           ))}
         </span>
+      )}
+      {keyBadge !== undefined && (
+        <kbd
+          className={`rn-keybadge${keyBadge.group === 'plain' ? ' rn-keybadge-plain' : ''}${ctx.keySpotlight === keyBadge.group ? ' rn-keybadge-lit' : ''}`}
+          aria-hidden="true"
+        >
+          {keyBadge.digit}
+        </kbd>
       )}
     </div>
   );

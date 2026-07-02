@@ -158,6 +158,56 @@ describe('GameSession', () => {
     session.dispose();
   });
 
+  it("routes a 'pile' choice to a human and resumes on the picked pile", async () => {
+    const def = makeDef({
+      zones: [zone('supply'), zone('out')],
+      cards: [cdef('x'), cdef('y')],
+      decks: [customDeck('d', 'supply', [['x', 3], ['y', 2]])],
+      setup: [{
+        kind: 'choosePile', who: null, from: zr('supply'), filter: null,
+        groupBy: 'def', prompt: 'Gain a card', optional: false,
+        body: [mv(zr('supply'), zr('out'), selSpec(bnd('$card')))],
+      }],
+    });
+    const session = new GameSession(def, [{ name: 'Human', isAI: false }], 5);
+    session.begin();
+    await realTick();
+
+    const choice = session.snapshot.choice;
+    expect(choice).toMatchObject({ kind: 'pile', playerId: 'p0', optional: false });
+    if (choice?.kind !== 'pile') throw new Error('expected a pile choice');
+    expect(choice.counts).toEqual([3, 2]);
+    session.answerChoice(choice.id, choice.cardIds[1]); // take from the y pile
+    await realTick();
+
+    expect(session.snapshot.choice).toBeNull();
+    expect(session.snapshot.state.zones['out'].cardIds).toHaveLength(1);
+    const moved = session.snapshot.state.zones['out'].cardIds[0];
+    expect(session.snapshot.state.cards[moved].name).toBe('y');
+    session.dispose();
+  });
+
+  it("AI seats auto-answer 'pile' choices (aiAnswer never hangs)", async () => {
+    vi.useFakeTimers();
+    const def = makeDef({
+      zones: [zone('supply'), zone('out')],
+      cards: [cdef('x'), cdef('y')],
+      decks: [customDeck('d', 'supply', [['x', 2], 'y'])],
+      setup: [{
+        kind: 'choosePile', who: null, from: zr('supply'), filter: null,
+        groupBy: 'def', prompt: 'Gain a card', optional: false,
+        body: [mv(zr('supply'), zr('out'), selSpec(bnd('$card')))],
+      }],
+    });
+    const session = new GameSession(def, [{ name: 'Bot', isAI: true }], 9);
+    session.begin();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(session.snapshot.started).toBe(true);
+    expect(session.snapshot.choice).toBeNull(); // never surfaced to a human
+    expect(session.snapshot.state.zones['out'].cardIds).toHaveLength(1);
+    session.dispose();
+  });
+
   it("round-trips a multi-select 'cards' choice through the snapshot", async () => {
     const def = makeDef({
       zones: [zone('pool'), zone('out')],

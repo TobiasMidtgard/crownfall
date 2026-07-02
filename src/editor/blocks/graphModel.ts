@@ -54,6 +54,7 @@ export function blockLanes(block: Block): { lane: LaneName; label: string }[] {
     case 'forEachPlayer':
     case 'forEachCard':
     case 'chooseCards':
+    case 'choosePile':
       return [{ lane: 'body', label: 'Body' }];
     default: return [];
   }
@@ -61,7 +62,8 @@ export function blockLanes(block: Block): { lane: LaneName; label: string }[] {
 
 export function getLaneOf(block: Block, lane: LaneName): Block[] {
   if (block.kind === 'if') return lane === 'then' ? block.then : lane === 'else' ? block.else : [];
-  if (block.kind === 'repeat' || block.kind === 'forEachPlayer' || block.kind === 'forEachCard' || block.kind === 'chooseCards') {
+  if (block.kind === 'repeat' || block.kind === 'forEachPlayer' || block.kind === 'forEachCard'
+    || block.kind === 'chooseCards' || block.kind === 'choosePile') {
     return lane === 'body' ? block.body : [];
   }
   return [];
@@ -71,7 +73,8 @@ function setLaneOf(block: Block, lane: LaneName, blocks: Block[]): Block {
   if (block.kind === 'if') {
     return lane === 'then' ? { ...block, then: blocks } : { ...block, else: blocks };
   }
-  if (block.kind === 'repeat' || block.kind === 'forEachPlayer' || block.kind === 'forEachCard' || block.kind === 'chooseCards') {
+  if (block.kind === 'repeat' || block.kind === 'forEachPlayer' || block.kind === 'forEachCard'
+    || block.kind === 'chooseCards' || block.kind === 'choosePile') {
     return { ...block, body: blocks };
   }
   return block;
@@ -84,6 +87,7 @@ export function laneBindings(block: Block, lane: LaneName): string[] {
     case 'forEachPlayer': return ['$player'];
     case 'forEachCard': return ['$card'];
     case 'chooseCards': return ['$card'];
+    case 'choosePile': return ['$card'];
     default: return [];
   }
 }
@@ -151,13 +155,14 @@ function bindingOutType(name: string): PinType {
   if (name === '$card' || name === '$self') return 'card';
   if (name === '$player' || name === '$owner') return 'player';
   if (name === '$fromZone' || name === '$toZone' || name === '$zone') return 'zone';
+  if (name === '$tag') return 'text';
   return 'any';
 }
 
 /** Value type an expression produces (refined by def where possible). */
 export function exprOutType(def: GameDef, expr: Expr): PinType {
   switch (expr.kind) {
-    case 'num': case 'random': case 'zoneCount': case 'countCards': case 'math':
+    case 'num': case 'random': case 'zoneCount': case 'countCards': case 'sumCards': case 'math':
     case 'turnNumber': case 'playerCount': case 'stackSize':
     case 'phaseIndex': case 'phasePos':
       return 'number';
@@ -178,7 +183,7 @@ export function exprOutType(def: GameDef, expr: Expr): PinType {
 /** Best-known output type per expression KIND (for picker filtering). */
 export function exprKindOutType(kind: Expr['kind']): PinType {
   switch (kind) {
-    case 'num': case 'random': case 'zoneCount': case 'countCards': case 'math':
+    case 'num': case 'random': case 'zoneCount': case 'countCards': case 'sumCards': case 'math':
     case 'turnNumber': case 'playerCount': case 'stackSize':
     case 'phaseIndex': case 'phasePos':
       return 'number';
@@ -225,7 +230,16 @@ function varSlotType(def: GameDef, varId: string): PinType {
 export function execNodeRows(def: GameDef, block: Block): NodeRow[] {
   const lanes = blockLanes(block).map((l): NodeRow => ({ kind: 'lane', lane: l.lane, label: l.label }));
   switch (block.kind) {
-    case 'moveCards': return [field('cards'), field('from'), field('to'), field('placement')];
+    case 'moveCards': return [field('cards'), field('from'), field('to'), field('placement'), field('tag')];
+    case 'draw': return [
+      data('who', 'Who', 'player', { nullLabel: 'current player' }),
+      data('count', 'Count', 'number'),
+      field('from'),
+      field('refillFrom'),
+      field('to'),
+      field('facing'),
+      field('tag'),
+    ];
     case 'shuffle': return [field('zone')];
     case 'deal': return [data('count', 'Count', 'number'), field('from'), field('toZoneId')];
     case 'setVar': return [field('varTarget'), data('value', 'Value', varSlotType(def, block.varId))];
@@ -249,6 +263,15 @@ export function execNodeRows(def: GameDef, block: Block): NodeRow[] {
       field('revealed'),
       ...lanes,
     ];
+    case 'choosePile': return [
+      data('who', 'Who', 'player', { nullLabel: 'current player' }),
+      field('from'),
+      data('filter', 'Where', 'boolean', { nullLabel: 'any card', addBindings: ['$card'] }),
+      field('prompt'),
+      field('optional'),
+      ...lanes,
+    ];
+    case 'triggerAbilities': return [data('card', 'Card', 'card'), field('zoneId')];
     case 'cancelTopEffect': return [field('cardTo')];
     case 'announce': return [field('parts')];
     case 'flipCards': return [field('cards'), field('zone'), field('facing')];
@@ -271,6 +294,11 @@ export function exprNodeRows(def: GameDef, expr: Expr): NodeRow[] {
     }
     case 'zoneCount': case 'topCard': return [field('zone')];
     case 'countCards': return [
+      field('zone'),
+      data('filter', 'Where', 'boolean', { nullLabel: 'every card', addBindings: ['$card'] }),
+    ];
+    case 'sumCards': return [
+      field('fieldId'),
       field('zone'),
       data('filter', 'Where', 'boolean', { nullLabel: 'every card', addBindings: ['$card'] }),
     ];

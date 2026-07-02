@@ -58,7 +58,10 @@ export function rectContains(outer: PlainRect, inner: PlainRect): boolean {
 // Seat resolution (viewer-relative)
 // ---------------------------------------------------------------------------
 
-/** Seats after the viewer for 'oppN', 0 for 'viewer', null for 'shared'. */
+/**
+ * Seats after the viewer for 'oppN', 0 for 'viewer'; null for 'shared' AND
+ * for 'current' (which has no fixed viewer offset — it follows the turn).
+ */
 export function seatOffset(seat: SeatRef): number | null {
   switch (seat) {
     case 'viewer': return 0;
@@ -66,16 +69,26 @@ export function seatOffset(seat: SeatRef): number | null {
     case 'opp2': return 2;
     case 'opp3': return 3;
     case 'shared': return null;
+    case 'current': return null;
   }
 }
 
 /**
  * The player a seat ref shows, relative to `viewerId` in seating order
- * (wrapping past the last seat). Returns null when the ref is 'shared' or the
- * seat exceeds the player count (the element should render nothing). A viewer
- * not seated at the table (spectator) watches from seat 0's perspective.
+ * (wrapping past the last seat). 'current' ignores the viewer entirely and
+ * rebinds to the acting turn's seat (`currentIdx` = state.currentPlayerIdx),
+ * so an element bound to it follows the mover. Returns null when the ref is
+ * 'shared' or the seat exceeds the player count (the element should render
+ * nothing). A viewer not seated at the table (spectator) watches from seat
+ * 0's perspective.
  */
-export function resolveSeat(playerIds: readonly Id[], viewerId: Id, seat: SeatRef): Id | null {
+export function resolveSeat(
+  playerIds: readonly Id[],
+  viewerId: Id,
+  seat: SeatRef,
+  currentIdx: number,
+): Id | null {
+  if (seat === 'current') return playerIds[currentIdx] ?? null;
   const off = seatOffset(seat);
   if (off === null || off >= playerIds.length) return null;
   const vi = Math.max(0, playerIds.indexOf(viewerId));
@@ -404,10 +417,22 @@ export function fanTransform(
 /** The reference easing used by flights and one-shots (ease-out-expo). */
 export const EASE_OUT_EXPO = 'cubic-bezier(0.16, 1, 0.3, 1)';
 
-export type ResolvedMotion = Required<MotionSpec>;
+/** One flight's worth of tuning numbers (the base, or one tag's override). */
+export interface FlightTuning {
+  flightMs: number;
+  arc: number;
+  spin: number;
+  staggerMs: number;
+}
+
+/** Authored spec resolved: base numbers plus the per-move-tag override table. */
+export interface ResolvedMotion extends FlightTuning {
+  /** Per-tag overrides; absent when the spec authored none. */
+  byTag?: Readonly<Record<string, Partial<FlightTuning>>>;
+}
 
 /** Card-flight defaults (the reference primitive). */
-export const MOTION_DEFAULTS: ResolvedMotion = { flightMs: 430, arc: 46, spin: 4, staggerMs: 55 };
+export const MOTION_DEFAULTS: FlightTuning = { flightMs: 430, arc: 46, spin: 4, staggerMs: 55 };
 
 /** Flight overrides for cards arriving in a burn zone. */
 export const BURN_FLIGHT = { flightMs: 420, arc: 70, spin: 6 } as const;
@@ -417,11 +442,28 @@ export const BURN_CHAR_MS = 620;
 
 /** Authored motion spec merged over the defaults. */
 export function resolveMotion(spec: MotionSpec | null | undefined): ResolvedMotion {
-  return {
+  const base: ResolvedMotion = {
     flightMs: spec?.flightMs ?? MOTION_DEFAULTS.flightMs,
     arc: spec?.arc ?? MOTION_DEFAULTS.arc,
     spin: spec?.spin ?? MOTION_DEFAULTS.spin,
     staggerMs: spec?.staggerMs ?? MOTION_DEFAULTS.staggerMs,
+  };
+  return spec?.byTag !== undefined ? { ...base, byTag: spec.byTag } : base;
+}
+
+/**
+ * Flight numbers for one move-cause tag: the tag's byTag entry overrides the
+ * base numbers field-by-field (draw 300/22, play 320/38, …); an untagged move
+ * or an unlisted tag keeps the base.
+ */
+export function motionForTag(m: ResolvedMotion, tag: string | null | undefined): FlightTuning {
+  const over = tag != null ? m.byTag?.[tag] : undefined;
+  if (over === undefined) return m;
+  return {
+    flightMs: over.flightMs ?? m.flightMs,
+    arc: over.arc ?? m.arc,
+    spin: over.spin ?? m.spin,
+    staggerMs: over.staggerMs ?? m.staggerMs,
   };
 }
 

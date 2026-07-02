@@ -100,6 +100,8 @@ function selectFromZone(ctx: ExecCtx, inst: ZoneInstance, sel: Exclude<CardSelec
  * Move a group (in source bottom→top relative order) between instances,
  * preserving relative order, setting facing, enqueueing leave/enter and
  * zoneEmptied events. Same-instance moves just reorder (no events).
+ * `tag` is the move's cause (null = untagged): carried on both events and
+ * stamped on each card's `moveTag` (rendering surface for per-tag flights).
  */
 export function performMove(
   core: Core,
@@ -108,6 +110,7 @@ export function performMove(
   ids: Id[],
   toPosition: 'top' | 'bottom',
   faceUp: boolean | null,
+  tag: string | null = null,
 ): void {
   if (ids.length === 0) return;
   // Capacity: a full destination takes only what fits (excess stays put).
@@ -133,9 +136,11 @@ export function performMove(
   if (toPosition === 'top') to.cardIds.push(...ids);
   else to.cardIds.unshift(...ids);
   if (from.key !== to.key) {
+    const moveTags = (core.state.moveTags ??= {});
     for (const id of ids) {
-      core.queue.push({ kind: 'cardLeaveZone', cardId: id, fromZoneId: from.zoneId, toZoneId: to.zoneId, fromOwner: from.ownerId });
-      core.queue.push({ kind: 'cardEnterZone', cardId: id, fromZoneId: from.zoneId, toZoneId: to.zoneId, toOwner: to.ownerId });
+      moveTags[id] = tag;
+      core.queue.push({ kind: 'cardLeaveZone', cardId: id, fromZoneId: from.zoneId, toZoneId: to.zoneId, fromOwner: from.ownerId, tag });
+      core.queue.push({ kind: 'cardEnterZone', cardId: id, fromZoneId: from.zoneId, toZoneId: to.zoneId, toOwner: to.ownerId, tag });
     }
     if (from.cardIds.length === 0) {
       core.queue.push({ kind: 'zoneEmptied', zoneId: from.zoneId, owner: from.ownerId });
@@ -261,6 +266,7 @@ function validAnswer(req: ChoiceRequest, a: ChoiceAnswer): boolean {
     case 'player': return typeof a === 'string' && req.playerIds.includes(a);
     case 'yesNo': return typeof a === 'boolean';
     case 'cards': return parseCardsAnswer(req, a) !== null;
+    case 'pile': return (a === null && req.optional) || (typeof a === 'string' && req.cardIds.includes(a));
   }
 }
 
@@ -271,6 +277,7 @@ function fallbackAnswer(req: ChoiceRequest): ChoiceAnswer {
     case 'player': return req.playerIds[0];
     case 'yesNo': return true;
     case 'cards': return JSON.stringify(req.cardIds.slice(0, req.min));
+    case 'pile': return req.cardIds[0];
   }
 }
 
@@ -408,7 +415,48 @@ async function execBlock(ctx: ExecCtx, b: Block): Promise<void> {
       }
       const to = resolveZoneInst(e, b.to);
       if (!from || !to) return;
-      performMove(core, from, to, ids, b.toPosition, b.faceUp);
+      performMove(core, from, to, ids, b.toPosition, b.faceUp, b.tag ?? null);
+      return;
+    }
+    case 'draw': {
+      // `who` sets the contextual player for owner-less perPlayer zone refs.
+      let pushed = false;
+      if (b.who) {
+        const v = evalExpr(e, b.who);
+        if (!isPlayerId(core, v)) {
+          report(core, 'draw: "who" is not a player.');
+          return;
+        }
+        ctx.frames.push({ $player: v });
+        pushed = true;
+      }
+      try {
+        const e2 = ectx(ctx);
+        const count = Math.max(0, Math.floor(toNum(e2, evalExpr(e2, b.count))));
+        const from = resolveZoneInst(e2, b.from);
+        const to = resolveZoneInst(e2, b.to);
+        const refill = b.refillFrom ? resolveZoneInst(e2, b.refillFrom) : null;
+        if (!from || !to) return;
+        const tag = b.tag ?? 'draw';
+        for (let i = 0; i < count; i++) {
+          if (from.cardIds.length === 0 && refill && refill.key !== from.key && refill.cardIds.length > 0) {
+            // Inline refill: everything face-down into the source, then a
+            // seeded shuffle — triggers cannot do this mid-script (events
+            // drain only after the script), so the block does it itself.
+            performMove(core, refill, from, [...refill.cardIds], 'top', false, null);
+            shuffleInPlace(from.cardIds, core.rng);
+            notify(core);
+          }
+          if (from.cardIds.length === 0) break; // both empty — stop early
+          // Budget per drawn card: `count` is an expression and must not
+          // bypass the runaway-script guard (mirrors `deal`).
+          if (--core.budget < 0) throw new BudgetExceeded();
+          const top = from.cardIds[from.cardIds.length - 1];
+          performMove(core, from, to, [top], 'top', b.faceUp, tag);
+        }
+      } finally {
+        if (pushed) ctx.frames.pop();
+      }
       return;
     }
     case 'shuffle': {
@@ -538,6 +586,78 @@ async function execBlock(ctx: ExecCtx, b: Block): Promise<void> {
           ctx.frames.pop();
         }
       }
+      return;
+    }
+    case 'choosePile': {
+      const askerId = resolveAsker(ctx, b.who);
+      const inst = resolveZoneInst(e, b.from);
+      if (!inst) return;
+      // Filter, then group by card identity (custom: defId, standard: name)
+      // in first-appearance order (bottom→top). The representative is the
+      // group's TOP copy (later index wins). Iterates inst.cardIds in array
+      // order — deterministic by construction.
+      const groups = new Map<string, { rep: Id; count: number }>();
+      for (const cid of inst.cardIds) {
+        if (b.filter) {
+          ctx.frames.push({ $card: cid });
+          const ok = truthy(evalExpr(e, b.filter));
+          ctx.frames.pop();
+          if (!ok) continue;
+        }
+        const card = core.state.cards[cid];
+        if (!card) continue;
+        const key = card.defId ?? `name:${card.name}`;
+        const g = groups.get(key);
+        if (g) {
+          g.count += 1;
+          g.rep = cid;
+        } else {
+          groups.set(key, { rep: cid, count: 1 });
+        }
+      }
+      const piles = [...groups.values()];
+      if (piles.length === 0) {
+        if (!b.optional) report(core, `Choice "${b.prompt}": no piles to choose from.`);
+        return;
+      }
+      const req: ChoiceRequest = {
+        id: ++core.choiceSeq, playerId: askerId, kind: 'pile', prompt: b.prompt,
+        cardIds: piles.map((p) => p.rep), counts: piles.map((p) => p.count), optional: b.optional,
+      };
+      const answer = await askChoice(core, req);
+      if (answer === null) return; // declined (optional) — skip the body
+      const picked = typeof answer === 'string' ? answer : req.cardIds[0];
+      ctx.frames.push({ $card: picked });
+      try {
+        await execBlocks(ctx, b.body);
+      } finally {
+        ctx.frames.pop();
+      }
+      return;
+    }
+    case 'triggerAbilities': {
+      const v = evalExpr(e, b.card);
+      if (v === null) return; // e.g. a declined choice — silently no-op
+      if (typeof v !== 'string' || !core.state.cards[v]) {
+        report(core, `triggerAbilities: "${String(v)}" is not a card.`);
+        return;
+      }
+      const zdef = core.def.zones.find((z) => z.id === b.zoneId);
+      if (!zdef) {
+        report(core, `triggerAbilities: unknown zone "${b.zoneId}".`);
+        return;
+      }
+      // Synthetic enterZone firing WITHOUT moving the card: global triggers
+      // watching the zone fire too (it IS "played again"), stacked abilities
+      // still stack, and the normal drain/budget caps bound cascades.
+      const holder = findZoneOfCard(core.state, v);
+      const toOwner = zdef.owner === 'shared'
+        ? null
+        : holder && holder.zoneId === zdef.id ? holder.ownerId : contextualPlayerId(e);
+      core.queue.push({
+        kind: 'cardEnterZone', cardId: v,
+        fromZoneId: holder?.zoneId ?? null, toZoneId: zdef.id, toOwner, tag: 'play',
+      });
       return;
     }
     case 'cancelTopEffect': {

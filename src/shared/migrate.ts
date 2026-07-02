@@ -164,5 +164,15 @@ export function migrateGameDef(def: GameDef): GameDef {
       },
     };
   }
+  // Card vocabulary (types / tags / named filters): seed absent lists to []
+  // so editors can append without null checks. Additive — no version bump.
+  if (!out.cardTypes || !out.cardTags || !out.filters) {
+    out = {
+      ...out,
+      cardTypes: out.cardTypes ?? [],
+      cardTags: out.cardTags ?? [],
+      filters: out.filters ?? [],
+    };
+  }
   return out;
 }

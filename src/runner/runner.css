@@ -287,6 +287,63 @@
 .rn-thinking { animation: rn-blink 1.2s ease-in-out infinite; }
 @keyframes rn-blink { 50% { opacity: 0.45; } }
 
+/* ---------- peek status bar (screenLayout.statusBar === 'peek') ---------- */
+
+/* Skin hooks: .rn-status-peek (the bar in peek mode), .rn-status-collapsed
+   (idle), .rn-status-handle / -off / .rn-status-grip /
+   .rn-status-handle-label (the floating reveal handle). The collapsed bar
+   keeps height 0 instead of display:none so its buttons stay in the Tab
+   order — focus landing inside re-expands it (TableScreen). */
+.rn-status-peek {
+  max-height: 140px;
+  transition: max-height 0.3s ease, padding 0.3s ease, border-top-width 0.3s ease;
+}
+.rn-status-collapsed {
+  max-height: 0;
+  min-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-top-width: 0;
+  overflow-y: hidden;
+}
+.rn-status-handle {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  /* Clear of the phone home-indicator swipe: never closer than 16px above
+     the safe area, so drag-up can't become an app-exit gesture. */
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 6px 16px;
+  border-radius: 999px;
+  background: rgba(8, 10, 16, 0.85);
+  border: 1px solid var(--border-strong);
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: none; /* drag-up must reach pointermove, not pan the page */
+}
+/* Expanded: the handle leaves, except while it holds keyboard focus — the
+   focused element must never be display:none'd out from under the user. */
+.rn-status-handle-off:not(:focus-visible) { display: none; }
+.rn-status-grip {
+  width: 26px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--border-strong);
+  flex-shrink: 0;
+}
+.rn-status-handle-label { white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) {
+  .rn-status-peek { transition: none; }
+}
+.calm .rn-status-peek { transition: none; }
+
 /* ---------- viewer area (bottom) ---------- */
 
 .rn-bottom {

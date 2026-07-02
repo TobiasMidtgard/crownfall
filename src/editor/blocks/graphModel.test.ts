@@ -216,6 +216,30 @@ describe('exec node rows (pins + lanes)', () => {
       .toEqual(['from', 'refillFrom', 'to', 'facing', 'tag']);
   });
 
+  it('card vocabulary exprs are boolean data nodes with a card pin', () => {
+    const card: Expr = { kind: 'binding', name: '$card' };
+    const exprs = [
+      { kind: 'cardTypeIs', card, typeId: 'ty1' },
+      { kind: 'cardHasTag', card, tagId: 'tg1' },
+      { kind: 'filterRef', filterId: 'f1', card },
+    ] as const;
+    const fields = ['typeId', 'tagId', 'filterId'];
+    exprs.forEach((expr, i) => {
+      expect(exprKindOutType(expr.kind)).toBe('boolean');
+      expect(exprNodeRows(def, expr)).toEqual([
+        { kind: 'data', slot: { key: 'card', label: 'Card', type: 'card' } },
+        { kind: 'field', field: fields[i] },
+      ]);
+    });
+    // Wired into a condition pin, the card sub-expression becomes a data node.
+    const block: Block = {
+      kind: 'if', cond: { kind: 'filterRef', filterId: 'f1', card }, then: [], else: [],
+    };
+    const g = projectGraph(def, [block], ['$card']);
+    expect(g.nodes.map((n) => n.id)).toContain('b:0/cond/card');
+    expect(getNode(g, 'b:0/cond')?.outType).toBe('boolean');
+  });
+
   it('sumCards is a number-typed data node', () => {
     expect(exprKindOutType('sumCards')).toBe('number');
     const rows = exprNodeRows(def, { kind: 'sumCards', zone: { zoneId: 'z_hand', owner: null }, fieldId: 'rank', filter: null });

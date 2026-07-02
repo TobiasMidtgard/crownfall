@@ -20,13 +20,18 @@
  * runner and the two can never drift.
  */
 import type {
-  ActionDef, DeckDef, ElementState, GameDef, Id, LayoutStyle, MotionSpec, ScreenElement,
-  ScreenLayout, ScreenVariant, SeatRef, VariableDef, ZoneDef, ZoneLayout, ZoneVisibility,
+  ActionDef, DeckDef, ElementState, GameDef, GameState, Id, LayoutStyle, MotionSpec,
+  ScreenElement, ScreenLayout, ScreenVariant, SeatRef, VariableDef, ZoneDef, ZoneLayout,
+  ZoneVisibility,
 } from '../../../shared/types';
 import { PASS_ACTION_ID } from '../../../shared/types';
+import { isDisplayVisible } from '../../../engine';
 import { newAction, newVariable, uid } from '../../../shared/defaults';
 import { phaseTrackGroup } from '../../../shared/screenTemplates';
-import { absToGroupRel, groupRelToAbs, type PlainRect } from '../../../runner/layoutGeometry';
+import {
+  absToGroupRel, filterDisplayCards, groupPiles, groupRelToAbs, resolveSeat, type PlainRect,
+} from '../../../runner/layoutGeometry';
+import { zoneInstKey } from '../../../runner/layout';
 
 // Shared geometry, re-exported for the canvas and panels (single import point).
 export {
@@ -964,4 +969,96 @@ export function deckCardCount(deck: DeckDef): number {
 /** Sample card count for a zone's editor preview (decks spawning there). */
 export function zoneSampleCount(def: GameDef, zoneId: Id): number {
   return def.decks.filter((d) => d.initialZone === zoneId).reduce((s, d) => s + deckCardCount(d), 0);
+}
+
+// ---------------------------------------------------------------------------
+// Live preview (sample-state) resolution — RUNNER PARITY. The canvas preview
+// resolves elements against the headless sample snapshot (sampleState.ts)
+// exactly like ScreenRenderer: elementRenders' dangling-ref/seat checks plus
+// the `visible` display expression, $viewer bound to the sample's seat 0.
+// ---------------------------------------------------------------------------
+
+/**
+ * Whether the runner would paint this element for `viewerId` in `state`:
+ * false for dangling zone/variable refs, a perPlayer element on seat
+ * 'shared', a seat beyond the sample's player count (opp2/opp3 in the
+ * 2-seat sample), and any falsy `visible` expression. Mirrors
+ * ScreenRenderer's elementRenders + isDisplayVisible pair.
+ */
+export function previewElementVisible(
+  def: GameDef, state: GameState, el: ScreenElement, viewerId: Id,
+): boolean {
+  const playerIds = state.players.map((p) => p.id);
+  if (el.kind === 'zone') {
+    const zone = def.zones.find((z) => z.id === el.zoneId);
+    if (!zone) return false;
+    if (zone.owner !== 'shared') {
+      if (el.seat === 'shared') return false;
+      if (resolveSeat(playerIds, viewerId, el.seat, state.currentPlayerIdx) === null) return false;
+    }
+  } else if (el.kind === 'varText') {
+    const vd = def.variables.find((v) => v.id === el.varId);
+    if (!vd || vd.scope === 'perCard') return false;
+    if (vd.scope === 'perPlayer') {
+      if (el.seat === 'shared') return false;
+      if (resolveSeat(playerIds, viewerId, el.seat, state.currentPlayerIdx) === null) return false;
+    }
+  }
+  return isDisplayVisible(def, state, el.visible ?? null, viewerId);
+}
+
+/** One pile of a zone element's preview (real cards, grouped by identity). */
+export interface ZonePreviewPile {
+  name: string;
+  count: number;
+  /** The pileBadgeField's value on the pile's top card ('' = no badge). */
+  badge: string;
+}
+
+export interface ZonePreview {
+  /** Cards the element shows (cardFilter slice applied, like the runner). */
+  count: number;
+  /** Piles for 'piles'/'carousel' displays and collapseDuplicates; else null. */
+  piles: ZonePreviewPile[] | null;
+}
+
+/**
+ * The REAL contents a zone element shows in the sample state: the resolved
+ * zone instance's cards (viewer-relative seat, cardFilter display slice) and
+ * — where the element groups by identity — its piles. Null when the runner
+ * would render nothing (dangling zone, unresolvable seat, missing instance).
+ */
+export function zonePreview(
+  def: GameDef,
+  state: GameState,
+  el: Extract<ScreenElement, { kind: 'zone' }>,
+  viewerId: Id,
+): ZonePreview | null {
+  const zone = def.zones.find((z) => z.id === el.zoneId);
+  if (!zone) return null;
+  let ownerId: Id | null = null;
+  if (zone.owner !== 'shared') {
+    if (el.seat === 'shared') return null;
+    ownerId = resolveSeat(state.players.map((p) => p.id), viewerId, el.seat, state.currentPlayerIdx);
+    if (ownerId === null) return null;
+  }
+  const inst = state.zones[zoneInstKey(zone.id, ownerId)];
+  if (!inst) return null;
+  const ids = el.cardFilter != null
+    ? filterDisplayCards(def, state, inst.cardIds, el.cardFilter, viewerId)
+    : [...inst.cardIds];
+  const grouped = el.display === 'piles' || el.display === 'carousel'
+    || el.collapseDuplicates === true;
+  const piles = grouped
+    ? groupPiles(ids, state.cards).map((p) => {
+        const top = state.cards[p.topId];
+        const badge = el.pileBadgeField != null ? top?.fields[el.pileBadgeField] : undefined;
+        return {
+          name: top?.name ?? '',
+          count: p.count,
+          badge: badge === undefined || badge === '' ? '' : String(badge),
+        };
+      })
+    : null;
+  return { count: ids.length, piles };
 }

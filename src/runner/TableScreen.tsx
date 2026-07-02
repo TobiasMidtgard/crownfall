@@ -21,7 +21,9 @@
  * The root carries data-phase (phase id) and data-active ('you'/'foe'/'over')
  * so skin CSS can scope phase/turn-conditional styling.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode,
+} from 'react';
 // TableScreen owns its stylesheet: hosts that mount the table directly
 // (the hall's DominionPlay) must get the runner CSS without PlayPage.
 import './runner.css';
@@ -35,6 +37,7 @@ import {
   activeScreenVariant, nextSpeed, resolveMotion, speedFactor, type SpeedSetting,
 } from './layoutGeometry';
 import { useTableKeyboard } from './keyboard';
+import { collapseDelay, dragUpExceeded, mayCollapse, peekHandleLabel } from './peekBar';
 import { GameSession, type SeatSetup, type SessionSnapshot } from './session';
 import { OpponentsStrip, VarChips } from './OpponentsStrip';
 import { ZoneBlock, type TableCtx } from './ZoneViews';
@@ -343,8 +346,8 @@ function Table({ def, session, snap, navigate, onPlayAgain, homeLabel }: {
     );
   }
 
-  const statusBar = (
-    <div className="rn-status">
+  const statusContent = (
+    <>
       <button className="btn rn-statusbtn" onClick={() => navigate('#/')} aria-label="Leave game">✕</button>
       <span className="rn-stat">Turn {state.turnNumber}</span>
       {phase && <span className="rn-stat">{phase.name}</span>}
@@ -368,7 +371,20 @@ function Table({ def, session, snap, navigate, onPlayAgain, homeLabel }: {
         {speed === '1x' ? '1×' : speed === '2x' ? '2×' : 'max'}
       </button>
       <button className="btn rn-statusbtn" onClick={() => setLogOpen(true)}>Log</button>
-    </div>
+    </>
+  );
+  // statusBar 'peek' (opt-in per screen layout) collapses the bar to a
+  // floating handle when idle; 'pinned' (default) is the bar as always.
+  const statusBar = (def.screenLayout?.statusBar ?? 'pinned') === 'peek' ? (
+    <PeekStatusBar
+      overlayOpen={overlayOpen}
+      finished={snap.finished}
+      label={peekHandleLabel(state.turnNumber, phase?.name ?? null)}
+    >
+      {statusContent}
+    </PeekStatusBar>
+  ) : (
+    <div className="rn-status">{statusContent}</div>
   );
 
   // Skin hooks (DGT body[data-phase]/[data-active] pattern): the current
@@ -533,5 +549,118 @@ function Table({ def, session, snap, navigate, onPlayAgain, homeLabel }: {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * The peek status bar (screenLayout.statusBar === 'peek'): the pinned bar's
+ * content, collapsing to a floating "Show game bar" handle after
+ * PEEK_IDLE_MS with no pointer/keyboard activity inside the bar. Expansion:
+ * hover over the handle (mouse), click/tap, drag-up past
+ * PEEK_DRAG_THRESHOLD_PX, or any focus entering the bar — none of which
+ * moves focus. The collapsed bar stays in the DOM at height 0 (not
+ * display:none) so Tab can still land inside it and trigger the focus
+ * expansion; the focusWithin guard means collapsing never pulls focus out
+ * from under the user. overlayOpen/finished pin the bar open (choice sheets
+ * and the game-over chrome must stay visible). The collapse-decision math
+ * lives in peekBar.ts.
+ */
+function PeekStatusBar({ overlayOpen, finished, label, children }: {
+  overlayOpen: boolean;
+  finished: boolean;
+  label: string;
+  children: ReactNode;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [focusWithin, setFocusWithin] = useState(false);
+  const lastActivity = useRef(Date.now());
+
+  const expand = useCallback(() => {
+    lastActivity.current = Date.now();
+    setCollapsed(false);
+  }, []);
+
+  // Activity inside the bar only refreshes the idle clock — a ref, not
+  // state, so pointermove streams don't re-render; the armed timer below
+  // re-checks the clock when it fires and re-arms instead of collapsing.
+  const noteActivity = useCallback(() => {
+    lastActivity.current = Date.now();
+  }, []);
+
+  // A sheet/choice/dialog opening (or the game ending) pops the bar back up.
+  useEffect(() => {
+    if (overlayOpen || finished) setCollapsed(false);
+  }, [overlayOpen, finished]);
+
+  useEffect(() => {
+    if (collapsed) return;
+    const guards = { overlayOpen, finished, focusWithin };
+    // Any state change that re-arms the timer (mount, expand, a guard
+    // clearing) grants a fresh idle window rather than inheriting a stale
+    // clock and collapsing instantly.
+    lastActivity.current = Date.now();
+    let timer = 0;
+    const arm = () => {
+      const delay = collapseDelay(guards, lastActivity.current, Date.now());
+      if (delay === null) return;
+      timer = window.setTimeout(() => {
+        if (mayCollapse(guards, lastActivity.current, Date.now())) setCollapsed(true);
+        else arm();
+      }, delay);
+    };
+    arm();
+    return () => window.clearTimeout(timer);
+  }, [collapsed, overlayOpen, finished, focusWithin]);
+
+  const dragStartY = useRef<number | null>(null);
+
+  return (
+    <>
+      <div
+        className={`rn-status rn-status-peek${collapsed ? ' rn-status-collapsed' : ''}`}
+        onPointerDown={noteActivity}
+        onPointerMove={noteActivity}
+        onKeyDown={noteActivity}
+        onFocus={() => {
+          setFocusWithin(true);
+          setCollapsed(false);
+        }}
+        onBlur={(e) => {
+          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocusWithin(false);
+        }}
+      >
+        {children}
+      </div>
+      <button
+        type="button"
+        className={`rn-status-handle${collapsed ? '' : ' rn-status-handle-off'}`}
+        aria-label="Show game bar"
+        aria-expanded={!collapsed}
+        onClick={expand}
+        onFocus={expand}
+        onPointerEnter={(e) => {
+          if (e.pointerType === 'mouse') expand();
+        }}
+        onPointerDown={(e) => {
+          dragStartY.current = e.clientY;
+          e.currentTarget.setPointerCapture(e.pointerId);
+        }}
+        onPointerMove={(e) => {
+          if (dragStartY.current !== null && dragUpExceeded(dragStartY.current, e.clientY)) {
+            dragStartY.current = null;
+            expand();
+          }
+        }}
+        onPointerUp={() => {
+          dragStartY.current = null;
+        }}
+        onPointerCancel={() => {
+          dragStartY.current = null;
+        }}
+      >
+        <span className="rn-status-grip" aria-hidden="true" />
+        <span className="rn-status-handle-label">{label}</span>
+      </button>
+    </>
   );
 }

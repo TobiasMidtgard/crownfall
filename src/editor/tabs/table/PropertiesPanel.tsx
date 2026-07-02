@@ -14,8 +14,13 @@
  *                ExpressionEditor ($viewer bound)
  *   2+        -> Group selection + webpage-builder alignment essentials
  *                (align left/center/right/top/middle/bottom, distribute H/V)
+ *
+ * PRESENTATION: on ≤720px viewports (the runner's narrow breakpoint) the
+ * panel switches to bottom-sheet dress (`tt-props-narrow`) — the workspace
+ * already hosts it inside the mobile bottom-sheet drawer (`tt-sheet`); the
+ * class widens touch targets to ≥44px and relaxes the control grid.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type {
   ActionDef, DeckDef, ElementState, GameDef, Id, LayoutStyle, MotionSpec, RevealAnim,
   ScreenElement, ScreenLayout, SeatRef, VariableDef, ZoneDef,
@@ -77,14 +82,42 @@ export interface PropertiesPanelProps {
   onStatePreview: (stateId: Id | null) => void;
 }
 
+/** The runner's narrow breakpoint (ScreenRenderer's NARROW_QUERY pattern). */
+const NARROW_QUERY = '(max-width: 720px)';
+
+/** True at/below 720px (live media query; false where matchMedia is missing). */
+function useNarrowViewport(): boolean {
+  const supported = typeof window !== 'undefined' && typeof window.matchMedia === 'function';
+  const [narrow, setNarrow] = useState(() => supported && window.matchMedia(NARROW_QUERY).matches);
+  useEffect(() => {
+    if (!supported) return;
+    const mq = window.matchMedia(NARROW_QUERY);
+    const onChange = () => setNarrow(mq.matches);
+    onChange();
+    if (typeof mq.addEventListener === 'function') {
+      mq.addEventListener('change', onChange);
+      return () => mq.removeEventListener('change', onChange);
+    }
+    mq.addListener(onChange); // older WebKit
+    return () => mq.removeListener(onChange);
+  }, [supported]);
+  return narrow;
+}
+
 export function PropertiesPanel(props: PropertiesPanelProps) {
+  const narrow = useNarrowViewport();
   const { layout, variant, sel } = props;
-  if (sel.length > 1) return <MultiProps {...props} />;
   const el = sel.length === 1 ? findEl(variantElements(layout, variant), sel[0]) : null;
-  if (el) return <ElementProps {...props} el={el} />;
-  return variant === 'mobile' && layout.mobile
-    ? <MobileScreenProps {...props} />
-    : <ScreenProps {...props} />;
+  const body = sel.length > 1
+    ? <MultiProps {...props} />
+    : el
+      ? <ElementProps {...props} el={el} />
+      : variant === 'mobile' && layout.mobile
+        ? <MobileScreenProps {...props} />
+        : <ScreenProps {...props} />;
+  // Bottom-sheet presentation on phones: the workspace hosts the panel in
+  // its bottom-sheet drawer there; this class sizes controls for touch.
+  return narrow ? <div className="tt-props-narrow">{body}</div> : body;
 }
 
 // ---------------------------------------------------------------------------

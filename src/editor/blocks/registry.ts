@@ -352,6 +352,21 @@ const EXPR_ENTRIES: { [K in Expr['kind']]: ExprEntry } = {
     category: 'cards', label: 'Card’s zone', description: 'The zone the card is currently in.',
     make: (def, bindings) => ({ kind: 'cardZoneId', card: defaultCardExpr(def, bindings) }),
   },
+  cardTypeIs: {
+    category: 'cards', label: 'Card is a type',
+    description: 'True when the card’s primary type matches (e.g. "is a Treasure"). Types live in the Types & tags panel.',
+    make: (def, bindings) => ({ kind: 'cardTypeIs', card: defaultCardExpr(def, bindings), typeId: def.cardTypes?.[0]?.id ?? '' }),
+  },
+  cardHasTag: {
+    category: 'cards', label: 'Card has tag',
+    description: 'True when the card carries a tag (e.g. "has tag Attack"). Tags live in the Types & tags panel.',
+    make: (def, bindings) => ({ kind: 'cardHasTag', card: defaultCardExpr(def, bindings), tagId: def.cardTags?.[0]?.id ?? '' }),
+  },
+  filterRef: {
+    category: 'cards', label: 'Matches a saved filter',
+    description: 'True when the card matches a reusable named filter from the Filters panel.',
+    make: (def, bindings) => ({ kind: 'filterRef', filterId: def.filters?.[0]?.id ?? '', card: defaultCardExpr(def, bindings) }),
+  },
   currentPlayer: {
     category: 'players', label: 'Current player', description: 'The player whose turn it is.',
     make: () => ({ kind: 'currentPlayer' }),
@@ -395,7 +410,7 @@ const EXPR_ORDER: Expr['kind'][] = [
   'num', 'str', 'bool', 'random',
   'getVar',
   'zoneCount', 'countCards', 'sumCards', 'topCard', 'bestCard',
-  'cardField', 'cardOwner', 'cardZoneId',
+  'cardField', 'cardOwner', 'cardZoneId', 'cardTypeIs', 'cardHasTag', 'filterRef',
   'currentPlayer', 'nextPlayer', 'playerCount', 'binding',
   'turnNumber', 'stackSize', 'stackTopCard',
   'compare', 'math', 'logic', 'not',

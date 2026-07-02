@@ -167,7 +167,9 @@ export function exprOutType(def: GameDef, expr: Expr): PinType {
     case 'phaseIndex': case 'phasePos':
       return 'number';
     case 'str': return 'text';
-    case 'bool': case 'compare': case 'logic': case 'not': case 'phaseIs': return 'boolean';
+    case 'bool': case 'compare': case 'logic': case 'not': case 'phaseIs':
+    case 'cardTypeIs': case 'cardHasTag': case 'filterRef':
+      return 'boolean';
     case 'topCard': case 'bestCard': case 'stackTopCard': return 'card';
     case 'currentPlayer': case 'nextPlayer': case 'cardOwner': return 'player';
     case 'cardZoneId': return 'zone';
@@ -188,7 +190,9 @@ export function exprKindOutType(kind: Expr['kind']): PinType {
     case 'phaseIndex': case 'phasePos':
       return 'number';
     case 'str': return 'text';
-    case 'bool': case 'compare': case 'logic': case 'not': case 'phaseIs': return 'boolean';
+    case 'bool': case 'compare': case 'logic': case 'not': case 'phaseIs':
+    case 'cardTypeIs': case 'cardHasTag': case 'filterRef':
+      return 'boolean';
     case 'topCard': case 'bestCard': case 'stackTopCard': return 'card';
     case 'currentPlayer': case 'nextPlayer': case 'cardOwner': return 'player';
     case 'cardZoneId': return 'zone';
@@ -310,6 +314,9 @@ export function exprNodeRows(def: GameDef, expr: Expr): NodeRow[] {
     ];
     case 'cardField': return [data('card', 'Card', 'card'), field('fieldId')];
     case 'cardOwner': case 'cardZoneId': return [data('card', 'Card', 'card')];
+    case 'cardTypeIs': return [data('card', 'Card', 'card'), field('typeId')];
+    case 'cardHasTag': return [data('card', 'Card', 'card'), field('tagId')];
+    case 'filterRef': return [data('card', 'Card', 'card'), field('filterId')];
     case 'nextPlayer': return [data('from', 'After', 'player')];
     case 'math': return [data('left', 'A', 'number'), field('op'), data('right', 'B', 'number')];
     case 'compare': return [data('left', 'A', 'any'), field('op'), data('right', 'B', 'any')];

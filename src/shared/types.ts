@@ -872,7 +872,21 @@ export type Expr =
    */
   | { kind: 'phasePos'; phaseId: Id }
   /** True while the named phase is the current phase (sugar for the == above). */
-  | { kind: 'phaseIs'; phaseId: Id };
+  | { kind: 'phaseIs'; phaseId: Id }
+  /**
+   * True when the card's resolved def has this primary type (CardDef.typeId).
+   * An untyped card (no typeId), a standard52 card, or a missing card → false.
+   */
+  | { kind: 'cardTypeIs'; card: Expr; typeId: Id }
+  /** True when `tagId` is among the card's tags (CardDef.tags). Tagless or missing card → false. */
+  | { kind: 'cardHasTag'; card: Expr; tagId: Id }
+  /**
+   * Evaluate the named filter's condition (GameDef.filters) with $card
+   * rebound to `card` → boolean. Cycle-guarded: re-entering a filter already
+   * resolving on this evaluation reports a script error and yields false
+   * (never throws); validateGameDef rejects cycles at author time.
+   */
+  | { kind: 'filterRef'; filterId: Id; card: Expr };
 
 // ---------------------------------------------------------------------------
 // Runtime state (produced/owned by the engine, consumed by the runner)

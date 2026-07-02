@@ -3,7 +3,7 @@
  * consumption by `random`; callers that must not consume game RNG
  * (legality enumeration) pass a forked RNG via `silentCtx`.
  */
-import type { CardInstance, Expr, Id, RuntimeValue, ZoneInstance, ZoneRef } from '../shared/types';
+import type { CardDef, CardInstance, Expr, Id, RuntimeValue, ZoneInstance, ZoneRef } from '../shared/types';
 import type { Core, Frame } from './internals';
 import { currentPlayer, isPlayerId, report, zoneInstanceKey, findZoneOfCard } from './internals';
 import type { Rng } from './rng';
@@ -13,6 +13,12 @@ export interface EvalCtx {
   frames: Frame[];
   rng: Rng;
   report: (msg: string) => void;
+  /**
+   * Named-filter ids currently resolving in this evaluation (filterRef cycle
+   * guard). Created lazily on first filterRef; re-entering an id already in
+   * the set reports a script error and yields false instead of recursing.
+   */
+  resolvingFilters?: Set<Id>;
 }
 
 /** Context for scripts: uses the game RNG and reports errors. */
@@ -300,5 +306,44 @@ export function evalExpr(ctx: EvalCtx, e: Expr): RuntimeValue {
       const pos = ctx.core.def.phases.findIndex((p) => p.id === e.phaseId);
       return pos >= 0 && pos === ctx.core.state.phaseIdx;
     }
+    case 'cardTypeIs': {
+      const cdef = resolveCardDef(ctx, e.card);
+      // Untyped cards (and standard52 cards, which have no def) never match.
+      return (cdef?.typeId ?? null) === e.typeId;
+    }
+    case 'cardHasTag': {
+      const cdef = resolveCardDef(ctx, e.card);
+      return (cdef?.tags ?? []).includes(e.tagId);
+    }
+    case 'filterRef': {
+      const filter = (ctx.core.def.filters ?? []).find((f) => f.id === e.filterId);
+      if (!filter) {
+        ctx.report(`Unknown filter "${e.filterId}" — treating it as false.`);
+        return false;
+      }
+      const resolving = (ctx.resolvingFilters ??= new Set());
+      if (resolving.has(e.filterId)) {
+        ctx.report(`Filter "${filter.name}" is defined in terms of itself — treating it as false.`);
+        return false;
+      }
+      const card = evalExpr(ctx, e.card);
+      resolving.add(e.filterId);
+      ctx.frames.push({ $card: card });
+      try {
+        return truthy(evalExpr(ctx, filter.condition));
+      } finally {
+        ctx.frames.pop();
+        resolving.delete(e.filterId);
+      }
+    }
   }
+}
+
+/** CardDef behind a card expression (null for missing / standard52 / untracked cards). */
+function resolveCardDef(ctx: EvalCtx, cardExpr: Expr): CardDef | null {
+  const v = evalExpr(ctx, cardExpr);
+  if (v === null) return null;
+  const card = asCard(ctx, v);
+  if (!card || card.defId === null) return null;
+  return ctx.core.def.cards.find((c) => c.id === card.defId) ?? null;
 }

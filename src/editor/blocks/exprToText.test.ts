@@ -30,6 +30,9 @@ function fixture(): GameDef {
     actions: [],
     triggers: [],
     endConditions: [],
+    cardTypes: [{ id: 'ty_treasure', name: 'Treasure', color: '#c9a227' }],
+    cardTags: [{ id: 'tg_attack', name: 'Attack' }],
+    filters: [{ id: 'f_basics', name: 'The basic cards', condition: { kind: 'bool', value: true } }],
   };
 }
 
@@ -45,6 +48,7 @@ const ALL_EXPR_KINDS: Expr['kind'][] = [
   'binding', 'currentPlayer', 'playerCount', 'turnNumber', 'nextPlayer',
   'cardOwner', 'cardZoneId', 'math', 'compare', 'logic', 'not', 'bestCard',
   'countCards', 'sumCards', 'random', 'stackSize', 'stackTopCard',
+  'cardTypeIs', 'cardHasTag', 'filterRef',
 ];
 
 describe('registry block factories', () => {
@@ -157,6 +161,17 @@ describe('exprToText', () => {
     expect(exprToText(def, { kind: 'bestCard', zone: { zoneId: 'z_trick', owner: null }, by: 'highest', fieldId: 'rank', filter: null }))
       .toBe('highest rank card in Trick');
     expect(exprToText(def, { kind: 'random', max: { kind: 'num', value: 6 } })).toBe('random 1 to 6');
+  });
+
+  it('renders the card vocabulary with names from the def, ids as fallback', () => {
+    const card: Expr = { kind: 'binding', name: '$card' };
+    expect(exprToText(def, { kind: 'cardTypeIs', card, typeId: 'ty_treasure' })).toBe('$card is a Treasure');
+    expect(exprToText(def, { kind: 'cardHasTag', card, tagId: 'tg_attack' })).toBe('$card has tag Attack');
+    expect(exprToText(def, { kind: 'filterRef', filterId: 'f_basics', card })).toBe('$card matches The basic cards');
+    // Dangling ids fall back to the raw id (validate flags them separately).
+    expect(exprToText(def, { kind: 'cardTypeIs', card, typeId: 'ty_gone' })).toBe('$card is a ty_gone');
+    expect(exprToText(def, { kind: 'cardHasTag', card, tagId: 'tg_gone' })).toBe('$card has tag tg_gone');
+    expect(exprToText(def, { kind: 'filterRef', filterId: 'f_gone', card })).toBe('$card matches f_gone');
   });
 
   it('renders sumCards and the contains op readably', () => {

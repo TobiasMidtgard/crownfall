@@ -373,6 +373,69 @@ function ExprFields({ def, draft, setDraft, bindings }: {
           />
         </label>
       );
+    case 'cardTypeIs':
+      return (
+        <>
+          <label className="field">
+            <span>Card</span>
+            <ExpressionEditor
+              def={def}
+              value={draft.card}
+              onChange={(card) => card && setDraft({ ...draft, card })}
+              bindings={bindings}
+            />
+          </label>
+          <VocabSelect
+            label="Type"
+            value={draft.typeId}
+            options={def.cardTypes ?? []}
+            emptyHint="No card types yet — add some in the Types & tags panel."
+            onChange={(typeId) => setDraft({ ...draft, typeId })}
+          />
+        </>
+      );
+    case 'cardHasTag':
+      return (
+        <>
+          <label className="field">
+            <span>Card</span>
+            <ExpressionEditor
+              def={def}
+              value={draft.card}
+              onChange={(card) => card && setDraft({ ...draft, card })}
+              bindings={bindings}
+            />
+          </label>
+          <VocabSelect
+            label="Tag"
+            value={draft.tagId}
+            options={def.cardTags ?? []}
+            emptyHint="No tags yet — add some in the Types & tags panel."
+            onChange={(tagId) => setDraft({ ...draft, tagId })}
+          />
+        </>
+      );
+    case 'filterRef':
+      return (
+        <>
+          <label className="field">
+            <span>Card</span>
+            <ExpressionEditor
+              def={def}
+              value={draft.card}
+              onChange={(card) => card && setDraft({ ...draft, card })}
+              bindings={bindings}
+            />
+          </label>
+          <VocabSelect
+            label="Filter"
+            value={draft.filterId}
+            options={def.filters ?? []}
+            emptyHint="No saved filters yet — add one in the Filters panel."
+            onChange={(filterId) => setDraft({ ...draft, filterId })}
+          />
+        </>
+      );
     case 'binding':
       return (
         <label className="field">
@@ -476,6 +539,35 @@ function PairFields({ def, bindings, left, right, op, ops, onChange }: {
         <ExpressionEditor def={def} value={right} onChange={(e) => e && onChange(left, op, e)} bindings={bindings} />
       </label>
     </>
+  );
+}
+
+/**
+ * Card-vocabulary picker (types / tags / saved filters): a plain id select
+ * over the def's list, with a missing-entry sentinel and a hint pointing at
+ * the authoring panel while the list is still empty.
+ */
+function VocabSelect({ label, value, options, emptyHint, onChange }: {
+  label: string;
+  value: string;
+  options: { id: string; name: string }[];
+  emptyHint: string;
+  onChange: (id: string) => void;
+}) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      {options.length === 0 ? (
+        <span className="faint">{emptyHint}</span>
+      ) : (
+        <select className="select" value={value} onChange={(e) => onChange(e.target.value)}>
+          {!options.some((o) => o.id === value) && (
+            <option value={value}>⚠ missing {label.toLowerCase()}</option>
+          )}
+          {options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+        </select>
+      )}
+    </label>
   );
 }
 

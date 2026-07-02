@@ -16,6 +16,14 @@ export function validateGameDef(def: GameDef): ValidationIssue[] {
   const perPlayerZoneIds = new Set(def.zones.filter((z) => z.owner === 'perPlayer').map((z) => z.id));
   const fieldIds = new Set<string>(STANDARD_FIELDS);
   for (const t of def.templates) for (const f of t.fields) fieldIds.add(f.id);
+  const cardTypeIds = new Set((def.cardTypes ?? []).map((t) => t.id));
+  const cardTagIds = new Set((def.cardTags ?? []).map((t) => t.id));
+  const filterIds = new Set((def.filters ?? []).map((f) => f.id));
+  // Vocabulary usage (cards' assignments + every walked expression), for the
+  // defined-but-unused warnings emitted at the end.
+  const usedTypeIds = new Set<string>();
+  const usedTagIds = new Set<string>();
+  const usedFilterIds = new Set<string>();
 
   // Static value types where statically knowable (null = unknown / id-like).
   const varTypeById = new Map(def.variables.map((v) => [v.id, v.type]));
@@ -36,7 +44,9 @@ export function validateGameDef(def: GameDef): ValidationIssue[] {
       case 'math': case 'zoneCount': case 'countCards': case 'sumCards': case 'random':
       case 'turnNumber': case 'playerCount': case 'phaseIndex': case 'phasePos':
         return 'number';
-      case 'compare': case 'logic': case 'not': case 'phaseIs': return 'boolean';
+      case 'compare': case 'logic': case 'not': case 'phaseIs':
+      case 'cardTypeIs': case 'cardHasTag': case 'filterRef':
+        return 'boolean';
       case 'cardField': return fieldTypeById.get(e.fieldId) ?? null;
       case 'getVar': return varTypeById.get(e.varId) ?? null;
       default: return null;
@@ -97,6 +107,14 @@ export function validateGameDef(def: GameDef): ValidationIssue[] {
   for (const card of def.cards) {
     if (!templateIds.has(card.templateId)) {
       err(`Card "${card.name}"`, 'Its template no longer exists.');
+    }
+    if (card.typeId != null) {
+      usedTypeIds.add(card.typeId);
+      if (!cardTypeIds.has(card.typeId)) err(`Card "${card.name}"`, 'Has a card type that no longer exists.');
+    }
+    for (const tagId of card.tags ?? []) {
+      usedTagIds.add(tagId);
+      if (!cardTagIds.has(tagId)) err(`Card "${card.name}"`, 'Carries a tag that no longer exists.');
     }
     for (const ab of card.abilities) {
       const where = `Card "${card.name}" > ability "${ab.name}"`;
@@ -298,6 +316,56 @@ export function validateGameDef(def: GameDef): ValidationIssue[] {
     if (!endsGame) warn('Flow', 'No end conditions and no "end game" block anywhere — the game can never finish.');
   }
 
+  // Named filters: their conditions get the normal expression walk, and the
+  // filterRef edges between them must form no cycle (runtime yields false on
+  // re-entry, so a cycle is always an authoring mistake).
+  const filters = def.filters ?? [];
+  for (const f of filters) walkExpr(f.condition, `Filter "${f.name}"`);
+  {
+    /** Deep-scan any value for filterRef expressions (nested anywhere). */
+    const collectFilterRefs = (value: unknown, out: Set<string>): void => {
+      if (!value || typeof value !== 'object') return;
+      if (!Array.isArray(value)) {
+        const v = value as { kind?: unknown; filterId?: unknown };
+        if (v.kind === 'filterRef' && typeof v.filterId === 'string') out.add(v.filterId);
+      }
+      for (const child of Object.values(value)) collectFilterRefs(child, out);
+    };
+    const edges = new Map<string, Set<string>>();
+    for (const f of filters) {
+      const refs = new Set<string>();
+      collectFilterRefs(f.condition, refs);
+      edges.set(f.id, refs);
+    }
+    const filterName = (id: string) => filters.find((f) => f.id === id)?.name ?? id;
+    const state = new Map<string, 'visiting' | 'done'>();
+    const stack: string[] = [];
+    const visit = (id: string): void => {
+      const s = state.get(id);
+      if (s === 'done') return;
+      if (s === 'visiting') {
+        const names = [...stack.slice(stack.indexOf(id)), id].map((fid) => `"${filterName(fid)}"`);
+        err(`Filter "${filterName(id)}"`, `Filters reference each other in a cycle (${names.join(' → ')}) — at play time the loop evaluates to false.`);
+        return;
+      }
+      state.set(id, 'visiting');
+      stack.push(id);
+      for (const next of edges.get(id) ?? []) if (filterIds.has(next)) visit(next);
+      stack.pop();
+      state.set(id, 'done');
+    };
+    for (const f of filters) visit(f.id);
+  }
+  for (const t of def.cardTypes ?? []) {
+    if (!usedTypeIds.has(t.id)) warn(`Card type "${t.name}"`, 'Defined but unused — no card has this type and no condition checks it.');
+  }
+  for (const t of def.cardTags ?? []) {
+    if (!usedTagIds.has(t.id)) warn(`Tag "${t.name}"`, 'Defined but unused — no card carries this tag and no condition checks it.');
+  }
+  for (const f of filters) {
+    if (!usedFilterIds.has(f.id)) warn(`Filter "${f.name}"`, 'Defined but unused — nothing references it.');
+  }
+
   return issues;
 
   function checkZoneRef(ref: ZoneRef, where: string) {
@@ -468,6 +536,21 @@ export function validateGameDef(def: GameDef): ValidationIssue[] {
         break;
       case 'phaseIs':
         if (!phaseIds.has(e.phaseId)) err(where, 'Checks a phase that no longer exists.');
+        break;
+      case 'cardTypeIs':
+        walkExpr(e.card, where);
+        usedTypeIds.add(e.typeId);
+        if (!cardTypeIds.has(e.typeId)) err(where, 'Checks a card type that no longer exists.');
+        break;
+      case 'cardHasTag':
+        walkExpr(e.card, where);
+        usedTagIds.add(e.tagId);
+        if (!cardTagIds.has(e.tagId)) err(where, 'Checks a tag that no longer exists.');
+        break;
+      case 'filterRef':
+        walkExpr(e.card, where);
+        usedFilterIds.add(e.filterId);
+        if (!filterIds.has(e.filterId)) err(where, 'Uses a saved filter that no longer exists.');
         break;
       case 'num': case 'str': case 'bool': case 'binding':
       case 'currentPlayer': case 'playerCount': case 'turnNumber':

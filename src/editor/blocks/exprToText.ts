@@ -122,6 +122,19 @@ export function exprToText(def: GameDef, expr: Expr): string {
       const phase = def.phases.find((p) => p.id === expr.phaseId);
       return `phase is ${phase ? `"${phase.name}"` : 'a missing phase'}`;
     }
+    // Card vocabulary: names resolve from the def, raw ids as the fallback.
+    case 'cardTypeIs': {
+      const type = def.cardTypes?.find((t) => t.id === expr.typeId);
+      return `${exprToText(def, expr.card)} is a ${type?.name ?? expr.typeId}`;
+    }
+    case 'cardHasTag': {
+      const tag = def.cardTags?.find((t) => t.id === expr.tagId);
+      return `${exprToText(def, expr.card)} has tag ${tag?.name ?? expr.tagId}`;
+    }
+    case 'filterRef': {
+      const filter = def.filters?.find((f) => f.id === expr.filterId);
+      return `${exprToText(def, expr.card)} matches ${filter?.name ?? expr.filterId}`;
+    }
   }
 }
 

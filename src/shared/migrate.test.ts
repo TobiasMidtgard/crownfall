@@ -37,20 +37,43 @@ function v1Def(): GameDef {
 }
 
 describe('schemaVersion 2 migration', () => {
-  it('stamps v1 documents to v2 and changes NOTHING else', () => {
+  it('stamps v1 documents to v2 and changes nothing else beyond seeding the vocabulary lists', () => {
     const original = v1Def();
     const migrated = migrateGameDef(original);
     expect(migrated.schemaVersion).toBe(2);
     expect(SCHEMA_VERSION).toBe(2);
-    expect({ ...migrated, schemaVersion: 1 }).toEqual(original);
+    expect({ ...migrated, schemaVersion: 1 })
+      .toEqual({ ...original, cardTypes: [], cardTags: [], filters: [] });
     // The input document is not mutated.
     expect(original.schemaVersion).toBe(1);
+    expect(original.cardTypes).toBeUndefined();
   });
 
   it('passes v2 documents through untouched', () => {
     const v2 = migrateGameDef(v1Def());
     const again = migrateGameDef(v2);
     expect(again).toEqual(v2);
+  });
+
+  it('seeds absent cardTypes/cardTags/filters to [] — pure and idempotent', () => {
+    const migrated = migrateGameDef(v1Def());
+    expect(migrated.cardTypes).toEqual([]);
+    expect(migrated.cardTags).toEqual([]);
+    expect(migrated.filters).toEqual([]);
+    expect(migrateGameDef(migrated)).toEqual(migrated);
+  });
+
+  it('preserves existing vocabulary lists exactly', () => {
+    const authored: GameDef = {
+      ...migrateGameDef(v1Def()),
+      cardTypes: [{ id: 'ty1', name: 'Treasure', color: '#c9a227' }],
+      cardTags: [{ id: 'tg1', name: 'Attack' }],
+      filters: [{ id: 'f1', name: 'The basic cards', condition: { kind: 'bool', value: true } }],
+    };
+    const out = migrateGameDef(authored);
+    expect(out.cardTypes).toEqual(authored.cardTypes);
+    expect(out.cardTags).toEqual(authored.cardTags);
+    expect(out.filters).toEqual(authored.filters);
   });
 
   it('storage soundness accepts both versions and rejects unknown ones', () => {

@@ -23,7 +23,8 @@ import {
 } from '../engine/testkit';
 import {
   burnZoneKeys, buttonMoves, elementContentSig, logRows, noneTargetMoveByAction,
-  renderDisplayValue, renderTextParts, visibleButtonActionIds, zoneInstKey,
+  readActiveTab, renderDisplayValue, renderTextParts, resolveActiveTab, subscribeActiveTabs,
+  tabStorageKey, tabsVersion, visibleButtonActionIds, writeActiveTab, zoneInstKey,
 } from './layout';
 import { filterDisplayCards, resolveElementAppearance, resolveSeat } from './layoutGeometry';
 
@@ -501,6 +502,68 @@ describe('onChangeAnim content signatures (elementContentSig)', () => {
       kind: 'text', id: 't', name: 't', rect, text: 'SEAL', fontSize: 2, align: 'center',
     };
     expect(elementContentSig(def, state, el, 'p0', null)).toBe('|SEAL');
+  });
+});
+
+describe('tabbed groups (tab persistence + active-panel resolution)', () => {
+  it('tabStorageKey mirrors the collapse-key pattern', () => {
+    expect(tabStorageKey('game1', 'el7')).toBe('cardsmith.tab.game1.el7');
+  });
+
+  it('write/read roundtrip works without localStorage; unchanged writes are no-ops', () => {
+    // Node env: no localStorage — the in-session mirror carries everything.
+    expect(readActiveTab('g', 'tp1')).toBeNull();
+    let pings = 0;
+    const off = subscribeActiveTabs(() => { pings += 1; });
+    const v0 = tabsVersion();
+    writeActiveTab('g', 'tp1', 'panelA');
+    expect(readActiveTab('g', 'tp1')).toBe('panelA');
+    expect(tabsVersion()).toBe(v0 + 1);
+    expect(pings).toBe(1);
+    writeActiveTab('g', 'tp1', 'panelA'); // unchanged: no bump, no ping
+    expect(tabsVersion()).toBe(v0 + 1);
+    expect(pings).toBe(1);
+    writeActiveTab('g', 'tp1', 'panelB');
+    expect(readActiveTab('g', 'tp1')).toBe('panelB');
+    expect(pings).toBe(2);
+    off();
+    writeActiveTab('g', 'tp1', 'panelC');
+    expect(pings).toBe(2); // unsubscribed
+  });
+
+  it('resolveActiveTab: stored wins while visible, else first visible, else null', async () => {
+    const def = screenDef();
+    const h = harness(def);
+    await h.engine.start();
+    const state = h.state();
+    const group: Extract<ScreenElement, { kind: 'group' }> = {
+      kind: 'group', id: 'tgx', name: 'Tabs', rect, tabbed: true,
+      children: [
+        { kind: 'text', id: 'pa', name: 'A', rect, text: 'a', fontSize: 2, align: 'left' },
+        // Only visible while the global `night` holds.
+        { kind: 'text', id: 'pb', name: 'B', rect, text: 'b', fontSize: 2, align: 'left', visible: gv('night') },
+        { kind: 'text', id: 'pc', name: 'C', rect, text: 'c', fontSize: 2, align: 'left' },
+      ],
+    };
+    // No stored choice: the first visible panel.
+    expect(resolveActiveTab(def, state, group, 'p0', null)).toBe('pa');
+    // Stored + visible wins; stored but HIDDEN (night off) falls back.
+    expect(resolveActiveTab(def, state, group, 'p0', 'pc')).toBe('pc');
+    expect(resolveActiveTab(def, state, group, 'p0', 'pb')).toBe('pa');
+    // Unknown stored id (panel deleted): first visible.
+    expect(resolveActiveTab(def, state, group, 'p0', 'ghost')).toBe('pa');
+    // Night on: pb becomes selectable.
+    const night: GameState = { ...state, globalVars: { ...state.globalVars, night: true } };
+    expect(resolveActiveTab(def, night, group, 'p0', 'pb')).toBe('pb');
+    // Every panel hidden: null (only the disabled tab bar renders).
+    const allHidden: typeof group = {
+      ...group,
+      children: group.children.map((c) => ({
+        ...c,
+        visible: { kind: 'bool', value: false } as Expr,
+      })),
+    };
+    expect(resolveActiveTab(def, state, allHidden, 'p0', 'pa')).toBeNull();
   });
 });
 

@@ -3,16 +3,18 @@
  * exercised live, not here): digit label/code mapping incl. Digit0 as the
  * tenth, modifier routing, badge/target assignment by DOM (paint) order
  * across keyGroup zones against REAL engine states, spotlight subtree
- * checks, Enter's first-enabled-button walk, and the flip layer's defensive
- * move-tag reader.
+ * checks, Enter's first-enabled-button walk, tabbed-group active-panel
+ * filtering + auto tab-flips, and the flip layer's defensive move-tag
+ * reader. (Node env: the tab store falls back to its in-session map.)
  */
 import { describe, expect, it } from 'vitest';
 import type { GameDef, GameState, Id, Move, ScreenElement } from '../shared/types';
 import { cdef, customDeck, harness, makeDef, pzone, zone } from '../engine/testkit';
 import {
   computeKeyTargets, digitForIndex, elementCollapsed, firstEnabledButtonMove, groupForDigit,
-  heldGroup, indexFromCode, subtreeHasKeyGroup,
+  heldGroup, indexFromCode, subtreeHasKeyGroup, tabFlipsForGroup,
 } from './keyboard';
+import { writeActiveTab } from './layout';
 import { moveTagOf } from './flip';
 
 const rect = { x: 0, y: 0, w: 10, h: 10 };
@@ -271,6 +273,111 @@ describe('Enter → first enabled screen button', () => {
     expect(elementCollapsed('g', {
       ...plain, collapsible: { side: 'left', startCollapsed: true },
     })).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tabbed groups (group.tabbed): active-panel digits + auto tab-flips
+// ---------------------------------------------------------------------------
+
+/**
+ * A tabbed market: panel A holds the shift supply piles, panel B the alt
+ * hand. Ids are prefixed per test (`tg1`, `tg2`, …) because the tab store is
+ * module-global in-session state and def.meta.id is always 'g' here.
+ */
+function tabbedElements(groupId: string): ScreenElement[] {
+  return [
+    {
+      kind: 'group', id: groupId, name: 'Market', rect, tabbed: true,
+      children: [
+        {
+          kind: 'group', id: `${groupId}_pa`, name: 'Treasure', rect,
+          children: [{
+            kind: 'zone', id: `${groupId}_za`, name: 'Supply', rect,
+            zoneId: 'supply', seat: 'shared', display: 'piles', keyGroup: 'shift',
+          }],
+        },
+        {
+          kind: 'group', id: `${groupId}_pb`, name: 'Kingdom', rect,
+          children: [{
+            kind: 'zone', id: `${groupId}_zb`, name: 'Hand', rect,
+            zoneId: 'hand', seat: 'viewer', keyGroup: 'alt',
+          }],
+        },
+      ],
+    },
+  ];
+}
+
+describe('tabbed groups (active-panel digit filtering + auto tab-flip)', () => {
+  it('computeKeyTargets indexes only the ACTIVE panel of a tabbed group', async () => {
+    const { def, state } = await kbState();
+    const els = tabbedElements('tg1');
+    // No stored tab: the first visible panel (Treasure) is active.
+    const first = computeKeyTargets(def, state, els, 'p0', () => true);
+    expect(first.present.has('shift')).toBe(true);
+    expect(first.present.has('alt')).toBe(false);
+    expect(first.groups.get('alt')).toBeUndefined();
+    expect(first.groups.get('shift')!.length).toBeGreaterThan(0);
+
+    // Flip to Kingdom: only the alt zone contributes now.
+    writeActiveTab(def.meta.id, 'tg1', 'tg1_pb');
+    const flipped = computeKeyTargets(def, state, els, 'p0', () => true);
+    expect(flipped.present.has('shift')).toBe(false);
+    expect(flipped.groups.get('shift')).toBeUndefined();
+    expect(flipped.present.has('alt')).toBe(true);
+    expect(flipped.groups.get('alt')!.length).toBeGreaterThan(0);
+  });
+
+  it('tabFlipsForGroup: flips to the inactive panel holding the modifier zone', async () => {
+    const { def, state } = await kbState();
+    const els = tabbedElements('tg2');
+    // Treasure (shift) is active by default: alt demands a flip, shift none.
+    expect(tabFlipsForGroup(def, state, els, 'p0', 'alt'))
+      .toEqual([{ groupId: 'tg2', panelId: 'tg2_pb' }]);
+    expect(tabFlipsForGroup(def, state, els, 'p0', 'shift')).toEqual([]);
+    // Once the flip persists, alt is home and shift asks to come back.
+    writeActiveTab(def.meta.id, 'tg2', 'tg2_pb');
+    expect(tabFlipsForGroup(def, state, els, 'p0', 'alt')).toEqual([]);
+    expect(tabFlipsForGroup(def, state, els, 'p0', 'shift'))
+      .toEqual([{ groupId: 'tg2', panelId: 'tg2_pa' }]);
+    // ctrl lives nowhere in the group: nothing flips.
+    expect(tabFlipsForGroup(def, state, els, 'p0', 'ctrl')).toEqual([]);
+  });
+
+  it('hidden panels never take digits, flips or the stored choice', async () => {
+    const { def, state } = await kbState();
+    const els = tabbedElements('tg3');
+    const group = els[0] as Extract<ScreenElement, { kind: 'group' }>;
+    group.children[1] = { ...group.children[1], visible: { kind: 'bool', value: false } };
+    // The alt zone hides with its panel: no flip…
+    expect(tabFlipsForGroup(def, state, els, 'p0', 'alt')).toEqual([]);
+    // …and even a stored choice of the hidden panel falls back to Treasure.
+    writeActiveTab(def.meta.id, 'tg3', 'tg3_pb');
+    const idx = computeKeyTargets(def, state, els, 'p0', () => true);
+    expect(idx.present.has('alt')).toBe(false);
+    expect(idx.present.has('shift')).toBe(true);
+  });
+
+  it('Enter skips buttons inside inactive panels (only the active one mounts)', async () => {
+    const { def, state } = await kbState();
+    const els: ScreenElement[] = [{
+      kind: 'group', id: 'tg4', name: 'Tabs', rect, tabbed: true,
+      children: [
+        { kind: 'button', id: 'tg4_b1', name: 'One', rect, actionId: 'a1', label: 'One' },
+        { kind: 'button', id: 'tg4_b2', name: 'Two', rect, actionId: 'a2', label: 'Two' },
+      ],
+    }];
+    const m1: Move = { actionId: 'a1' };
+    const m2: Move = { actionId: 'a2' };
+    const moves = new Map<Id, Move>([['a1', m1], ['a2', m2]]);
+    // Panel One is active by default; its button takes Enter.
+    expect(firstEnabledButtonMove(def, state, els, 'p0', moves)).toBe(m1);
+    // With One's move gone, Two stays unreachable: its panel is not mounted.
+    expect(firstEnabledButtonMove(def, state, els, 'p0', new Map([['a2', m2]]))).toBeNull();
+    // Flipping to Two mounts it.
+    writeActiveTab(def.meta.id, 'tg4', 'tg4_b2');
+    expect(firstEnabledButtonMove(def, state, els, 'p0', moves)).toBe(m2);
   });
 });
 

@@ -1,8 +1,9 @@
 /**
  * Pure helpers for the table screen: zone bucketing, legal-move indexing,
  * viewer perspective, acting-seat resolution (response windows), screen-
- * layout button gating, burn-zone keys, display text rendering (text parts,
- * change signatures, chronicle rows), template lookup, formatting. No React.
+ * layout button gating, burn-zone keys, tabbed-group active-tab persistence,
+ * display text rendering (text parts, change signatures, chronicle rows),
+ * template lookup, formatting. No React.
  */
 import type {
   CardInstance, CardTemplate, Expr, GameDef, GameState, Id, LogEntry, Move, PlayerState,
@@ -30,6 +31,88 @@ export function zoneInstKey(zoneId: Id, ownerId: Id | null): string {
  */
 export function collapseStorageKey(defId: Id, elId: Id): string {
   return `cardsmith.collapse.${defId}.${elId}`;
+}
+
+// ---------------------------------------------------------------------------
+// Tabbed groups (group.tabbed) — active-tab persistence + resolution
+// ---------------------------------------------------------------------------
+
+/**
+ * localStorage key for a tabbed group's ACTIVE PANEL — the collapse-key
+ * pattern; the stored value is the active DIRECT child's element id. One
+ * source of truth shared by the renderer's tab bar (ScreenRenderer's
+ * TabbedGroup) and the keyboard system (auto tab-flip on a held modifier,
+ * active-panel digit filtering).
+ */
+export function tabStorageKey(defId: Id, elId: Id): string {
+  return `cardsmith.tab.${defId}.${elId}`;
+}
+
+/** In-session mirror of the tab store: freshest value while mounted, and the
+ *  WHOLE store where localStorage is unavailable (private mode, node tests). */
+const tabMemory = new Map<string, string>();
+const tabListeners = new Set<() => void>();
+let tabVersionCounter = 0;
+
+/**
+ * Monotonic version bumped by every effective writeActiveTab — a cheap
+ * useSyncExternalStore snapshot for consumers that re-derive from reads
+ * (the keyboard target index).
+ */
+export function tabsVersion(): number {
+  return tabVersionCounter;
+}
+
+/** Notify `cb` after any tab write; returns the unsubscribe. */
+export function subscribeActiveTabs(cb: () => void): () => void {
+  tabListeners.add(cb);
+  return () => {
+    tabListeners.delete(cb);
+  };
+}
+
+/** The stored active-panel element id for a tabbed group (null = never set). */
+export function readActiveTab(defId: Id, elId: Id): string | null {
+  const key = tabStorageKey(defId, elId);
+  const mem = tabMemory.get(key);
+  if (mem !== undefined) return mem;
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null; // storage unavailable — session-only via tabMemory
+  }
+}
+
+/** Persist + broadcast a tabbed group's active panel (no-op when unchanged). */
+export function writeActiveTab(defId: Id, elId: Id, panelId: Id): void {
+  if (readActiveTab(defId, elId) === panelId) return;
+  tabMemory.set(tabStorageKey(defId, elId), panelId);
+  try {
+    localStorage.setItem(tabStorageKey(defId, elId), panelId);
+  } catch { /* storage unavailable — the in-session mirror carries it */ }
+  tabVersionCounter += 1;
+  for (const cb of tabListeners) cb();
+}
+
+/**
+ * The panel a tabbed group currently shows: the stored choice while that
+ * panel is VISIBLE (its `visible` display expression, viewer-bound), else the
+ * FIRST visible panel; null when every panel is hidden (only the tab bar —
+ * all tabs disabled — renders).
+ */
+export function resolveActiveTab(
+  def: GameDef,
+  state: GameState,
+  group: Extract<ScreenElement, { kind: 'group' }>,
+  viewerId: Id,
+  stored: string | null,
+): Id | null {
+  const visible = group.children.filter(
+    (c) => isDisplayVisible(def, state, c.visible ?? null, viewerId),
+  );
+  if (visible.length === 0) return null;
+  if (stored !== null && visible.some((c) => c.id === stored)) return stored;
+  return visible[0].id;
 }
 
 export function templateOf(def: GameDef, card: CardInstance): CardTemplate | null {

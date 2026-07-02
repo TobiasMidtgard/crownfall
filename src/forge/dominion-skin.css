@@ -28,6 +28,8 @@
   --dgt-crimson-whisper: oklch(0.5 0.2 22 / 0.12);
   --dgt-aurum: oklch(0.78 0.1 85);
   --dgt-verdict: oklch(0.62 0.14 145);
+  --dgt-umbra: oklch(0.58 0.14 310);
+  --dgt-azure: oklch(0.68 0.1 240);
   --dgt-display: 'Gloock', 'Georgia', serif;
   --dgt-grotesk: 'Schibsted Grotesk', 'Segoe UI', system-ui, sans-serif;
   --dgt-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
@@ -121,6 +123,7 @@
 }
 .dominion-skin .rn-zone.rn-highlight,
 .dominion-skin .rn-spile.rn-pilelegal,
+.dominion-skin .rn-ptile.rn-pilelegal,
 .dominion-skin .rn-priority {
   animation-name: dgt-pulse;
 }
@@ -137,8 +140,10 @@
     0 4px 18px oklch(0.5 0.2 22 / 0.5);
 }
 /* The buy-phase gold light (DGT "reachable" cue): while it is YOUR Buy
-   phase, affordable piles trade the crimson pulse for the aurum one. */
-.dominion-skin .rn-root[data-phase='dom_phase_buy'][data-active='you'] .rn-spile.rn-pilelegal {
+   phase, affordable piles — card-faced or tiled — trade the crimson pulse
+   for the aurum one. */
+.dominion-skin .rn-root[data-phase='dom_phase_buy'][data-active='you'] .rn-spile.rn-pilelegal,
+.dominion-skin .rn-root[data-phase='dom_phase_buy'][data-active='you'] .rn-ptile.rn-pilelegal {
   animation-name: rn-pulse-gold;
 }
 /* Inside a legal pile the WRAPPER is the cue (crimson normally, aurum on
@@ -248,23 +253,132 @@
   display: none !important; /* CardView stats carry an inline display */
 }
 
-/* Narrow screens: a carousel card is ~52px wide — its rules text, type line
-   and empty art box are unreadable noise at that size. The pile face reads
-   as the original's compact tile: name plate + cost lozenge + count. */
+/* Supply piles wear the DGT compact TILE now (pileFace 'tile' — dressed
+   below), so the old shrink-the-card-face fallback is gone. The cv- hides
+   stay as a safety net: a pile the keeper flips BACK to a 'card' face in the
+   Forge still drops its unreadable-at-pile-size parts on narrow screens. */
 @media (max-width: 720px) {
   .dominion-skin .rn-spile .cv-dom_el_rules,
   .dominion-skin .rn-spile .cv-dom_el_type,
   .dominion-skin .rn-spile .cv-dom_el_art {
     display: none;
   }
-  .dominion-skin .rn-spile .cv-dom_el_name {
-    font-size: 8px !important;
-    line-height: 1.15 !important;
-    white-space: normal !important;
-  }
-  .dominion-skin .rn-spile .cv-dom_el_name_plate {
-    height: 26% !important;
-  }
+}
+
+/* ---------- pile tiles (zone pileFace 'tile' — the DGT makePile face) ------ */
+
+/* The compact pile plate: the card-ground gradient, hairline rule border and
+   the double-inset shadow of the original .pile (the REST border is neutral
+   in the original too — the accent lives in the lozenge and the hover). The
+   runner owns the tile's geometry (ratio, plate layout, lozenge ::before);
+   the skin owns the dress. */
+.dominion-skin .rn-ptile {
+  background: linear-gradient(160deg, oklch(0.19 0.018 22), oklch(0.15 0.014 20) 55%);
+  border: 1px solid var(--dgt-rule);
+  border-radius: 0;
+  box-shadow:
+    inset 0 0 0 1px oklch(0.13 0.012 20),
+    0 10px 26px oklch(0.05 0.01 20 / 0.5);
+  color: var(--dgt-bone);
+}
+/* Card-type accent routing (DGT §0), off the tile's [data-card] hook — the
+   runner exposes the face's NAME, and this skin knows its def's catalogue.
+   Default is the action/attack bone-dim; the accent colors the cost lozenge
+   frame and the hover border, exactly like the original data-accent. */
+.dominion-skin .rn-ptile { --dgt-pa: var(--dgt-bone-dim); }
+.dominion-skin .rn-ptile[data-card='Copper'],
+.dominion-skin .rn-ptile[data-card='Silver'],
+.dominion-skin .rn-ptile[data-card='Gold'] { --dgt-pa: var(--dgt-aurum); }
+.dominion-skin .rn-ptile[data-card='Estate'],
+.dominion-skin .rn-ptile[data-card='Duchy'],
+.dominion-skin .rn-ptile[data-card='Province'],
+.dominion-skin .rn-ptile[data-card='Gardens'] { --dgt-pa: var(--dgt-verdict); }
+.dominion-skin .rn-ptile[data-card='Curse'] { --dgt-pa: var(--dgt-umbra); }
+.dominion-skin .rn-ptile[data-card='Moat'] { --dgt-pa: var(--dgt-azure); }
+/* Hover: the original's -3px lift comes from runner.css; the border warms
+   to the card's accent (DGT §5.3). */
+.dominion-skin button.rn-ptile:hover { border-color: var(--dgt-pa); }
+/* Pile name in Gloock, per makePile's .pile-name. */
+.dominion-skin .rn-ptile-name {
+  font-family: var(--dgt-display);
+  font-weight: 400;
+  color: var(--dgt-bone);
+}
+/* "× N" count in ash Gloock 0.78rem, per makePile's .pile-count (the "× "
+   itself is the runner's ::before). */
+.dominion-skin .rn-ptile-count {
+  font-family: var(--dgt-display);
+  font-weight: 400;
+  font-size: 0.78rem;
+  color: var(--dgt-ash);
+}
+/* The cost lozenge: Gloock digit over the runner's rotated-square ::before,
+   repainted abyss inside a 1.5px accent frame. */
+.dominion-skin .rn-ptile-cost {
+  font-family: var(--dgt-display);
+  font-weight: 400;
+  color: var(--dgt-bone);
+}
+.dominion-skin .rn-ptile-cost::before {
+  background: var(--dgt-abyss);
+  border-color: var(--dgt-pa, var(--dgt-aurum));
+  box-shadow: 0 2px 6px oklch(0.05 0.01 20 / 0.5);
+}
+/* Legal tile: crimson ring instead of the runner's teal on the lifted face
+   (the pulsing ring itself is retargeted with the .rn-spile rules above). */
+.dominion-skin .rn-ptile.rn-glow {
+  box-shadow:
+    0 0 0 2px var(--dgt-crimson),
+    0 0 10px oklch(0.5 0.2 22 / 0.35);
+}
+/* Depleted tile: DGT strikes the grayed name through (the fade/grayscale
+   comes from runner.css's rn-pile-empty; the ash strike is re-toned here). */
+.dominion-skin .rn-ptile.rn-pile-empty .rn-ptile-name {
+  text-decoration: line-through;
+  text-decoration-color: var(--dgt-ash);
+}
+
+/* ---------- tabbed supply (group tabbed: true — the rn-tab* chrome) -------- */
+
+/* The original .supply-tabs: a hairline base rule, engraved uppercase labels
+   (ash, bone when active) and the crimson tab-slider gliding underneath at
+   0.35s out-expo with the small-notch corners (--dgt-notch-sm, 6px). */
+.dominion-skin .rn-tabbar {
+  gap: 0;
+  background: transparent;
+  border-bottom: 1px solid var(--dgt-rule);
+}
+.dominion-skin .rn-tab {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0.5rem 0.85rem;
+  font-family: var(--dgt-grotesk);
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dgt-ash);
+  transition: color 0.25s var(--dgt-out-expo);
+}
+.dominion-skin .rn-tab.rn-tab-active { color: var(--dgt-bone); }
+.dominion-skin .rn-tabslider {
+  background: var(--dgt-crimson);
+  border-radius: 0;
+  clip-path: polygon(
+    var(--dgt-notch-sm) 0,
+    100% 0,
+    100% calc(100% - var(--dgt-notch-sm)),
+    calc(100% - var(--dgt-notch-sm)) 100%,
+    0 100%,
+    0 var(--dgt-notch-sm)
+  );
+  /* Cover both movement idioms — translate/width and left/transform. */
+  transition:
+    translate 0.35s var(--dgt-out-expo),
+    width 0.35s var(--dgt-out-expo),
+    left 0.35s var(--dgt-out-expo),
+    transform 0.35s var(--dgt-out-expo);
 }
 
 /* ---------- the phase seal & screen buttons (notched, crimson) ---------- */
@@ -330,17 +444,12 @@
 /* The seal's dots fade with the plate while the foe holds the table. */
 .dominion-skin .rn-root[data-active='foe'] .rn-sl-shape { opacity: 0.4; }
 
-/* Desktop: the seal's face is drawn by its overlay texts (dots, name, hint,
-   key hint) — the full-plate button's own label is for AT only (!important
-   outranks the per-state color rules above). The mobile variant's Done/End
-   buttons keep their visible labels (no overlays there).
-   `not all and (max-width: 720px)` is the EXACT complement of the runner's
-   NARROW_QUERY (ScreenRenderer.tsx): a fractional viewport between 720 and
-   721px still renders the desktop tree, and `(min-width: 721px)` would have
-   left the plate label painting over the overlay texts there. */
-@media not all and (max-width: 720px) {
-  .dominion-skin .rn-sl-btn { color: transparent !important; }
-}
+/* The seal's face is drawn by its overlay texts (dots, name, hint — plus
+   the key chip on desktop) on BOTH trees: the rebuilt mobile seal carries
+   the same overlay children (minus the key hint, per the spec's ≤45rem
+   seal), so the full-plate button's own label is for AT only everywhere
+   (!important outranks the per-state color rules above). */
+.dominion-skin .rn-sl-btn { color: transparent !important; }
 
 /* Overlay texts and shapes never eat the plate's clicks: the RUNNER inerts
    text/varText/shape wrappers itself (.rn-el-inert in runner.css) — the
@@ -453,6 +562,33 @@
 }
 .dominion-skin .rn-sl-logsep::after { background: var(--dgt-rule); }
 
+/* The chronicle's dock tab + close chip (the runner's collapsible — side
+   'right' rail on desktop, the 'bottom' sheet toggle on the phone): hall
+   plates with engraved labels, crimson when engaged — the original's
+   .chron-toggle treatment. */
+.dominion-skin .rn-collapse-tab {
+  background: var(--dgt-hall);
+  border-color: var(--dgt-rule);
+  border-radius: 0;
+  color: var(--dgt-ash);
+  font-size: 0.66rem;
+  letter-spacing: 0.14em;
+}
+.dominion-skin .rn-collapse-tab:hover {
+  color: var(--dgt-crimson-bright);
+  border-color: var(--dgt-crimson);
+}
+.dominion-skin .rn-collapse-close {
+  background: var(--dgt-hall);
+  border-color: var(--dgt-rule);
+  border-radius: 0;
+  color: var(--dgt-ash);
+}
+.dominion-skin .rn-collapse-close:hover {
+  color: var(--dgt-crimson-bright);
+  border-color: var(--dgt-crimson);
+}
+
 /* ---------- sheets & the verdict (game over) ---------- */
 
 .dominion-skin .rn-sheet {
@@ -506,12 +642,14 @@
 @media (prefers-reduced-motion: reduce) {
   .dominion-skin .rn-zone.rn-highlight,
   .dominion-skin .rn-spile.rn-pilelegal,
+  .dominion-skin .rn-ptile.rn-pilelegal,
   .dominion-skin .rn-priority {
     animation: none;
     box-shadow: 0 0 0 2px var(--dgt-crimson);
   }
   /* Static glows in place of the pulses (DGT's static is-legal shadow). */
-  .dominion-skin .rn-root[data-phase='dom_phase_buy'][data-active='you'] .rn-spile.rn-pilelegal {
+  .dominion-skin .rn-root[data-phase='dom_phase_buy'][data-active='you'] .rn-spile.rn-pilelegal,
+  .dominion-skin .rn-root[data-phase='dom_phase_buy'][data-active='you'] .rn-ptile.rn-pilelegal {
     animation: none;
     box-shadow: 0 0 0 2px var(--rn-gold), 0 0 14px oklch(0.78 0.1 85 / 0.35);
   }
@@ -522,17 +660,24 @@
   .dominion-skin .rn-refuse { animation: none; }
   .dominion-skin .rn-spile { transition: none; }
   .dominion-skin .rn-sl-btn { transition: none; }
+  /* The tab bar snaps: no gliding slider, no label cross-fade. */
+  .dominion-skin .rn-tab,
+  .dominion-skin .rn-tabslider {
+    transition: none;
+  }
 }
 
 /* The hall's own "Reduce animations" toggle (html.calm, Profile & settings)
    stills the table the same way as the OS preference above. */
 html.calm .dominion-skin .rn-zone.rn-highlight,
 html.calm .dominion-skin .rn-spile.rn-pilelegal,
+html.calm .dominion-skin .rn-ptile.rn-pilelegal,
 html.calm .dominion-skin .rn-priority {
   animation: none;
   box-shadow: 0 0 0 2px var(--dgt-crimson);
 }
-html.calm .dominion-skin .rn-root[data-phase='dom_phase_buy'][data-active='you'] .rn-spile.rn-pilelegal {
+html.calm .dominion-skin .rn-root[data-phase='dom_phase_buy'][data-active='you'] .rn-spile.rn-pilelegal,
+html.calm .dominion-skin .rn-root[data-phase='dom_phase_buy'][data-active='you'] .rn-ptile.rn-pilelegal {
   animation: none;
   box-shadow: 0 0 0 2px var(--rn-gold), 0 0 14px oklch(0.78 0.1 85 / 0.35);
 }
@@ -543,3 +688,7 @@ html.calm .dominion-skin .rn-cardwrap.rn-glow {
 html.calm .dominion-skin .rn-refuse { animation: none; }
 html.calm .dominion-skin .rn-spile { transition: none; }
 html.calm .dominion-skin .rn-sl-btn { transition: none; }
+html.calm .dominion-skin .rn-tab,
+html.calm .dominion-skin .rn-tabslider {
+  transition: none;
+}

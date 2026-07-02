@@ -20,6 +20,10 @@
  *   - display 'carousel': the same piles laid in ONE horizontally
  *     scroll-snapping row (.rn-carousel/.rn-carouselslot) — the touch-first
  *     mobile supply pattern; taps/glow behave exactly like 'piles'.
+ *   - pileFace 'tile' (piles AND carousel): each pile renders the DGT
+ *     compact tile (.rn-ptile — cost lozenge, name, × count; no card face)
+ *     instead of the CardView top card. Same handlers and marking classes
+ *     as the card-face path; depleted identities gray out as tiles too.
  *   - collapseDuplicates: hand-style merge of identical cards into one card
  *     with a × N badge and offset shadow layers.
  *   - fan zones rotate/dip per card (fanTransform; fanAngle 0 = flat) with a
@@ -62,6 +66,10 @@ export interface ZoneCustom {
   cardIds?: Id[];
   /** Piles: card field rendered as a rotated-square corner badge. */
   pileBadgeField?: Id | null;
+  /** Piles/carousel face: 'tile' renders the DGT compact pile tile
+   *  (.rn-ptile — cost lozenge, name, × count) instead of the card
+   *  template's face. Default 'card'. */
+  pileFace?: 'card' | 'tile';
   /** Merge identical cards into one × N element ('cards' mode). */
   collapseDuplicates?: boolean;
   /** Fan rotation per card step (0 = flat; default 4). */
@@ -259,6 +267,7 @@ export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, cus
         pile={p}
         width={width}
         badgeField={custom?.pileBadgeField ?? null}
+        face={custom?.pileFace ?? 'card'}
         dimWhenIdle={anyPileLegal}
         refusable={!tappable}
       />
@@ -329,7 +338,7 @@ export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, cus
   // handled at card level or deliberately silent (face-down/decorative).
   const refuseZoneTap = (e: React.MouseEvent) => {
     const t = e.target as Element;
-    if (t.closest('.rn-cardwrap, .rn-spile, .rn-collapse, .rn-empty') !== null) return;
+    if (t.closest('.rn-cardwrap, .rn-spile, .rn-ptile, .rn-collapse, .rn-empty') !== null) return;
     ctx.onZoneTap(inst.key, e.currentTarget as HTMLElement);
   };
   return (
@@ -360,17 +369,31 @@ export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, cus
  * CardView directly — never TableCard — so the representative card, which
  * now lives elsewhere, doesn't double-register in the FLIP rect registry.
  */
-function SupplyPile({ ctx, pile, width, badgeField, dimWhenIdle, refusable }: {
+function SupplyPile({ ctx, pile, width, badgeField, face, dimWhenIdle, refusable }: {
   ctx: TableCtx;
   pile: CardPile;
   width: number;
   badgeField: Id | null;
+  /** 'tile' renders the compact DGT pile tile instead of the card face. */
+  face?: 'card' | 'tile';
   dimWhenIdle: boolean;
   /** No enclosing tappable zone: illegal pile taps may refuse-shake. */
   refusable: boolean;
 }) {
   const card = ctx.state.cards[pile.topId];
   if (!card) return null;
+  if (face === 'tile') {
+    return (
+      <TilePile
+        ctx={ctx}
+        pile={pile}
+        width={width}
+        badgeField={badgeField}
+        dimWhenIdle={dimWhenIdle}
+        refusable={refusable}
+      />
+    );
+  }
   const badgeVal = badgeField !== null ? card.fields[badgeField] : undefined;
   const badgeChip = badgeVal !== undefined && badgeVal !== ''
     ? <span className="rn-pilecost" aria-hidden="true"><span>{String(badgeVal)}</span></span>
@@ -451,6 +474,117 @@ function SupplyPile({ ctx, pile, width, badgeField, dimWhenIdle, refusable }: {
       <span className="rn-badge" aria-hidden="true">× {pile.count}</span>
       {badgeChip}
     </div>
+  );
+}
+
+/**
+ * Compact pile tile (zone `pileFace: 'tile'` — the DGT makePile look): one
+ * `<button class="rn-ptile">` plate carrying the cost lozenge
+ * (.rn-ptile-cost, the badgeField value), the card name (.rn-ptile-name),
+ * the count (.rn-ptile-count, "× N" via its ::before) and the keyboard
+ * digit badge slot — no card face. Behaviors mirror the card-face path with
+ * the SAME class names: .rn-glow when the face itself is legal,
+ * .rn-pilelegal when ANY member is, .rn-piledim when idle among legal
+ * peers, .rn-pile-empty (grayed, click-swallowing) at count 0; illegal taps
+ * refuse-shake through the same onCardTap path. The live tile registers as
+ * the top card's FLIP rect so buys still fly out of it. The border stays
+ * NEUTRAL (--border-strong): there is no generic "card type" field, so the
+ * tile exposes `data-card` (the face's name, face-up only) and skins route
+ * accent colors from it.
+ */
+function TilePile({ ctx, pile, width, badgeField, dimWhenIdle, refusable }: {
+  ctx: TableCtx;
+  pile: CardPile;
+  width: number;
+  badgeField: Id | null;
+  dimWhenIdle: boolean;
+  /** No enclosing tappable zone: illegal pile taps may refuse-shake. */
+  refusable: boolean;
+}) {
+  const card = ctx.state.cards[pile.topId];
+  if (!card) return null;
+  const visible = isCardVisibleTo(ctx.def, ctx.state, pile.topId, ctx.viewerId);
+  const depleted = pile.count === 0;
+  // Placeholders keep the facing SNAPSHOT taken while the pile was live
+  // (see the card-face branch above) — never re-resolved.
+  const shown = depleted ? pile.faceUp ?? visible : visible;
+  const name = shown ? card.name : 'Face-down card';
+  const badgeVal = badgeField !== null && shown ? card.fields[badgeField] : undefined;
+  const costChip = badgeVal !== undefined && badgeVal !== ''
+    ? <span className="rn-ptile-cost" aria-hidden="true">{String(badgeVal)}</span>
+    : null;
+  const badgeName = badgeField !== null
+    ? templateOf(ctx.def, card)?.fields.find((f) => f.id === badgeField)?.name
+    : undefined;
+  const badgePart = badgeVal !== undefined && badgeVal !== ''
+    ? `, ${badgeName !== undefined ? `${badgeName} ` : ''}${String(badgeVal)}`
+    : '';
+
+  if (depleted) {
+    // Depleted placeholder tile: same greying + click behavior as the
+    // card-face branch (swallows its own taps when refusable so the zone
+    // frame doesn't shake; bubbles inside a tappable zone). No FLIP
+    // registration — the remembered face now lives elsewhere.
+    return (
+      <div
+        className="rn-ptile rn-pile-empty"
+        role="img"
+        aria-label={`${name}, depleted`}
+        style={{ width }}
+        data-card={shown ? card.name : undefined}
+        onClick={refusable ? (e) => e.stopPropagation() : undefined}
+      >
+        {costChip}
+        <span className="rn-ptile-name" aria-hidden="true">{name}</span>
+        <span className="rn-ptile-count" aria-hidden="true">0</span>
+      </div>
+    );
+  }
+
+  const hasMoves = (id: Id) => (ctx.cardMoves.get(id)?.length ?? 0) > 0;
+  const topLegal = topLegalCard(pile.cardIds, hasMoves);
+  const faceLegal = hasMoves(pile.topId);
+  const keyBadge = ctx.keyBadges?.get(pile.topId);
+  // One handler covers face-legal, buried-legal AND the refuse path — the
+  // same onCardTap the card faces converge on (TableScreen shakes the whole
+  // tile on illegal taps). Face-down tiles with no legal member stay silent;
+  // without a handler the tap bubbles to a tappable zone frame like any
+  // other pile chrome.
+  const tap = topLegal !== null
+    ? (e: React.SyntheticEvent) => {
+        e.stopPropagation(); // don't also fire a zone-target tap
+        ctx.onCardTap(topLegal, e.currentTarget as HTMLElement);
+      }
+    : refusable && visible
+      ? (e: React.SyntheticEvent) => {
+          e.stopPropagation();
+          ctx.onCardTap(pile.topId, e.currentTarget as HTMLElement);
+        }
+      : undefined;
+  return (
+    <button
+      type="button"
+      ref={(node) => ctx.cardRects.attach(pile.topId, node)}
+      className={`rn-ptile${faceLegal ? ' rn-glow' : ''}${topLegal !== null ? ' rn-pilelegal' : ''}${dimWhenIdle && topLegal === null ? ' rn-piledim' : ''}`}
+      style={{ width }}
+      data-card={visible ? card.name : undefined}
+      aria-label={`${name} × ${pile.count}${badgePart}`}
+      // Handler-less tiles stay clickable (bubbling) but leave the tab order.
+      tabIndex={tap !== undefined ? 0 : -1}
+      onClick={tap}
+    >
+      {costChip}
+      <span className="rn-ptile-name" aria-hidden="true">{name}</span>
+      <span className="rn-ptile-count" aria-hidden="true">{pile.count}</span>
+      {keyBadge !== undefined && (
+        <kbd
+          className={`rn-keybadge${keyBadge.group === 'plain' ? ' rn-keybadge-plain' : ''}${ctx.keySpotlight === keyBadge.group ? ' rn-keybadge-lit' : ''}`}
+          aria-hidden="true"
+        >
+          {keyBadge.digit}
+        </kbd>
+      )}
+    </button>
   );
 }
 

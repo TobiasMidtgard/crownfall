@@ -512,6 +512,19 @@ describe('the screen layout speaks the original table\'s language', () => {
     expect(zoneEl('dom_el_my_hand').fanAngle).toBe(1.6);
   });
 
+  it('desktop kingdom piles wear the DGT tile at the --pile-w-k width; basics stay mini cards', () => {
+    const zoneEl = (id: string) => findEl(els, id) as Extract<ScreenElement, { kind: 'zone' }>;
+    // The original's desktop kingdom was a grid of makePile plates, not card
+    // faces; its Treasure/Victory columns were mini cards (spec §5.3).
+    expect(zoneEl('dom_el_supply_kingdom').pileFace).toBe('tile');
+    expect(zoneEl('dom_el_supply_kingdom').cardScale).toBe(6.5);
+    expect(zoneEl('dom_el_supply_treasures').pileFace).toBeUndefined();
+    expect(zoneEl('dom_el_supply_victory').pileFace).toBeUndefined();
+    // Hand and in-play keep full card faces (no pileFace anywhere near them).
+    expect(zoneEl('dom_el_my_hand').pileFace).toBeUndefined();
+    expect(zoneEl('dom_el_my_inplay').pileFace).toBeUndefined();
+  });
+
   it('motion.byTag carries the original per-event animation table', () => {
     expect(def.screenLayout!.motion?.byTag).toEqual({
       draw: { flightMs: 300, arc: 22, spin: 0, staggerMs: 45 },
@@ -577,6 +590,92 @@ describe('the screen layout speaks the original table\'s language', () => {
     expect(vis('dom_el_my_inplay', 'p1')).toBe(false);
     expect(vis('dom_el_foe_inplay', 'p1')).toBe(true);
     expect(vis('dom_el_foe_inplay', 'p0')).toBe(false);
+    expect(errors).toEqual([]);
+  });
+});
+
+describe("the mobile variant is the original's pocket table (one viewport)", () => {
+  const def = buildDominionDef();
+  const m = def.screenLayout!.mobile!;
+  const mzone = (id: string) => findEl(m.elements, id) as Extract<ScreenElement, { kind: 'zone' }>;
+
+  it('fills one phone viewport: no page scroll, no locked aspect', () => {
+    // The old tall page (aspect 0.38, scroll: true) forced the "I have to
+    // scroll" bug; the pocket table stretches over the screen instead.
+    expect(m.scroll ?? false).toBe(false);
+    expect(m.aspect ?? null).toBeNull();
+  });
+
+  it('the supply is ONE tabbed group with Treasury / Victory / Kingdom panels', () => {
+    const supply = findEl(m.elements, 'dom_el_m_supply') as Extract<ScreenElement, { kind: 'group' }>;
+    expect(supply.kind).toBe('group');
+    expect(supply.tabbed).toBe(true);
+    // Tab labels come from the direct children's names — exact, in order.
+    expect(supply.children.map((p) => p.name)).toEqual(['Treasury', 'Victory', 'Kingdom']);
+    // Each panel holds ITS slice of the one shared supply zone.
+    expect(findEl([supply.children[0]], 'dom_el_m_supply_treasures')).not.toBeNull();
+    expect(findEl([supply.children[1]], 'dom_el_m_supply_victory')).not.toBeNull();
+    expect(findEl([supply.children[2]], 'dom_el_m_supply_kingdom')).not.toBeNull();
+  });
+
+  it('supply slices are tile-faced carousels with the DGT digit semantics', () => {
+    const slices: Array<[string, string]> = [
+      ['dom_el_m_supply_treasures', 'shift'],
+      ['dom_el_m_supply_victory', 'ctrl'],
+      ['dom_el_m_supply_kingdom', 'alt'],
+    ];
+    for (const [id, group] of slices) {
+      const z = mzone(id);
+      expect(z.zoneId, `${id} shows the supply`).toBe('dom_zone_supply');
+      expect(z.display, `${id} is a carousel`).toBe('carousel');
+      expect(z.pileFace, `${id} wears the compact tile`).toBe('tile');
+      expect(z.keyGroup, `${id} keeps its modifier digits`).toBe(group);
+      expect(z.pileBadgeField).toBe('dom_field_cost');
+    }
+    // The hand keeps full card faces, plain always-lit digits and the fan.
+    const hand = mzone('dom_el_m_hand');
+    expect(hand.keyGroup).toBe('plain');
+    expect(hand.pileFace).toBeUndefined();
+    expect(hand.fanAngle).toBe(1.6);
+    expect(hand.collapseDuplicates).toBe(true);
+  });
+
+  it('the chronicle is a collapsible bottom sheet (the 70dvh slide-up)', () => {
+    const log = findEl(m.elements, 'dom_el_m_log')!;
+    expect(log.kind).toBe('log');
+    expect(log.collapsible?.side).toBe('bottom');
+    expect(log.collapsible?.startCollapsed).toBe(true);
+    // ~70dvh: the open sheet covers most of the screen from the bottom.
+    expect(log.rect.h).toBeGreaterThanOrEqual(65);
+  });
+
+  it('the compact seal keeps the five states and drops the keyboard hint', () => {
+    const seal = findEl(m.elements, 'dom_el_m_seal') as Extract<ScreenElement, { kind: 'group' }>;
+    expect(seal.onChangeAnim).toBe('stamp');
+    expect(seal.states?.map((s) => s.name)).toEqual(['Fallen', 'Resolve', 'Foe turn', 'Action', 'Buy']);
+    const ids = seal.children.map((k) => k.id);
+    for (const suffix of [
+      'btn_done', 'btn_end', 'dot_action', 'dot_buy',
+      'name_action', 'name_buy', 'name_foe', 'name_resolve', 'name_fallen',
+      'hint_action', 'hint_buy', 'hint_foe', 'hint_resolve', 'hint_fallen',
+    ]) expect(ids, `mobile seal needs ${suffix}`).toContain(`dom_el_m_seal_${suffix}`);
+    // Spec, "Mobile (≤45rem)": .phase-key { display: none; } — no hint chip.
+    expect(ids).not.toContain('dom_el_m_seal_key');
+    // The plates fill the seal (the DGT seal IS one button), like desktop.
+    const done = seal.children.find((k) => k.id === 'dom_el_m_seal_btn_done')!;
+    expect(done.rect).toEqual({ x: 0, y: 0, w: 100, h: 100 });
+  });
+
+  it('play rows follow the original appearing rules on the phone too', async () => {
+    const { engine, errors } = probeEngine(def, () => { throw new Error('no choices expected'); });
+    await engine.start();
+    const state = engine.getState(); // p0's Action phase
+    const vis = (id: string, viewer: string) =>
+      isDisplayVisible(def, state, findEl(m.elements, id)!.visible ?? null, viewer);
+    expect(vis('dom_el_m_inplay', 'p0')).toBe(true); // your turn: shown even empty
+    expect(vis('dom_el_m_inplay', 'p1')).toBe(false); // foe acting + empty: hidden
+    expect(vis('dom_el_m_foe_inplay', 'p1')).toBe(true);
+    expect(vis('dom_el_m_foe_inplay', 'p0')).toBe(false);
     expect(errors).toEqual([]);
   });
 });

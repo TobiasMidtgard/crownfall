@@ -25,12 +25,21 @@
  *     digit selection of sheet options, bridged by clicking the sheet's
  *     `[data-choice-digit="N"]` buttons (stamped by the choice sheets).
  *   - Badges and the spotlight only render while a human may act.
- *   - Nothing is persisted.
+ *   - TABBED GROUPS (group.tabbed): only the ACTIVE panel is mounted, so
+ *     digits resolve against it alone and Enter never reaches a hidden
+ *     panel's buttons. Holding a modifier whose keyGroup zone lives in an
+ *     INACTIVE panel first FLIPS that panel active (persisting, the DGT
+ *     setSupplyTab) so the spotlight + badges are actually visible.
+ *   - Nothing is persisted here except the tab flips (layout.writeActiveTab —
+ *     the same store the renderer's tab bar uses).
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { GameDef, GameState, Id, Move, ScreenElement } from '../shared/types';
 import { isDisplayVisible } from '../engine';
-import { collapseStorageKey, zoneInstKey } from './layout';
+import {
+  collapseStorageKey, readActiveTab, resolveActiveTab, subscribeActiveTabs, tabsVersion,
+  writeActiveTab, zoneInstKey,
+} from './layout';
 import { filterDisplayCards, groupPiles, resolveSeat, topLegalCard } from './layoutGeometry';
 
 export type ModifierGroup = 'shift' | 'ctrl' | 'alt';
@@ -117,7 +126,9 @@ export function groupForDigit(live: HeldModifiers, held: HeldModifiers): Keyboar
  * the activation target; stack-layout zones contribute the top card; other
  * layouts contribute each legal card. Items beyond the tenth per group are
  * unaddressable (dropped). Invisible elements (their `visible` expression,
- * viewer-bound) contribute nothing.
+ * viewer-bound) contribute nothing, and a TABBED group contributes only its
+ * ACTIVE panel (resolved from the persisted tab store — inactive panels are
+ * not mounted, so their zones must not take digits or spotlight).
  */
 export function computeKeyTargets(
   def: GameDef,
@@ -173,6 +184,14 @@ export function computeKeyTargets(
         if (el.keyGroup !== 'plain') present.add(el.keyGroup);
         collect(el, el.keyGroup);
       }
+      if (el.kind === 'group' && el.tabbed === true) {
+        // Only the active panel is rendered — digits resolve against it
+        // alone (tabFlipsForGroup activates a panel before its zone is used).
+        const active = resolveActiveTab(def, state, el, viewerId, readActiveTab(def.meta.id, el.id));
+        const panel = active !== null ? el.children.find((c) => c.id === active) : undefined;
+        if (panel !== undefined) walk([panel]);
+        continue;
+      }
       if (el.children !== undefined && el.children.length > 0) walk(el.children);
     }
   };
@@ -204,11 +223,60 @@ export function subtreeHasKeyGroup(el: ScreenElement, group: KeyboardGroup): boo
 }
 
 /**
+ * The tab flips a held modifier demands (the DGT setSupplyTab on mobile):
+ * for every visible TABBED group whose keyGroup-`group` zone lives in a
+ * visible NON-ACTIVE panel, the panel to activate so the spotlight and digit
+ * badges are actually on screen. The first panel containing such a zone wins
+ * per group; the walk descends into that panel (nested tabbed groups flip
+ * too), else into the active one. Hidden zones/panels never ask for a flip.
+ */
+export function tabFlipsForGroup(
+  def: GameDef,
+  state: GameState,
+  elements: readonly ScreenElement[],
+  viewerId: Id,
+  group: ModifierGroup,
+): { groupId: Id; panelId: Id }[] {
+  const out: { groupId: Id; panelId: Id }[] = [];
+  const visible = (el: ScreenElement) =>
+    isDisplayVisible(def, state, el.visible ?? null, viewerId);
+  // Visibility-aware subtree check: a hidden zone contributes no targets
+  // (computeKeyTargets skips it), so flipping to it would show nothing.
+  const contains = (el: ScreenElement): boolean => {
+    if (!visible(el)) return false;
+    if (el.kind === 'zone' && el.keyGroup === group) return true;
+    return (el.children ?? []).some(contains);
+  };
+  const walk = (els: readonly ScreenElement[]) => {
+    for (const el of els) {
+      if (!visible(el)) continue;
+      if (el.kind === 'group' && el.tabbed === true) {
+        const active = resolveActiveTab(def, state, el, viewerId, readActiveTab(def.meta.id, el.id));
+        const panel = el.children.find(contains);
+        if (panel !== undefined) {
+          if (panel.id !== active) out.push({ groupId: el.id, panelId: panel.id });
+          walk(panel.children ?? []);
+        } else if (active !== null) {
+          const activeEl = el.children.find((c) => c.id === active);
+          if (activeEl !== undefined) walk(activeEl.children ?? []);
+        }
+        continue;
+      }
+      if (el.children !== undefined && el.children.length > 0) walk(el.children);
+    }
+  };
+  walk(elements);
+  return out;
+}
+
+/**
  * The first ENABLED screen button in paint order (gated like the renderer:
  * visibility AND collapse) and its legal move — what Enter performs. Null
  * when none. `isCollapsed` mirrors ScreenRenderer's collapsible handling: a
  * collapsed element renders only its dock tab, so its whole subtree —
- * buttons included — never mounts and must not receive Enter.
+ * buttons included — never mounts and must not receive Enter. A TABBED
+ * group's inactive panels are skipped the same way (only the active panel
+ * is rendered; resolved from the persisted tab store).
  */
 export function firstEnabledButtonMove(
   def: GameDef,
@@ -224,6 +292,15 @@ export function firstEnabledButtonMove(
     if (el.kind === 'button' && el.actionId !== null) {
       const move = buttonMove.get(el.actionId);
       if (move !== undefined) return move;
+    }
+    if (el.kind === 'group' && el.tabbed === true) {
+      const active = resolveActiveTab(def, state, el, viewerId, readActiveTab(def.meta.id, el.id));
+      const panel = active !== null ? el.children.find((c) => c.id === active) : undefined;
+      if (panel !== undefined) {
+        const nested = firstEnabledButtonMove(def, state, [panel], viewerId, buttonMove, isCollapsed);
+        if (nested !== null) return nested;
+      }
+      continue;
     }
     if (el.children !== undefined && el.children.length > 0) {
       const nested = firstEnabledButtonMove(def, state, el.children, viewerId, buttonMove, isCollapsed);
@@ -331,13 +408,31 @@ export function useTableKeyboard(opts: {
 
   const [held, setHeld] = useState<HeldModifiers>(NO_MODIFIERS);
 
+  // Tabbed groups: digits resolve against the ACTIVE panel, so the target
+  // index re-derives whenever any tab flips (writes bump layout.tabsVersion).
+  const tabsN = useSyncExternalStore(subscribeActiveTabs, tabsVersion, tabsVersion);
+
   const index = useMemo<KeyTargetIndex>(() => {
     if (!enabled || !humanCanAct) return EMPTY_INDEX;
     return computeKeyTargets(
       def, state, elements, viewerId,
       (id) => (cardMoves.get(id)?.length ?? 0) > 0,
     );
-  }, [enabled, humanCanAct, def, state, elements, viewerId, cardMoves]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tabsN: the tab
+    // store is read inside computeKeyTargets, not passed as an argument.
+  }, [enabled, humanCanAct, def, state, elements, viewerId, cardMoves, tabsN]);
+
+  // Held modifier → auto tab-flip (the DGT setSupplyTab): when the group's
+  // keyGroup zone lives in an INACTIVE panel of a tabbed group, activate
+  // (and persist) that panel so the spotlight + badges are actually visible.
+  const heldNow = heldGroup(held);
+  useEffect(() => {
+    if (!enabled || !humanCanAct || overlayOpen || heldNow === null) return;
+    if (elements === null) return;
+    for (const flip of tabFlipsForGroup(def, state, elements, viewerId, heldNow)) {
+      writeActiveTab(def.meta.id, flip.groupId, flip.panelId);
+    }
+  }, [enabled, humanCanAct, overlayOpen, heldNow, def, state, elements, viewerId]);
 
   // Everything the (stable) listeners need, refreshed per render.
   const live = useRef({
@@ -432,7 +527,6 @@ export function useTableKeyboard(opts: {
     };
   }, [enabled]);
 
-  const heldNow = heldGroup(held);
   const active = enabled && humanCanAct && !overlayOpen;
   const spotlight = active && heldNow !== null && index.present.has(heldNow) ? heldNow : null;
   return {

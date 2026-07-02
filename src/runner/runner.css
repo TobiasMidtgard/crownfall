@@ -760,18 +760,21 @@ section.rn-bottom.rn-priority { border-top-color: var(--accent); }
   flex: 0 0 auto;
   border-radius: 10px;
 }
-.rn-spile.rn-pilelegal {
+.rn-spile.rn-pilelegal,
+.rn-ptile.rn-pilelegal {
   cursor: pointer;
   animation: rn-pulse 1.4s ease-in-out infinite;
 }
-.rn-spile.rn-piledim { opacity: 0.55; }
+.rn-spile.rn-piledim,
+.rn-ptile.rn-piledim { opacity: 0.55; }
 
 /* Depleted pile (count 0): grayed and inert, the DGT empty-supply look.
-   Applied by SupplyPile whenever a rendered pile's count reaches zero.
-   Pointer events stay ON: the placeholder swallows its own clicks (a
+   Applied by SupplyPile/TilePile whenever a rendered pile's count reaches
+   zero. Pointer events stay ON: the placeholder swallows its own clicks (a
    deliberate no-op in SupplyPile) — pointer-events:none would let taps fall
    through to the zone frame and refuse-shake the whole panel. */
-.rn-spile.rn-pile-empty {
+.rn-spile.rn-pile-empty,
+.rn-ptile.rn-pile-empty {
   opacity: 0.28;
   filter: grayscale(0.9);
   cursor: default;
@@ -781,12 +784,14 @@ section.rn-bottom.rn-priority { border-top-color: var(--accent); }
    visual primitive: the runner never sets it by itself — skins retarget or
    attach it, scoped by the root's data attributes, e.g.
    .skin [data-phase="buy"] .rn-spile.rn-pilelegal { animation-name: rn-pulse-gold; } */
-.rn-cardwrap.rn-glow.rn-glow-gold {
+.rn-cardwrap.rn-glow.rn-glow-gold,
+.rn-ptile.rn-glow.rn-glow-gold {
   box-shadow:
     0 0 0 2px var(--rn-gold, #e2b455),
     0 4px 18px rgba(226, 180, 85, 0.45);
 }
-.rn-spile.rn-pilelegal.rn-glow-gold { animation-name: rn-pulse-gold; }
+.rn-spile.rn-pilelegal.rn-glow-gold,
+.rn-ptile.rn-pilelegal.rn-glow-gold { animation-name: rn-pulse-gold; }
 @keyframes rn-pulse-gold {
   0%, 100% { box-shadow: 0 0 0 2px var(--rn-gold, #e2b455), 0 0 10px rgba(226, 180, 85, 0.3); }
   50% { box-shadow: 0 0 0 3px var(--rn-gold, #e2b455), 0 0 22px rgba(226, 180, 85, 0.6); }
@@ -863,6 +868,92 @@ section.rn-bottom.rn-priority { border-top-color: var(--accent); }
   line-height: 1;
 }
 
+/* ---------- compact pile tiles (zone pileFace 'tile') ---------- */
+
+/* The DGT makePile plate: cost lozenge + name + × count, no card face.
+   Neutral tokens only; the border stays --border-strong — skins route
+   accent colors via [data-card] (the face's name; absent face-down) and
+   re-dress the corners/notch. Width set inline; the card ratio keeps the
+   tile swappable with the card face. */
+.rn-ptile {
+  position: relative;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  aspect-ratio: 59 / 91;
+  padding: 12px 7px 6px;
+  background: linear-gradient(160deg, var(--bg-raised), var(--bg) 60%);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-s);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.45);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: default;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    translate 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+/* Hover lift (buttons only — depleted placeholders are divs and sit still). */
+button.rn-ptile:hover { translate: 0 -3px; }
+/* Same legal cue the card faces carry (.rn-cardwrap.rn-glow). */
+.rn-ptile.rn-glow {
+  transform: translateY(-6px);
+  box-shadow: 0 0 0 2px var(--accent-2), 0 4px 18px rgba(45, 212, 191, 0.5);
+  z-index: 1;
+}
+
+/* Cost lozenge hanging off the top-left corner: a rotated-square ::before
+   behind the upright number (the DGT .pile-cost geometry). */
+.rn-ptile-cost {
+  position: absolute;
+  top: -7px;
+  left: -7px;
+  width: 23px;
+  height: 23px;
+  display: grid;
+  place-items: center;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--text);
+  z-index: 2;
+  pointer-events: none;
+}
+.rn-ptile-cost::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  rotate: 45deg;
+  background: var(--bg);
+  border: 1.5px solid var(--border-strong);
+}
+
+.rn-ptile-name {
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.15;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.rn-ptile-count {
+  margin-top: auto;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+.rn-ptile-count::before { content: '× '; font-size: 0.62rem; }
+.rn-ptile.rn-pile-empty .rn-ptile-name {
+  text-decoration: line-through;
+  text-decoration-color: var(--muted);
+}
+
 /* ---------- carousel (zone display 'carousel') ---------- */
 
 /* One horizontally scroll-snapping row of supply piles (the DGT mobile
@@ -894,6 +985,66 @@ section.rn-bottom.rn-priority { border-top-color: var(--accent); }
   .rn-carousel { scroll-behavior: auto; }
 }
 .calm .rn-carousel { scroll-behavior: auto; }
+
+/* ---------- tabbed groups (group.tabbed) ---------- */
+
+/* The DGT mobile-supply pattern: a notch-ready tab bar over ONE mounted
+   panel. The slider is measured to the active tab by ScreenRenderer
+   (width/translate set inline); this transition moves it 0.35s out-expo. */
+.rn-tabbed {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+.rn-tabbar {
+  position: relative;
+  display: flex;
+  gap: 0;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border-strong);
+}
+.rn-tabslider {
+  position: absolute;
+  left: 0;
+  top: 3px;
+  bottom: 4px;
+  width: 0;
+  background: var(--accent);
+  clip-path: polygon(
+    var(--rn-notch, 6px) 0, 100% 0, 100% calc(100% - var(--rn-notch, 6px)),
+    calc(100% - var(--rn-notch, 6px)) 100%, 0 100%, 0 var(--rn-notch, 6px)
+  );
+  transition:
+    translate 0.35s cubic-bezier(0.16, 1, 0.3, 1),
+    width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.rn-tab {
+  position: relative;
+  z-index: 1;
+  min-height: 34px;
+  padding: 8px 14px;
+  background: none;
+  border: none;
+  font: inherit;
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.rn-tab.rn-tab-active { color: var(--text); }
+.rn-tab:disabled { opacity: 0.4; cursor: default; }
+/* The single mounted panel: the active child fills it (rect 0/0/100/100). */
+.rn-tabpanel {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+}
 
 /* ---------- collapsed duplicates (collapseDuplicates) ---------- */
 
@@ -1181,6 +1332,9 @@ section.rn-bottom.rn-priority { border-top-color: var(--accent); }
   /* Key badges snap on/off without the scale animation. */
   .rn-keybadge { transition: none; }
   .rn-keybadge.rn-keybadge-lit { transform: none; }
+
+  /* Tab slider/labels snap to the active tab; tiles stop easing. */
+  .rn-tabslider, .rn-tab, .rn-ptile { transition: none; }
 }
 .calm .rn-rv-fade, .calm .rn-rv-scale, .calm .rn-rv-slide-up, .calm .rn-rv-slide-down,
 .calm .rn-rv-fade-out, .calm .rn-rv-scale-out, .calm .rn-rv-slide-up-out,
@@ -1198,6 +1352,7 @@ section.rn-bottom.rn-priority { border-top-color: var(--accent); }
 .calm .rn-fanslot { transition: none; }
 .calm .rn-keybadge { transition: none; }
 .calm .rn-keybadge.rn-keybadge-lit { transform: none; }
+.calm .rn-tabslider, .calm .rn-tab, .calm .rn-ptile { transition: none; }
 
 /* ---------- FLIP card-move overlay ---------- */
 

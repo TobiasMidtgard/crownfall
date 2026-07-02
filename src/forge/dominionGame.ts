@@ -35,13 +35,19 @@
  * name/hint pair (Action / Buy / foe-breathe / Resolve / Fallen) and a
  * keyboard hint; the supply zones carry Shift/Ctrl/Alt keyboard groups and
  * the hand plain digit badges; the hand fans at 1.6°/step; motion.byTag
- * carries the original's per-event animation table.
+ * carries the original's per-event animation table. The MOBILE variant is
+ * rebuilt to the original's phone design (styles.css ≤45rem): ONE
+ * non-scrolling viewport — foe strip with their appearing play row, ONE
+ * tabbed supply group (Treasury/Victory/Kingdom tile carousels), the
+ * battlefield band with the compact seal (no keyboard hint), the hand fan,
+ * the harbor spots, and the chronicle as a collapsible bottom sheet.
  *
  * Every choice a script can open always has at least one candidate (guarded
  * by iff) or is optional, so the random session AI can never hang on one.
  */
 import type {
-  AbilityDef, Block, CardDef, CardSelector, Expr, GameDef, ScreenElement, ZoneRef,
+  AbilityDef, Block, CardDef, CardSelector, Expr, GameDef, LayoutStyle, ScreenElement,
+  ScreenVariant, ZoneRef,
 } from '../shared/types';
 import { deepClone } from '../shared/defaults';
 import { dominionGame } from '../examples/dominion';
@@ -581,20 +587,24 @@ const SEAL_BUY = allOf(not(GAME_IS_OVER), STACK_QUIET, MY_TURN, IN_BUY);
 // Palette — hex approximations of the reference table's OKLCH tokens.
 const INK = '#ece4d8';
 const ASH = '#a89484';
+const GOLD = '#d2ab66';
 const BONE_FAINT = 'rgba(236, 228, 216, 0.45)';
 const BONE_SOFT = 'rgba(236, 228, 216, 0.85)';
 
 // --- the phase seal (rebuilt to the DGT spec markup) ---------------------------
+
+/** Rect of a seal child, % of the seal group's box. */
+interface SealRect { x: number; y: number; w: number; h: number }
 
 /**
  * A 5px lozenge phase dot: translucent bone outline, filled solid bone while
  * its phase is current ON the viewer's live turn (the DGT seal lights no dot
  * during resolve / foe turn / game over — data-phase isn't 'action'/'buy').
  */
-function sealDot(id: string, name: string, x: number, phaseId: string): ScreenElement {
+function sealDot(id: string, name: string, phaseId: string, rect: SealRect): ScreenElement {
   return {
     kind: 'shape', id, name, shape: 'diamond',
-    rect: { x, y: 13, w: 3.2, h: 4.6 },
+    rect,
     style: { background: 'transparent', borderColor: BONE_FAINT, borderWidth: 1 },
     states: [{
       id: `${id}_current`, name: 'Current phase',
@@ -606,23 +616,27 @@ function sealDot(id: string, name: string, x: number, phaseId: string): ScreenEl
 
 /** The seal's name line (Gloock via the skin), one element per render-state. */
 function sealName(
-  id: string, label: string, when: Expr, color: string, parts?: (string | Expr)[],
+  id: string, label: string, when: Expr, color: string,
+  rect: SealRect, fontSize: number, parts?: (string | Expr)[],
 ): ScreenElement {
   return {
     kind: 'text', id, name: `Seal name — ${label !== '' ? label : 'foe'}`,
-    rect: { x: 9, y: 24, w: 82, h: 26 },
+    rect,
     text: label, ...(parts !== undefined ? { parts } : {}),
-    fontSize: 1.45, bold: false, align: 'left', color,
+    fontSize, bold: false, align: 'left', color,
     visible: when,
   };
 }
 
 /** The seal's hint line (uppercase microcopy), one element per render-state. */
-function sealHint(id: string, label: string, when: Expr, color: string): ScreenElement {
+function sealHint(
+  id: string, label: string, when: Expr, color: string,
+  rect: SealRect, fontSize: number,
+): ScreenElement {
   return {
     kind: 'text', id, name: `Seal hint — ${label}`,
-    rect: { x: 9, y: 54, w: 82, h: 11 },
-    text: label, fontSize: 0.62, bold: false, align: 'left', color,
+    rect,
+    text: label, fontSize, bold: false, align: 'left', color,
     visible: when,
   };
 }
@@ -635,56 +649,83 @@ function sealHint(id: string, label: string, when: Expr, color: string): ScreenE
  * per the original renderPhase), and the keyboard hint. The dressing
  * (crimson plate, hall/ash foe state, dais resolve state) lives in
  * dominion-skin.css off the runner root's data-phase/data-active hooks.
+ *
+ * `m` builds the MOBILE seal to the spec's "Mobile (≤45rem)" line: the box
+ * is tighter (the group rect), the name reads 1.05rem (fontSize is % of the
+ * SCREEN width — the phone stage is ~390px wide, so 4.3% ≈ 16.8px) and the
+ * keyboard hint is GONE (`.phase-key { display: none; }` — useTableKeyboard
+ * is inert below the narrow breakpoint anyway). Ids gain the m_ prefix so
+ * both trees stay addressable.
  */
-function sealChildren(): ScreenElement[] {
+function sealChildren(m: boolean): ScreenElement[] {
+  const id = (s: string) => (m ? `dom_el_m_seal_${s}` : `dom_el_seal_${s}`);
+  const nameFs = m ? 4.3 : 1.45;
+  const hintFs = m ? 2.4 : 0.62;
+  // % of the seal group's box: the mobile group is ~148×56px vs the
+  // desktop's ~185×136px, so the same 5px dot / text line needs different
+  // percentages there.
+  const dotY = m ? 8 : 13;
+  const dotW = m ? 3.4 : 3.2;
+  const dotH = m ? 9 : 4.6;
+  const dot2X = m ? 14.4 : 13.8;
+  const nameRect: SealRect = m
+    ? { x: 9, y: 22, w: 82, h: 42 }
+    : { x: 9, y: 24, w: 82, h: 26 };
+  const hintRect: SealRect = m
+    ? { x: 9, y: 68, w: 82, h: 20 }
+    : { x: 9, y: 54, w: 82, h: 11 };
   const foeName: ScreenElement = {
-    ...sealName('dom_el_seal_name_foe', '', SEAL_FOE, ASH, [FOE]),
+    ...sealName(id('name_foe'), '', SEAL_FOE, ASH, nameRect, nameFs, [FOE]),
     // The foe's name breathes while he thinks (2.6s loop while the state
     // holds). 'breathe' is runner-live but not yet in the stored union —
     // see the wave-1 runner report; the cast is the documented bridge.
     onChangeAnim: 'breathe',
-    states: [{ id: 'dom_st_seal_foe_breathe', name: 'Foe thinking', when: SEAL_FOE }],
+    states: [{
+      id: m ? 'dom_st_m_seal_foe_breathe' : 'dom_st_seal_foe_breathe',
+      name: 'Foe thinking', when: SEAL_FOE,
+    }],
   };
   return [
     // The plate: full-size buttons, phase-gated (End turn also covers the
     // momentary auto Cleanup so the plate never vanishes). Labels are read
     // by AT; visually the overlay texts below carry the seal's face.
     {
-      kind: 'button', id: 'dom_el_seal_btn_done', name: 'Done (end actions)',
+      kind: 'button', id: id('btn_done'), name: 'Done (end actions)',
       rect: { x: 0, y: 0, w: 100, h: 100 },
       actionId: 'dom_action_done', label: 'Done — to Buy phase', fontSize: 1,
       visible: IN_ACTION,
     },
     {
-      kind: 'button', id: 'dom_el_seal_btn_end', name: 'End turn',
+      kind: 'button', id: id('btn_end'), name: 'End turn',
       rect: { x: 0, y: 0, w: 100, h: 100 },
       actionId: 'dom_action_end_turn', label: 'End turn', fontSize: 1,
       visible: not(IN_ACTION),
     },
     // The two phase dots — Action and Buy; Cleanup has no dot, per the law.
-    sealDot('dom_el_seal_dot_action', 'Action dot', 9, PHASE_ACTION),
-    sealDot('dom_el_seal_dot_buy', 'Buy dot', 13.8, PHASE_BUY),
+    sealDot(id('dot_action'), 'Action dot', PHASE_ACTION, { x: 9, y: dotY, w: dotW, h: dotH }),
+    sealDot(id('dot_buy'), 'Buy dot', PHASE_BUY, { x: dot2X, y: dotY, w: dotW, h: dotH }),
     // Name line, five render-states.
-    sealName('dom_el_seal_name_action', 'Action', SEAL_ACTION, INK),
-    sealName('dom_el_seal_name_buy', 'Buy', SEAL_BUY, INK),
+    sealName(id('name_action'), 'Action', SEAL_ACTION, INK, nameRect, nameFs),
+    sealName(id('name_buy'), 'Buy', SEAL_BUY, INK, nameRect, nameFs),
     foeName,
-    sealName('dom_el_seal_name_resolve', 'Resolve', SEAL_RESOLVE, ASH),
-    sealName('dom_el_seal_name_fallen', 'Fallen', GAME_IS_OVER, INK),
+    sealName(id('name_resolve'), 'Resolve', SEAL_RESOLVE, ASH, nameRect, nameFs),
+    sealName(id('name_fallen'), 'Fallen', GAME_IS_OVER, INK, nameRect, nameFs),
     // Hint line, matching microcopy (uppercase, engraved via size/color).
-    sealHint('dom_el_seal_hint_action', 'TO BUY', SEAL_ACTION, BONE_SOFT),
-    sealHint('dom_el_seal_hint_buy', 'END TURN', SEAL_BUY, BONE_SOFT),
-    sealHint('dom_el_seal_hint_foe', 'TAKES THEIR TURN', SEAL_FOE, ASH),
-    sealHint('dom_el_seal_hint_resolve', 'RESPOND BELOW', SEAL_RESOLVE, ASH),
-    sealHint('dom_el_seal_hint_fallen', 'MATCH OVER', GAME_IS_OVER, BONE_SOFT),
-    // The keyboard hint (the runner's primary-action key is Enter). A
-    // labeled rect SHAPE rather than a text element: the def language can't
-    // see device capabilities, and the label span (.rn-sl-shapelabel) is the
-    // seal's only class-reachable hook — dominion-skin.css uses it to hide
-    // the chip under (hover: none), where useTableKeyboard never attaches
-    // and ENTER would advertise a dead key. Painted result is unchanged
-    // (the border box moves from the wrapper's inline style to the shape).
-    {
-      kind: 'shape', id: 'dom_el_seal_key', name: 'Seal key hint', shape: 'rect',
+    sealHint(id('hint_action'), 'TO BUY', SEAL_ACTION, BONE_SOFT, hintRect, hintFs),
+    sealHint(id('hint_buy'), 'END TURN', SEAL_BUY, BONE_SOFT, hintRect, hintFs),
+    sealHint(id('hint_foe'), 'TAKES THEIR TURN', SEAL_FOE, ASH, hintRect, hintFs),
+    sealHint(id('hint_resolve'), 'RESPOND BELOW', SEAL_RESOLVE, ASH, hintRect, hintFs),
+    sealHint(id('hint_fallen'), 'MATCH OVER', GAME_IS_OVER, BONE_SOFT, hintRect, hintFs),
+    // The keyboard hint (the runner's primary-action key is Enter) — DESKTOP
+    // ONLY, per the spec's mobile seal. A labeled rect SHAPE rather than a
+    // text element: the def language can't see device capabilities, and the
+    // label span (.rn-sl-shapelabel) is the seal's only class-reachable
+    // hook — dominion-skin.css uses it to hide the chip under (hover: none),
+    // where useTableKeyboard never attaches and ENTER would advertise a dead
+    // key. Painted result is unchanged (the border box moves from the
+    // wrapper's inline style to the shape).
+    ...(m ? [] : [{
+      kind: 'shape', id: id('key'), name: 'Seal key hint', shape: 'rect',
       rect: { x: 73, y: 38, w: 18, h: 22 },
       label: 'ENTER', fontSize: 0.55,
       style: {
@@ -692,7 +733,7 @@ function sealChildren(): ScreenElement[] {
         borderColor: 'rgba(236, 228, 216, 0.4)', borderWidth: 1, borderRadius: 2,
       },
       visible: SEAL_MINE,
-    },
+    } satisfies ScreenElement]),
   ];
 }
 
@@ -702,13 +743,14 @@ function sealChildren(): ScreenElement[] {
  * with every phase/turn/stack transition, which retriggers the group's
  * 'stamp' onChangeAnim (the DGT seal-stamp on every renderPhase).
  */
-function sealStates(): NonNullable<ScreenElement['states']> {
+function sealStates(m: boolean): NonNullable<ScreenElement['states']> {
+  const id = (s: string) => (m ? `dom_st_m_seal_${s}` : `dom_st_seal_${s}`);
   return [
-    { id: 'dom_st_seal_over', name: 'Fallen', when: GAME_IS_OVER },
-    { id: 'dom_st_seal_resolve', name: 'Resolve', when: gt(STACK_SIZE, num(0)) },
-    { id: 'dom_st_seal_foe', name: 'Foe turn', when: THEIR_TURN },
-    { id: 'dom_st_seal_action', name: 'Action', when: IN_ACTION },
-    { id: 'dom_st_seal_buy', name: 'Buy', when: IN_BUY },
+    { id: id('over'), name: 'Fallen', when: GAME_IS_OVER },
+    { id: id('resolve'), name: 'Resolve', when: gt(STACK_SIZE, num(0)) },
+    { id: id('foe'), name: 'Foe turn', when: THEIR_TURN },
+    { id: id('action'), name: 'Action', when: IN_ACTION },
+    { id: id('buy'), name: 'Buy', when: IN_BUY },
   ];
 }
 
@@ -769,6 +811,230 @@ function roundNumberParts(): TextEl['parts'] {
 const anyName = (names: string[]): Expr => names.map(nameIs).reduce((a, b) => or(a, b));
 const IS_BASIC_VICTORY_PILE = anyName(['Estate', 'Duchy', 'Province', 'Curse']);
 const IS_KINGDOM_PILE = not(anyName(BASIC_NAMES));
+
+// --- the mobile variant (the original's pocket table, ≤45rem) -------------------
+
+// Warm-black panel chrome, hex twins of the war table's PANEL/PILE_PANEL.
+const M_PANEL: LayoutStyle = {
+  background: '#211816', borderColor: '#453530', borderWidth: 1,
+  borderStyle: 'solid', borderRadius: 10,
+};
+const M_GROUND: LayoutStyle = {
+  background: '#2b201c', borderColor: '#453530', borderWidth: 1,
+  borderStyle: 'solid', borderRadius: 8,
+};
+const M_TRASH: LayoutStyle = {
+  background: 'rgba(163, 52, 46, 0.06)', borderColor: '#453530', borderWidth: 1,
+  borderStyle: 'dashed', borderRadius: 8,
+};
+
+/** Engraved micro-caption under a ticker value. */
+function mLabel(id: string, text: string, x: number, y: number, w: number): ScreenElement {
+  return {
+    kind: 'text', id, name: text, rect: { x, y, w, h: 1.6 },
+    text, fontSize: 1.9, bold: false, align: 'center', color: ASH,
+  };
+}
+
+/**
+ * One panel of the tabbed supply: a group named EXACTLY like its tab label
+ * (the runner's tab bar reads the direct children's names), holding that
+ * slice's carousel of DGT pile tiles. The panel fills the group — the
+ * runner's tabbed chrome owns the bar and seats the active panel under it.
+ * Digit badges 1–9/0 ride the keyGroup (Shift/Ctrl/Alt, like the desktop
+ * slices), and the held modifier flips the group to this panel.
+ */
+function mSupplyPanel(
+  panelId: string, label: string, zoneElId: string,
+  filter: Expr, keyGroup: 'shift' | 'ctrl' | 'alt',
+): ScreenElement {
+  return {
+    kind: 'group', id: panelId, name: label,
+    rect: { x: 0, y: 0, w: 100, h: 100 },
+    children: [{
+      kind: 'zone', id: zoneElId, name: `Supply — ${label.toLowerCase()}`,
+      rect: { x: 0, y: 0, w: 100, h: 100 },
+      zoneId: SUPPLY, seat: 'shared', display: 'carousel', pileFace: 'tile',
+      cardFilter: filter, pileBadgeField: COST, keyGroup,
+      // Tile width, % of the ~390px phone stage: 20% ≈ 78px — the original
+      // desktop --pile-w band (4.7–5.7rem) with the same makePile anatomy.
+      // Treasury (3 piles) and Victory (4) fit the frame without scrolling
+      // (4×78px + gaps + the carousel's 12px insets < 378px); Kingdom's ten
+      // swipe with scroll-snap (dominion-skin.css anchors the snap at
+      // 'start', so the row opens ON the first pile).
+      cardScale: 20, gap: 2, showName: false,
+    }],
+  };
+}
+
+/**
+ * The mobile variant, rebuilt to the ORIGINAL's phone design (styles.css
+ * `@media (max-width: 45rem)`): ONE non-scrolling viewport. aspect null +
+ * scroll false stretch the stage over the whole screen ("the pocket table
+ * never scrolls: it fits, or it shrinks"), and the rects budget the height
+ * the way the original's flex column did. Top to bottom:
+ *   - the compact foe strip — banner, deck/hand/discard tallies, and THEIR
+ *     play row appearing at the right (0.7× cards, the foePlayWrap rule);
+ *   - the TABBED supply: one panel at a time behind a notched tab bar
+ *     (Treasury / Victory / Kingdom tile carousels);
+ *   - the battlefield band: TURN + tickers left, the compact seal right
+ *     (no keyboard hint), and the appearing in-play row;
+ *   - the hand fan (thumb-reachable, plain digit badges);
+ *   - the harbor's compact deck / discard / trash spots;
+ *   - the chronicle as a bottom sheet behind a docked toggle (the runner's
+ *     collapsible, side 'bottom' — the closest generic shape of the
+ *     original's 70dvh slide-up sheet; it opens over ~73% of the screen).
+ */
+function buildMobileScreen(): ScreenVariant {
+  return {
+    background: 'linear-gradient(180deg, #211816 0%, #171110 32%, #120d0c 100%)',
+    aspect: null,
+    scroll: false,
+    elements: [
+      // --- foe strip (~0-8%) --------------------------------------------------
+      {
+        kind: 'group', id: 'dom_el_m_foe', name: 'Foe strip',
+        rect: { x: 1.5, y: 0.7, w: 97, h: 7 },
+        style: M_PANEL,
+        states: [{
+          id: 'dom_st_m_foe_their_turn', name: 'Their turn', when: THEIR_TURN,
+          style: { background: '#2b201c', borderColor: '#a3342e' },
+        }],
+        children: [
+          {
+            kind: 'text', id: 'dom_el_m_foe_name', name: 'Foe name',
+            rect: { x: 2, y: 22, w: 22, h: 56 },
+            text: '', parts: [FOE], fontSize: 3.1, bold: true, align: 'left', color: INK,
+          },
+          {
+            kind: 'zone', id: 'dom_el_m_foe_deck', name: 'Foe deck',
+            rect: { x: 25, y: 6, w: 9, h: 88 },
+            zoneId: DECK, seat: 'opp1', cardScale: 4, showName: false, showCount: true,
+          },
+          {
+            kind: 'zone', id: 'dom_el_m_foe_hand', name: 'Foe hand',
+            rect: { x: 35.5, y: 6, w: 16, h: 88 },
+            zoneId: HAND, seat: 'opp1', cardScale: 4, fanAngle: 0, gap: 0.8, showName: false,
+          },
+          {
+            kind: 'zone', id: 'dom_el_m_foe_discard', name: 'Foe discard',
+            rect: { x: 53, y: 6, w: 9, h: 88 },
+            zoneId: DISCARD, seat: 'opp1', cardScale: 4, showName: false, showCount: true,
+          },
+          // Their play row: 0.70× the in-play card (the original's mobile
+          // .foe-play factor), right-aligned, APPEARING exactly like the
+          // original foePlayWrap — while the foe acts or still has cards out.
+          {
+            kind: 'zone', id: 'dom_el_m_foe_inplay', name: 'Foe in play',
+            rect: { x: 63.5, y: 4, w: 34.5, h: 92 },
+            zoneId: INPLAY, seat: 'opp1', cardScale: 7, gap: 0.5, padding: 0.3, showName: false,
+            visible: or(THEIR_TURN, gt(zoneCount(zone(INPLAY, FOE)), num(0))),
+            reveal: 'fade',
+          },
+        ],
+      },
+      // --- the TABBED supply (~8-38%): one panel at a time --------------------
+      {
+        kind: 'group', id: 'dom_el_m_supply', name: 'Supply',
+        rect: { x: 1.5, y: 8.4, w: 97, h: 29.8 },
+        tabbed: true,
+        children: [
+          mSupplyPanel('dom_el_m_tab_treasury', 'Treasury', 'dom_el_m_supply_treasures', IS_TREASURE_CARD, 'shift'),
+          mSupplyPanel('dom_el_m_tab_victory', 'Victory', 'dom_el_m_supply_victory', IS_BASIC_VICTORY_PILE, 'ctrl'),
+          mSupplyPanel('dom_el_m_tab_kingdom', 'Kingdom', 'dom_el_m_supply_kingdom', IS_KINGDOM_PILE, 'alt'),
+        ],
+      },
+      // --- battlefield band (~39-49%): TURN, tickers, the compact seal --------
+      {
+        kind: 'text', id: 'dom_el_m_turn', name: 'Turn counter',
+        rect: { x: 2, y: 39.4, w: 30, h: 2.4 },
+        text: '', parts: roundNumberParts(),
+        fontSize: 2.8, bold: true, align: 'left', color: GOLD,
+        onChangeAnim: 'flash',
+      },
+      {
+        kind: 'varText', id: 'dom_el_m_counter_actions', name: 'Actions ticker',
+        rect: { x: 2, y: 42.6, w: 9, h: 3.6 },
+        varId: ACTIONS, seat: 'viewer', fontSize: 4.2, bold: true, align: 'center', color: INK,
+        ticker: true,
+      },
+      mLabel('dom_el_m_counter_actions_label', 'ACTIONS', 2, 46.6, 9),
+      {
+        kind: 'varText', id: 'dom_el_m_counter_buys', name: 'Buys ticker',
+        rect: { x: 13, y: 42.6, w: 9, h: 3.6 },
+        varId: BUYS, seat: 'viewer', fontSize: 4.2, bold: true, align: 'center', color: INK,
+        ticker: true,
+      },
+      mLabel('dom_el_m_counter_buys_label', 'BUYS', 13, 46.6, 9),
+      {
+        kind: 'varText', id: 'dom_el_m_counter_coins', name: 'Coins ticker',
+        rect: { x: 24, y: 42.6, w: 9, h: 3.6 },
+        varId: COINS, seat: 'viewer', fontSize: 4.2, bold: true, align: 'center', color: GOLD,
+        ticker: true,
+      },
+      mLabel('dom_el_m_counter_coins_label', 'COINS', 24, 46.6, 9),
+      // The compact seal (spec "Mobile (≤45rem)": tighter box, 1.05rem name,
+      // no key hint) — same five render-states, same stamp on every change.
+      {
+        kind: 'group', id: 'dom_el_m_seal', name: 'Phase seal',
+        rect: { x: 60, y: 39.4, w: 38, h: 8.6 },
+        onChangeAnim: 'stamp',
+        states: sealStates(true),
+        children: sealChildren(true),
+      },
+      // Own in-play: visible on your turn even empty; hidden only while the
+      // foe acts AND the row is empty — the exact renderPlayRows condition.
+      {
+        kind: 'zone', id: 'dom_el_m_inplay', name: 'Your in play',
+        rect: { x: 1.5, y: 49.4, w: 97, h: 9.8 },
+        zoneId: INPLAY, seat: 'viewer', cardScale: 10, gap: 1, padding: 0.5,
+        showName: false, style: M_GROUND,
+        visible: or(MY_TURN, gt(zoneCount(zone(INPLAY, VIEWER)), num(0))),
+        reveal: 'fade',
+      },
+      // --- the hand fan (~60-79%) ---------------------------------------------
+      // Full card faces (only supply piles wear tiles); the 14%-of-width gap
+      // keeps ~55px of every stack visible, so a five-stack hand needs no
+      // horizontal scrolling at 390px.
+      {
+        kind: 'zone', id: 'dom_el_m_hand', name: 'Your hand',
+        rect: { x: 1.5, y: 59.8, w: 97, h: 19 },
+        zoneId: HAND, seat: 'viewer', cardScale: 16, fanAngle: 1.6, collapseDuplicates: true,
+        gap: 14, showName: false, keyGroup: 'plain',
+      },
+      // --- the harbor (~80-90%): compact deck / discard / trash spots ---------
+      {
+        kind: 'zone', id: 'dom_el_m_deck', name: 'Your deck',
+        rect: { x: 2, y: 79.6, w: 22, h: 10.4 },
+        zoneId: DECK, seat: 'viewer', cardScale: 7.5, showName: true, showCount: true,
+        style: M_GROUND,
+      },
+      {
+        kind: 'zone', id: 'dom_el_m_discard', name: 'Your discard',
+        rect: { x: 26, y: 79.6, w: 22, h: 10.4 },
+        zoneId: DISCARD, seat: 'viewer', cardScale: 7.5, showName: true, showCount: true,
+        style: M_GROUND,
+      },
+      {
+        kind: 'zone', id: 'dom_el_m_trash', name: 'Trash',
+        rect: { x: 74, y: 79.6, w: 24, h: 10.4 },
+        zoneId: TRASH, seat: 'shared', cardScale: 7.5, showName: true, showCount: true,
+        arriveEffect: 'burn', style: M_TRASH,
+      },
+      // --- the chronicle: a bottom sheet behind a docked toggle ---------------
+      // Collapsed (the default) it is ONLY the bottom-center tab — the strip
+      // below the harbor stays clear for it. Open, it slides over ~73% of
+      // the screen, the nearest collapsible gets to the original's 70dvh.
+      {
+        kind: 'log', id: 'dom_el_m_log', name: 'Chronicle',
+        rect: { x: 0, y: 27, w: 100, h: 73 },
+        fontSize: 3.2, turnSeparators: true,
+        style: { background: '#211816', borderColor: '#453530', borderWidth: 1, borderRadius: 0 },
+        collapsible: { side: 'bottom', label: 'Chronicle', startCollapsed: true },
+      },
+    ],
+  };
+}
 
 // --- the def -------------------------------------------------------------------
 
@@ -978,8 +1244,14 @@ export function buildDominionDef(): GameDef {
     patchZoneEl(layout.elements, 'dom_el_supply_victory', {
       cardFilter: IS_BASIC_VICTORY_PILE, rows: 4, cardScale: 4, gap: 0.5, keyGroup: 'ctrl',
     });
+    // The kingdom wears the DGT compact pile TILE on desktop too — the
+    // original's desktop kingdom was a 5×2 grid of makePile plates (name,
+    // cost lozenge, × count; --pile-w-k), not full card faces. cardScale
+    // 6.5 (~91px at a 1400px stage) reaches the original's clamp band while
+    // two tile rows still fit the unchanged panel rect. Treasury/Victory
+    // stay card-faced: the original's desktop basics were MINI CARDS (§5.3).
     patchZoneEl(layout.elements, 'dom_el_supply_kingdom', {
-      cardFilter: IS_KINGDOM_PILE, keyGroup: 'alt',
+      cardFilter: IS_KINGDOM_PILE, keyGroup: 'alt', pileFace: 'tile', cardScale: 6.5,
     });
     patchTextEl(layout.elements, 'dom_el_supply_treasure_label', { text: 'TREASURY · SHIFT' });
     patchTextEl(layout.elements, 'dom_el_supply_victory_label', { text: 'VICTORY · CTRL' });
@@ -1010,8 +1282,8 @@ export function buildDominionDef(): GameDef {
     patchEl(layout.elements, 'dom_el_seal', (el) => {
       if (el.kind !== 'group') return;
       el.onChangeAnim = 'stamp';
-      el.states = sealStates();
-      el.children = sealChildren();
+      el.states = sealStates(false);
+      el.children = sealChildren(false);
     });
     // The original's per-event flight table (motion.byTag): draw 300/22/45ms,
     // play 320/38, buy+gain 340/40/6°, discard & cleanup sweep 320/36/7°/35ms.
@@ -1028,26 +1300,12 @@ export function buildDominionDef(): GameDef {
         cleanup: { flightMs: 320, arc: 36, spin: 7, staggerMs: 35 },
       },
     };
-    if (layout.mobile) {
-      patchTextEl(layout.mobile.elements, 'dom_el_m_turn', { parts: roundNumberParts() });
-      // Carousel geometry (verified by rect math at a 375px viewport): the
-      // example's 7.8%-tall rows hold ~62px of card room at aspect 0.42,
-      // but a cardScale-12 card is ~63px tall BEFORE the carousel's vertical
-      // padding and the cost diamond's ~12px overhang — the piles rode over
-      // the panel borders. A taller page (aspect 0.38 → these rows ≈ 77px)
-      // plus cardScale 10 (37.5×52.5px cards) fits card + diamond + padding
-      // inside every frame; dominion-skin.css left-anchors the initial snap.
-      layout.mobile.aspect = 0.38;
-      patchZoneEl(layout.mobile.elements, 'dom_el_m_supply_victory', {
-        cardFilter: IS_BASIC_VICTORY_PILE, display: 'carousel', cardScale: 10,
-      });
-      patchZoneEl(layout.mobile.elements, 'dom_el_m_supply_kingdom', {
-        cardFilter: IS_KINGDOM_PILE, display: 'carousel', cardScale: 10,
-      });
-      patchZoneEl(layout.mobile.elements, 'dom_el_m_supply_treasures', {
-        display: 'carousel', cardScale: 10,
-      });
-    }
+    // The mobile variant is REBUILT, not patched: the example's tall scroll
+    // page (aspect 0.38) buried the supply carousels down a scrolling column
+    // — the original's phone design is one fixed viewport. buildMobileScreen
+    // authors the whole pocket table (tabbed supply, compact seal, chronicle
+    // sheet) from scratch.
+    layout.mobile = buildMobileScreen();
   }
 
   return def;

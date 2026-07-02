@@ -363,6 +363,22 @@ function ElementProps(props: PropertiesPanelProps & { el: ScreenElement }) {
               ? 'Empty — drag elements inside on the canvas.'
               : `${el.children.length} element${el.children.length === 1 ? '' : 's'} move, hide and animate together.`}
           </p>
+          <Check
+            label="Tabbed panels"
+            checked={el.tabbed === true}
+            onChange={(v) => onPatchEl(el.id, (c) => (
+              c.kind === 'group' ? { ...c, tabbed: v || undefined } : c
+            ))}
+          />
+          {el.tabbed === true && (
+            <p className="faint tt-prop-hint">
+              Players see one child at a time behind a tab bar: each direct child is a panel,
+              its name is the tab label, and the panel fills the group (its position inside is
+              ignored). The open tab is remembered on their device, and hidden panels disable
+              their tab. On the canvas the panels still draw stacked — use ⛶ Focus to edit
+              one at a time.
+            </p>
+          )}
           {el.children.length > 0 && (
             <button type="button" className="btn" onClick={() => onUngroup(el.id)}>
               ⊟ Ungroup
@@ -604,12 +620,25 @@ function ZoneSection(props: PropertiesPanelProps & { el: ZoneEl }) {
             <span>Pile badge</span>
             <PileBadgeSelect def={def} value={el.pileBadgeField ?? null} onChange={(pileBadgeField) => patch({ pileBadgeField })} />
           </label>
+          <label className="field">
+            <span>Pile face</span>
+            <select
+              className="select"
+              value={el.pileFace ?? 'card'}
+              onChange={(e) => patch({ pileFace: e.target.value === 'tile' ? 'tile' : undefined })}
+            >
+              <option value="card">Card face</option>
+              <option value="tile">Compact tile (name · badge · × count)</option>
+            </select>
+          </label>
           <p className="faint tt-prop-hint">
             {el.display === 'carousel'
               ? 'A carousel is the pile view in one scroll-snapping row — the touch-first '
                 + 'mobile supply pattern. The badge shows a card field in the corner.'
               : 'Piles group identical cards — one pile per card design with its × count. The badge '
                 + 'shows a card field in the corner (the cost lozenge).'}
+            {' '}The compact tile skips the card art: a small plate with the name, the corner
+            badge and the count.
           </p>
         </>
       ) : (

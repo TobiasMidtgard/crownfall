@@ -24,6 +24,13 @@ export interface GameEditorPageProps {
   gameId: string;
   /** Navigate helper: '#/' home, `#/play/${id}` etc. */
   navigate: (hash: string) => void;
+  /**
+   * Force the editor open read-only even for a saveable game (a host
+   * permission layer, e.g. the hall's keeper gate). `readOnlyNote` replaces
+   * the built-in-example banner text; the "Clone & edit" escape still works.
+   */
+  readOnly?: boolean;
+  readOnlyNote?: string;
 }
 
 const TABS = [
@@ -41,7 +48,7 @@ type TabId = (typeof TABS)[number]['id'];
 
 const SAVE_DEBOUNCE_MS = 400;
 
-export function GameEditorPage({ gameId, navigate }: GameEditorPageProps) {
+export function GameEditorPage({ gameId, navigate, readOnly: forcedReadOnly, readOnlyNote }: GameEditorPageProps) {
   const [draft, setDraft] = useState<GameDef | null>(() => {
     const game = getGameById(gameId);
     return game ? deepClone(game) : null;
@@ -50,7 +57,7 @@ export function GameEditorPage({ gameId, navigate }: GameEditorPageProps) {
   const [saveState, setSaveState] = useState<'saved' | 'pending' | 'error'>('saved');
   const [issuesOpen, setIssuesOpen] = useState(false);
 
-  const readOnly = !!draft?.meta.builtIn;
+  const readOnly = !!draft?.meta.builtIn || !!forcedReadOnly;
 
   // Debounced autosave; refs let the unmount flush see the latest state.
   const timerRef = useRef<number | undefined>(undefined);
@@ -165,7 +172,7 @@ export function GameEditorPage({ gameId, navigate }: GameEditorPageProps) {
         <div className="page ed-page">
           {readOnly && (
             <div className="ed-banner">
-              <span>This is a built-in example — open it to learn, but edits aren't saved.</span>
+              <span>{readOnlyNote ?? 'This is a built-in example — open it to learn, but edits aren\'t saved.'}</span>
               <button
                 type="button"
                 className="btn btn-small btn-primary"

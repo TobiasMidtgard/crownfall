@@ -11,7 +11,6 @@
  * plays — is the keeper's alone (PRODUCT.md principle 4, same gate as the
  * mason tools). Everything else in the Forge stays open to every visitor.
  */
-import { useEffect } from 'react';
 import { HomePage } from '../pages/HomePage';
 import { GameEditorPage } from '../editor/GameEditorPage';
 import { PlayPage } from '../runner/PlayPage';
@@ -63,13 +62,11 @@ export default function ForgeApp({ sub, navigate }: ForgeAppProps) {
     : parts[0] === 'play' && parts[1] ? { kind: 'play' as const, id: parts[1] }
     : { kind: 'home' as const };
 
-  // Non-keepers (signed out included) may not edit the hall's table: send
-  // them to its play page instead of the editor.
+  // The hall's flagship table is the keeper's to reshape (PRODUCT.md), but a
+  // silent bounce was a dead end. Non-keepers now open it READ-ONLY: they see
+  // the whole design and can "Clone & edit" their own copy — the keeper saves.
   const user = useUser();
-  const editBarred = page.kind === 'edit' && page.id === DOMINION_GAME_ID && user?.keeper !== true;
-  useEffect(() => {
-    if (editBarred) navigate(`#/forge/play/${DOMINION_GAME_ID}`);
-  }, [editBarred, navigate]);
+  const dominionReadOnly = page.kind === 'edit' && page.id === DOMINION_GAME_ID && user?.keeper !== true;
 
   // The hall's table wears its dress wherever it is played — the Forge's
   // play route included, not just #/play/dominion.
@@ -96,8 +93,16 @@ export default function ForgeApp({ sub, navigate }: ForgeAppProps) {
           </main>
         </>
       )}
-      {page.kind === 'edit' && !editBarred && (
-        <GameEditorPage key={page.id} gameId={page.id} navigate={forgeNavigate} />
+      {page.kind === 'edit' && (
+        <GameEditorPage
+          key={page.id}
+          gameId={page.id}
+          navigate={forgeNavigate}
+          readOnly={dominionReadOnly}
+          readOnlyNote={dominionReadOnly
+            ? "This is the hall's own table — only the keeper reshapes it. Sign in as the keeper, or clone it to make your own."
+            : undefined}
+        />
       )}
       {page.kind === 'play' && (
         <PlayPage key={page.id} gameId={page.id} navigate={forgeNavigate} />

@@ -32,6 +32,7 @@ export function randomChoiceProvider(rand: () => number): ChoiceProvider {
     resolve(req: ChoiceRequest) {
       switch (req.kind) {
         case 'card': return Promise.resolve(pick(rand, req.cardIds));
+        case 'pile': return Promise.resolve(pick(rand, req.cardIds));
         case 'option': return Promise.resolve(pick(rand, req.options).id);
         case 'player': return Promise.resolve(pick(rand, req.playerIds));
         case 'yesNo': return Promise.resolve(rand() < 0.5);

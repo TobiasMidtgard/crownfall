@@ -12,6 +12,7 @@ import type {
   VariableDef, ZoneDef,
 } from '../../../shared/types';
 import { newGameDef } from '../../../shared/defaults';
+import { harness, makeDef, zone } from '../../../engine/testkit';
 import {
   MOTION_DEFAULTS, PHONE_ASPECT, addElementState, alignElements, applyElementState,
   buildStarterLayout, cloneElementsWithNewIds, createMobileVariant, deckCardCount,
@@ -19,9 +20,10 @@ import {
   indexElements, insertIntoFocusedChildren, makeActionDef, makeVariableDef, makeZoneDef,
   moveElementState, newCustomDeckAt, newElementState, newLineElement, newLogElement,
   newPhaseTrackElement, newShapeElement, patchMobileVariant, patchMotion, pathToEl,
-  placeRelativeEl, pruneNested, removeElementState, removeEls, reorderSibling, reparentEl,
-  setTextDynamic, siblingsOf, snapStep, templateFieldOptions, ungroupEl, updateEl,
-  updateElementState, validFocusPath, variantElements, withVariantElements,
+  placeRelativeEl, previewShownMap, pruneNested, removeElementState, removeEls,
+  reorderSibling, reparentEl, selectorButtonOptions, setTextDynamic, siblingsOf, snapStep,
+  templateFieldOptions, ungroupEl, updateEl, updateElementState, validFocusPath,
+  variantElements, withVariantElements, writeSelection,
 } from './screenModel';
 
 // ---------------------------------------------------------------------------
@@ -910,5 +912,96 @@ describe('newLogElement / templateFieldOptions', () => {
       ],
     };
     expect(templateFieldOptions(twoTemplates).map((f) => f.id)).toEqual(['cost', 'atk']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Live preview: selector gating (previewShownMap) + the picker's option list
+// ---------------------------------------------------------------------------
+
+describe('selectorButtonOptions / previewShownMap', () => {
+  const rect = { x: 0, y: 0, w: 20, h: 10 };
+  const selBtn = (id: string, label: string, group: string): ScreenElement => ({
+    kind: 'button', id, name: label, rect, actionId: null, label,
+    role: 'selector', selectorGroup: group,
+  });
+  const panel = (id: string, showFor: string, visible?: Expr): ScreenElement => ({
+    kind: 'group', id, name: id, rect, showForSelector: showFor,
+    ...(visible !== undefined ? { visible } : {}), children: [],
+  });
+
+  /** Two selector buttons (group swP) + their panels; pB additionally hidden. */
+  function previewTree(hidePB: boolean): ScreenElement[] {
+    return [
+      {
+        kind: 'group', id: 'bar', name: 'Bar', rect,
+        children: [selBtn('bA', 'A', 'swP'), selBtn('bB', 'B', 'swP')],
+      },
+      panel('pA', 'bA'),
+      panel('pB', 'bB', hidePB ? { kind: 'bool', value: false } as Expr : undefined),
+      { kind: 'text', id: 'always', name: 'Always', rect, text: 'x', fontSize: 2, align: 'left' },
+    ];
+  }
+
+  it('selectorButtonOptions lists role:selector buttons (paint order, labels, groups)', () => {
+    const tree = previewTree(false);
+    expect(selectorButtonOptions(tree)).toEqual([
+      { id: 'bA', label: 'A', group: 'swP' },
+      { id: 'bB', label: 'B', group: 'swP' },
+    ]);
+    // Non-selector buttons and blank groups are not offered.
+    const noisy: ScreenElement[] = [
+      { kind: 'button', id: 'x1', name: 'X', rect, actionId: null, label: 'X' },
+      { kind: 'button', id: 'x2', name: 'Y', rect, actionId: null, label: 'Y', role: 'selector', selectorGroup: ' ' },
+    ];
+    expect(selectorButtonOptions(noisy)).toEqual([]);
+  });
+
+  it('previewShownMap: default selection shows the FIRST button panel only', async () => {
+    const def = makeDef({ zones: [zone('deck')] });
+    const h = harness(def);
+    await h.engine.start();
+    const tree = previewTree(false);
+    const map = previewShownMap(def, h.state(), indexElements(tree), tree, 'p0', []);
+    expect(map.get('pA')).toBe(true);
+    expect(map.get('pB')).toBe(false);
+    expect(map.get('always')).toBe(true);
+    expect(map.get('bA')).toBe(true); // the buttons themselves always paint
+    expect(map.get('bB')).toBe(true);
+  });
+
+  it('previewShownMap: the EDITOR selection overrides the store (canvas click switches)', async () => {
+    const def = makeDef({ zones: [zone('deck')] });
+    const h = harness(def);
+    await h.engine.start();
+    const tree = previewTree(false);
+    // Selecting bB on the canvas flips the group live, before any store write.
+    const map = previewShownMap(def, h.state(), indexElements(tree), tree, 'p0', ['bB']);
+    expect(map.get('pA')).toBe(false);
+    expect(map.get('pB')).toBe(true);
+    // Selecting a non-selector element changes nothing.
+    const noop = previewShownMap(def, h.state(), indexElements(tree), tree, 'p0', ['always']);
+    expect(noop.get('pA')).toBe(true);
+  });
+
+  it('previewShownMap: the persisted store carries the switch once selection moves on', async () => {
+    const def = makeDef({ zones: [zone('deck')] });
+    const h = harness(def);
+    await h.engine.start();
+    const tree = previewTree(false);
+    // PropertiesPanel writes the store whenever a selector button is selected.
+    writeSelection(def.meta.id, 'swP', 'bB');
+    const map = previewShownMap(def, h.state(), indexElements(tree), tree, 'p0', ['pB']);
+    expect(map.get('pA')).toBe(false);
+    expect(map.get('pB')).toBe(true);
+  });
+
+  it('previewShownMap composes with `visible` (both must hold)', async () => {
+    const def = makeDef({ zones: [zone('deck')] });
+    const h = harness(def);
+    await h.engine.start();
+    const tree = previewTree(true); // pB visible:false
+    const map = previewShownMap(def, h.state(), indexElements(tree), tree, 'p0', ['bB']);
+    expect(map.get('pB')).toBe(false); // gate open, visibility closed
   });
 });

@@ -6,10 +6,16 @@
  * one step), so authors never have to leave the builder for the Zones tab.
  * Shape/Line are the build-your-own-indicator primitives; Phase track drops
  * a ready-made group of circles + lines pre-wired with phase-logic states.
+ * The PRESETS section lists the typed registry (presets.ts) — parameterized
+ * assemblies stamped with fresh ids; Panel switcher asks for a panel count
+ * + names and drops a working selector-button switcher.
  */
 import { useState } from 'react';
 import type { GameDef, ScreenElement, SeatRef, ZoneDef, ZoneLayout, ZoneVisibility } from '../../../shared/types';
 import { Modal } from '../../common/Modal';
+import {
+  PANEL_SWITCHER_MAX, PANEL_SWITCHER_MIN, SCREEN_PRESETS, panelName, panelSwitcherPreset,
+} from './presets';
 import {
   makeZoneDef, newButtonElement, newGroupElement, newLineElement, newLogElement,
   newPhaseTrackElement, newShapeElement, newTextElement, newVarTextElement, newZoneElement,
@@ -27,6 +33,7 @@ export interface PaletteProps {
 
 export function Palette({ def, onInsert, onCreateZone, focusName = null }: PaletteProps) {
   const [zoneModal, setZoneModal] = useState(false);
+  const [presetModal, setPresetModal] = useState<string | null>(null);
   const hasVars = def.variables.some((v) => v.scope !== 'perCard');
   const hasPhases = def.phases.length > 0;
 
@@ -69,11 +76,36 @@ export function Palette({ def, onInsert, onCreateZone, focusName = null }: Palet
         )}
         {item('▦ Group', 'An empty container — drag elements inside', () => onInsert(newGroupElement()))}
       </section>
+      <h3 className="tt-rail-title">Presets</h3>
+      <section className="tt-tray-section">
+        {SCREEN_PRESETS.map((p) => (
+          <button
+            key={p.id}
+            type="button"
+            className="btn tt-tray-item"
+            onClick={() => setPresetModal(p.id)}
+            title={p.hint}
+          >
+            {p.name}
+          </button>
+        ))}
+      </section>
       <p className="faint tt-tray-empty">
         {focusName
           ? `Focus mode: new elements drop ON TOP of “${focusName}”, centered in its box.`
           : 'New elements drop in the middle of the screen — drag them into place.'}
       </p>
+      {presetModal === panelSwitcherPreset.id && (
+        <PanelSwitcherModal
+          onClose={() => setPresetModal(null)}
+          onInsert={(els) => {
+            setPresetModal(null);
+            // Today's presets return ONE root element; inserting per element
+            // keeps the registry contract (ScreenElement[]) honest.
+            for (const el of els) onInsert(el);
+          }}
+        />
+      )}
       {zoneModal && (
         <ZoneInsertModal
           def={def}
@@ -90,6 +122,72 @@ export function Palette({ def, onInsert, onCreateZone, focusName = null }: Palet
         />
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Panel switcher preset modal: panel count (2-6) + names
+// ---------------------------------------------------------------------------
+
+function PanelSwitcherModal({ onClose, onInsert }: {
+  onClose: () => void;
+  onInsert: (els: ScreenElement[]) => void;
+}) {
+  const [count, setCount] = useState(panelSwitcherPreset.params.count);
+  const [names, setNames] = useState<string[]>([]);
+  const counts = Array.from(
+    { length: PANEL_SWITCHER_MAX - PANEL_SWITCHER_MIN + 1 },
+    (_, i) => PANEL_SWITCHER_MIN + i,
+  );
+  return (
+    <Modal
+      title="Insert a panel switcher"
+      onClose={onClose}
+      footer={(
+        <>
+          <button type="button" className="btn" onClick={onClose}>Cancel</button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => onInsert(panelSwitcherPreset.build({ count, names }))}
+          >
+            Insert switcher
+          </button>
+        </>
+      )}
+    >
+      <label className="field">
+        <span>Panels</span>
+        <select
+          className="select"
+          value={count}
+          onChange={(e) => setCount(Number(e.target.value))}
+        >
+          {counts.map((n) => <option key={n} value={n}>{n}</option>)}
+        </select>
+      </label>
+      {Array.from({ length: count }, (_, i) => (
+        <label className="field" key={i}>
+          <span>Panel {i + 1} name</span>
+          <input
+            type="text"
+            className="input"
+            value={names[i] ?? ''}
+            placeholder={panelName([], i)}
+            onChange={(e) => setNames((prev) => {
+              const next = prev.slice();
+              next[i] = e.target.value;
+              return next;
+            })}
+          />
+        </label>
+      ))}
+      <p className="faint" style={{ margin: '4px 0 0' }}>
+        Drops a row of selector buttons plus one bound panel per button — players see one
+        panel at a time; clicking a button (never a game action) swaps them. Fill each
+        panel via ⛶ Focus, and restyle the buttons like any element.
+      </p>
+    </Modal>
   );
 }
 

@@ -323,12 +323,11 @@ export type ScreenElement =
       kind: 'group';
       children: ScreenElement[];
       /**
-       * Tabbed group (DGT mobile-supply pattern): the DIRECT children are
-       * exclusive panels — one renders at a time behind a notched tab bar
-       * whose labels are the children's names. The active tab persists per
-       * game+element on the device (like collapse state). The keyboard
-       * system flips to a panel automatically when a held modifier's
-       * keyGroup zone lives inside it.
+       * @deprecated Replaced by selector buttons (button `role: 'selector'`
+       * + `showForSelector`): migrateGameDef converts `tabbed: true` groups
+       * into a generated selector-button row plus bound panels on load, so
+       * the runner never sees this flag. Kept only so old stored JSON still
+       * parses.
        */
       tabbed?: boolean;
     });

@@ -1043,66 +1043,6 @@ button.rn-ptile:hover { translate: 0 -3px; }
 }
 .calm .rn-carousel { scroll-behavior: auto; }
 
-/* ---------- tabbed groups (group.tabbed) ---------- */
-
-/* The DGT mobile-supply pattern: a notch-ready tab bar over ONE mounted
-   panel. The slider is measured to the active tab by ScreenRenderer
-   (width/translate set inline); this transition moves it 0.35s out-expo. */
-.rn-tabbed {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  height: 100%;
-  min-height: 0;
-}
-.rn-tabbar {
-  position: relative;
-  display: flex;
-  gap: 0;
-  flex-shrink: 0;
-  border-bottom: 1px solid var(--border-strong);
-}
-.rn-tabslider {
-  position: absolute;
-  left: 0;
-  top: 3px;
-  bottom: 4px;
-  width: 0;
-  background: var(--accent);
-  clip-path: polygon(
-    var(--rn-notch, 6px) 0, 100% 0, 100% calc(100% - var(--rn-notch, 6px)),
-    calc(100% - var(--rn-notch, 6px)) 100%, 0 100%, 0 var(--rn-notch, 6px)
-  );
-  transition:
-    translate 0.35s cubic-bezier(0.16, 1, 0.3, 1),
-    width 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.rn-tab {
-  position: relative;
-  z-index: 1;
-  min-height: 34px;
-  padding: 8px 14px;
-  background: none;
-  border: none;
-  font: inherit;
-  font-size: 0.66rem;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--muted);
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  transition: color 0.25s cubic-bezier(0.16, 1, 0.3, 1);
-}
-.rn-tab.rn-tab-active { color: var(--text); }
-.rn-tab:disabled { opacity: 0.4; cursor: default; }
-/* The single mounted panel: the active child fills it (rect 0/0/100/100). */
-.rn-tabpanel {
-  position: relative;
-  flex: 1;
-  min-height: 0;
-}
-
 /* ---------- collapsed duplicates (collapseDuplicates) ---------- */
 
 .rn-collapse {
@@ -1269,13 +1209,30 @@ button.rn-ptile:hover { translate: 0 -3px; }
   padding: 2px 8px;
   -webkit-tap-highlight-color: transparent;
 }
-.rn-sl-btn:not(:disabled):not(.rn-sl-deco) {
+.rn-sl-btn:not(:disabled):not(.rn-sl-deco):not(.rn-sel) {
   border-color: var(--accent);
   background: var(--accent-soft);
   box-shadow: 0 0 10px rgba(124, 92, 255, 0.25);
 }
 .rn-sl-btn:disabled { opacity: 0.45; cursor: default; }
 .rn-sl-btn.rn-sl-deco { cursor: default; }
+
+/* Selector buttons (button role 'selector'): a radio set switching which
+   showForSelector-bound elements render. Neutral runner dress — the
+   inactive ones read quiet, the ACTIVE one carries .rn-sel-on; skins
+   restyle both hooks (.rn-sel / .rn-sel-on). */
+.rn-sl-btn.rn-sel {
+  color: var(--muted);
+  transition: color 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.25s cubic-bezier(0.16, 1, 0.3, 1),
+    background-color 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.rn-sl-btn.rn-sel.rn-sel-on {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: 0 0 10px rgba(124, 92, 255, 0.25);
+}
 .rn-sl-btn.rn-sl-pass {
   background: var(--accent-2);
   border-color: var(--accent-2);
@@ -1390,8 +1347,8 @@ button.rn-ptile:hover { translate: 0 -3px; }
   .rn-keybadge { transition: none; }
   .rn-keybadge.rn-keybadge-lit { transform: none; }
 
-  /* Tab slider/labels snap to the active tab; tiles stop easing. */
-  .rn-tabslider, .rn-tab, .rn-ptile { transition: none; }
+  /* Selector buttons snap between states; tiles stop easing. */
+  .rn-sl-btn.rn-sel, .rn-ptile { transition: none; }
 }
 .calm .rn-rv-fade, .calm .rn-rv-scale, .calm .rn-rv-slide-up, .calm .rn-rv-slide-down,
 .calm .rn-rv-fade-out, .calm .rn-rv-scale-out, .calm .rn-rv-slide-up-out,
@@ -1409,7 +1366,7 @@ button.rn-ptile:hover { translate: 0 -3px; }
 .calm .rn-fanslot { transition: none; }
 .calm .rn-keybadge { transition: none; }
 .calm .rn-keybadge.rn-keybadge-lit { transform: none; }
-.calm .rn-tabslider, .calm .rn-tab, .calm .rn-ptile { transition: none; }
+.calm .rn-sl-btn.rn-sel, .calm .rn-ptile { transition: none; }
 
 /* ---------- FLIP card-move overlay ---------- */
 

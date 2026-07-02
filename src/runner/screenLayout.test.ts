@@ -23,8 +23,9 @@ import {
 } from '../engine/testkit';
 import {
   burnZoneKeys, buttonMoves, elementContentSig, logRows, noneTargetMoveByAction,
-  readActiveTab, renderDisplayValue, renderTextParts, resolveActiveTab, subscribeActiveTabs,
-  tabStorageKey, tabsVersion, visibleButtonActionIds, writeActiveTab, zoneInstKey,
+  readSelection, renderDisplayValue, renderTextParts, selStorageKey, selectionVersion,
+  selectorContextFrom, selectorGateOpen, subscribeSelection, visibleButtonActionIds,
+  writeSelection, zoneInstKey,
 } from './layout';
 import { filterDisplayCards, resolveElementAppearance, resolveSeat } from './layoutGeometry';
 
@@ -505,65 +506,143 @@ describe('onChangeAnim content signatures (elementContentSig)', () => {
   });
 });
 
-describe('tabbed groups (tab persistence + active-panel resolution)', () => {
-  it('tabStorageKey mirrors the collapse-key pattern', () => {
-    expect(tabStorageKey('game1', 'el7')).toBe('cardsmith.tab.game1.el7');
+// ---------------------------------------------------------------------------
+// Selector buttons: selection store + context resolution + gating
+// ---------------------------------------------------------------------------
+
+/** A selector radio set (group `g`) + one loose selector of another group. */
+function selectorEls(prefix: string, group: string): ScreenElement[] {
+  const btn = (id: string, label: string): ScreenElement => ({
+    kind: 'button', id: `${prefix}_${id}`, name: label, rect, actionId: null,
+    label, role: 'selector', selectorGroup: group,
+  });
+  return [
+    {
+      kind: 'group',
+      id: `${prefix}_bar`,
+      name: 'Switcher',
+      rect,
+      children: [btn('b1', 'One'), btn('b2', 'Two'), btn('b3', 'Three')],
+    },
+    {
+      kind: 'button', id: `${prefix}_other`, name: 'Other', rect, actionId: null,
+      label: 'Other', role: 'selector', selectorGroup: `${group}_other`,
+    },
+  ];
+}
+
+describe('selector buttons (selection store + resolution + gating)', () => {
+  it('selStorageKey mirrors the collapse-key pattern', () => {
+    expect(selStorageKey('game1', 'supply')).toBe('cardsmith.sel.game1.supply');
   });
 
   it('write/read roundtrip works without localStorage; unchanged writes are no-ops', () => {
     // Node env: no localStorage — the in-session mirror carries everything.
-    expect(readActiveTab('g', 'tp1')).toBeNull();
+    expect(readSelection('g', 'sw1')).toBeNull();
     let pings = 0;
-    const off = subscribeActiveTabs(() => { pings += 1; });
-    const v0 = tabsVersion();
-    writeActiveTab('g', 'tp1', 'panelA');
-    expect(readActiveTab('g', 'tp1')).toBe('panelA');
-    expect(tabsVersion()).toBe(v0 + 1);
+    const off = subscribeSelection(() => { pings += 1; });
+    const v0 = selectionVersion();
+    writeSelection('g', 'sw1', 'btnA');
+    expect(readSelection('g', 'sw1')).toBe('btnA');
+    expect(selectionVersion()).toBe(v0 + 1);
     expect(pings).toBe(1);
-    writeActiveTab('g', 'tp1', 'panelA'); // unchanged: no bump, no ping
-    expect(tabsVersion()).toBe(v0 + 1);
+    writeSelection('g', 'sw1', 'btnA'); // unchanged: no bump, no ping
+    expect(selectionVersion()).toBe(v0 + 1);
     expect(pings).toBe(1);
-    writeActiveTab('g', 'tp1', 'panelB');
-    expect(readActiveTab('g', 'tp1')).toBe('panelB');
+    writeSelection('g', 'sw1', 'btnB');
+    expect(readSelection('g', 'sw1')).toBe('btnB');
     expect(pings).toBe(2);
     off();
-    writeActiveTab('g', 'tp1', 'panelC');
+    writeSelection('g', 'sw1', 'btnC');
     expect(pings).toBe(2); // unsubscribed
   });
 
-  it('resolveActiveTab: stored wins while visible, else first visible, else null', async () => {
+  it('selectorContextFrom: stored wins while valid, else the FIRST in paint order', () => {
+    const els = selectorEls('sc', 'swA');
+    // No stored choice: the first button of each group (nested walk order).
+    const fresh = selectorContextFrom(els, () => null);
+    expect(fresh.active.get('swA')).toBe('sc_b1');
+    expect(fresh.active.get('swA_other')).toBe('sc_other');
+    expect(fresh.groupOf.get('sc_b2')).toBe('swA');
+    // Stored + valid wins; a stale id (button deleted) falls back to first.
+    const stored = selectorContextFrom(els, (g) => (g === 'swA' ? 'sc_b3' : null));
+    expect(stored.active.get('swA')).toBe('sc_b3');
+    const stale = selectorContextFrom(els, (g) => (g === 'swA' ? 'ghost' : null));
+    expect(stale.active.get('swA')).toBe('sc_b1');
+  });
+
+  it('max-1 invariant: every group maps to exactly ONE active button', () => {
+    const els = selectorEls('mx', 'swB');
+    const ctx = selectorContextFrom(els, (g) => (g === 'swB' ? 'mx_b2' : null));
+    // One entry per group; b2 selected means b1/b3 are NOT active.
+    expect([...ctx.active.keys()].sort()).toEqual(['swB', 'swB_other']);
+    expect(ctx.active.get('swB')).toBe('mx_b2');
+    const activeOfB = ['mx_b1', 'mx_b2', 'mx_b3'].filter(
+      (id) => ctx.active.get('swB') === id,
+    );
+    expect(activeOfB).toEqual(['mx_b2']);
+  });
+
+  it('non-selector buttons and group-less selectors never join a radio set', () => {
+    const els: ScreenElement[] = [
+      { kind: 'button', id: 'a1', name: 'Act', rect, actionId: 'shout', label: 'Act' },
+      { kind: 'button', id: 'a2', name: 'NoGroup', rect, actionId: null, label: 'NG', role: 'selector' },
+      { kind: 'button', id: 'a3', name: 'Blank', rect, actionId: null, label: 'B', role: 'selector', selectorGroup: '  ' },
+      { kind: 'button', id: 'a4', name: 'Real', rect, actionId: null, label: 'R', role: 'selector', selectorGroup: 'swC' },
+    ];
+    const ctx = selectorContextFrom(els, () => null);
+    expect([...ctx.groupOf.keys()]).toEqual(['a4']);
+    expect(ctx.active.get('swC')).toBe('a4');
+  });
+
+  it('selectorGateOpen: gates to the active button; dangling targets stay open', () => {
+    const els = selectorEls('gt', 'swD');
+    const ctx = selectorContextFrom(els, () => null); // b1 active
+    const panel = (showFor: string | undefined): ScreenElement => ({
+      kind: 'text', id: 'tx', name: 'T', rect, text: 't', fontSize: 2, align: 'left',
+      ...(showFor !== undefined ? { showForSelector: showFor } : {}),
+    });
+    expect(selectorGateOpen(ctx, panel(undefined))).toBe(true);
+    expect(selectorGateOpen(ctx, panel('gt_b1'))).toBe(true);
+    expect(selectorGateOpen(ctx, panel('gt_b2'))).toBe(false);
+    // Dangling / non-selector target: warn-only — the element stays shown.
+    expect(selectorGateOpen(ctx, panel('no_such_button'))).toBe(true);
+  });
+
+  it('visibleButtonActionIds: selector buttons never count; gated buttons stay in the bar', async () => {
     const def = screenDef();
     const h = harness(def);
     await h.engine.start();
     const state = h.state();
-    const group: Extract<ScreenElement, { kind: 'group' }> = {
-      kind: 'group', id: 'tgx', name: 'Tabs', rect, tabbed: true,
-      children: [
-        { kind: 'text', id: 'pa', name: 'A', rect, text: 'a', fontSize: 2, align: 'left' },
-        // Only visible while the global `night` holds.
-        { kind: 'text', id: 'pb', name: 'B', rect, text: 'b', fontSize: 2, align: 'left', visible: gv('night') },
-        { kind: 'text', id: 'pc', name: 'C', rect, text: 'c', fontSize: 2, align: 'left' },
-      ],
-    };
-    // No stored choice: the first visible panel.
-    expect(resolveActiveTab(def, state, group, 'p0', null)).toBe('pa');
-    // Stored + visible wins; stored but HIDDEN (night off) falls back.
-    expect(resolveActiveTab(def, state, group, 'p0', 'pc')).toBe('pc');
-    expect(resolveActiveTab(def, state, group, 'p0', 'pb')).toBe('pa');
-    // Unknown stored id (panel deleted): first visible.
-    expect(resolveActiveTab(def, state, group, 'p0', 'ghost')).toBe('pa');
-    // Night on: pb becomes selectable.
-    const night: GameState = { ...state, globalVars: { ...state.globalVars, night: true } };
-    expect(resolveActiveTab(def, night, group, 'p0', 'pb')).toBe('pb');
-    // Every panel hidden: null (only the disabled tab bar renders).
-    const allHidden: typeof group = {
-      ...group,
-      children: group.children.map((c) => ({
-        ...c,
-        visible: { kind: 'bool', value: false } as Expr,
-      })),
-    };
-    expect(resolveActiveTab(def, state, allHidden, 'p0', 'pa')).toBeNull();
+    const els: ScreenElement[] = [
+      // A selector button carrying a (ignored) actionId must NOT claim it.
+      {
+        kind: 'button', id: 'sb1', name: 'Sel', rect, actionId: 'shout',
+        label: 'Sel', role: 'selector', selectorGroup: 'vb_sw',
+      },
+      {
+        kind: 'button', id: 'sb2', name: 'Sel2', rect, actionId: null,
+        label: 'Sel2', role: 'selector', selectorGroup: 'vb_sw',
+      },
+      // Bound to sb2 (NOT the default sb1): hidden -> its action stays in the bar.
+      {
+        kind: 'group', id: 'vb_panel2', name: 'P2', rect, showForSelector: 'sb2',
+        children: [
+          { kind: 'button', id: 'vb_endit', name: 'End it', rect, actionId: 'endit', label: 'End it' },
+        ],
+      },
+      // Bound to the default sb1: visible.
+      {
+        kind: 'group', id: 'vb_panel1', name: 'P1', rect, showForSelector: 'sb1',
+        children: [
+          { kind: 'button', id: 'vb_cheer', name: 'Cheer', rect, actionId: 'cheer', label: 'Cheer' },
+        ],
+      },
+    ];
+    expect(visibleButtonActionIds(def, state, els, 'p0')).toEqual(new Set(['cheer']));
+    // Switch to sb2: the panels swap which action is on screen.
+    writeSelection(def.meta.id, 'vb_sw', 'sb2');
+    expect(visibleButtonActionIds(def, state, els, 'p0')).toEqual(new Set(['endit']));
   });
 });
 

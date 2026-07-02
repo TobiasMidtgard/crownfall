@@ -31,13 +31,19 @@ import { phaseTrackGroup } from '../../../shared/screenTemplates';
 import {
   absToGroupRel, filterDisplayCards, groupPiles, groupRelToAbs, resolveSeat, type PlainRect,
 } from '../../../runner/layoutGeometry';
-import { zoneInstKey } from '../../../runner/layout';
+import {
+  readSelection, selectorButtons, selectorContextFrom, selectorGateOpen, zoneInstKey,
+} from '../../../runner/layout';
 
 // Shared geometry, re-exported for the canvas and panels (single import point).
 export {
   absToGroupRel, fanMarginPx, fitCount, groupRelToAbs, layoutStyleCss, pctToPx, rectContains,
 } from '../../../runner/layoutGeometry';
 export type { PlainRect } from '../../../runner/layoutGeometry';
+// The runner's selector-selection store, re-exported so the panels share the
+// runner's ONE source of truth (the same coordination-point pattern as the
+// geometry above).
+export { readSelection, writeSelection } from '../../../runner/layout';
 
 /** Minimum element size, % of the parent. Groups resize no smaller than 8. */
 export const MIN_W = 4;
@@ -1020,6 +1026,68 @@ export interface ZonePreview {
   count: number;
   /** Piles for 'piles'/'carousel' displays and collapseDuplicates; else null. */
   piles: ZonePreviewPile[] | null;
+}
+
+/**
+ * Selector buttons (role 'selector' with a group) of one variant tree, in
+ * paint order, with their labels — the "Show only for" picker's option list.
+ */
+export function selectorButtonOptions(
+  elements: ScreenElement[],
+): { id: Id; label: string; group: string }[] {
+  const out: { id: Id; label: string; group: string }[] = [];
+  const walk = (els: ScreenElement[]) => {
+    for (const el of els) {
+      if (el.kind === 'button' && el.role === 'selector') {
+        const group = (el.selectorGroup ?? '').trim();
+        if (group !== '') out.push({ id: el.id, label: el.label || el.name, group });
+      }
+      if (el.children) walk(el.children);
+    }
+  };
+  walk(elements);
+  return out;
+}
+
+/**
+ * The preview's "shown under selection" map: previewElementVisible AND the
+ * element's showForSelector gate for every element of `index`. Gates resolve
+ * against the FULL variant tree with the active button per group picked as:
+ *   1. the first selector button in the EDITOR's current selection (`sel`) —
+ *      clicking a selector button on the canvas selects it, which switches
+ *      its group live;
+ *   2. else the device's persisted selection store (the same store the
+ *      runner reads; PropertiesPanel writes it whenever a selector button is
+ *      selected, so canvas switches stick);
+ *   3. else the first button of the group in paint order (runner default).
+ */
+export function previewShownMap(
+  def: GameDef,
+  state: GameState,
+  index: Map<Id, ElInfo>,
+  fullElements: ScreenElement[],
+  viewerId: Id,
+  sel: readonly Id[],
+): Map<Id, boolean> {
+  const groupByButton = new Map<Id, string>();
+  for (const b of selectorButtons(fullElements)) groupByButton.set(b.id, b.group);
+  const override = new Map<string, Id>();
+  for (const id of sel) {
+    const group = groupByButton.get(id);
+    if (group !== undefined && !override.has(group)) override.set(group, id);
+  }
+  const selCtx = selectorContextFrom(
+    fullElements,
+    (group) => override.get(group) ?? readSelection(def.meta.id, group),
+  );
+  const out = new Map<Id, boolean>();
+  for (const [id, info] of index) {
+    out.set(
+      id,
+      previewElementVisible(def, state, info.el, viewerId) && selectorGateOpen(selCtx, info.el),
+    );
+  }
+  return out;
 }
 
 /**

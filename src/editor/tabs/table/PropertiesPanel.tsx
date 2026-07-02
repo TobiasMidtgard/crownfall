@@ -35,9 +35,9 @@ import { removeAt, updateAt } from '../../lib';
 import {
   GROUP_MIN, MIN_H, MIN_W, MOTION_DEFAULTS, PHONE_ASPECT, addElementState, deckCardCount,
   findEl, makeActionDef, makeVariableDef, moveElementState, newCustomDeckAt, newElementState,
-  patchMobileVariant, patchMotion, removeElementState, setTextDynamic, snapStep,
-  templateFieldOptions, updateEl, updateElementState, variantElements, withVariantElements,
-  type AlignOp, type VariantKey,
+  patchMobileVariant, patchMotion, removeElementState, selectorButtonOptions, setTextDynamic,
+  snapStep, templateFieldOptions, updateEl, updateElementState, variantElements,
+  withVariantElements, writeSelection, type AlignOp, type VariantKey,
 } from './screenModel';
 
 const RANK_LABELS: [number, string][] = [
@@ -397,22 +397,10 @@ function ElementProps(props: PropertiesPanelProps & { el: ScreenElement }) {
               ? 'Empty — drag elements inside on the canvas.'
               : `${el.children.length} element${el.children.length === 1 ? '' : 's'} move, hide and animate together.`}
           </p>
-          <Check
-            label="Tabbed panels"
-            checked={el.tabbed === true}
-            onChange={(v) => onPatchEl(el.id, (c) => (
-              c.kind === 'group' ? { ...c, tabbed: v || undefined } : c
-            ))}
-          />
-          {el.tabbed === true && (
-            <p className="faint tt-prop-hint">
-              Players see one child at a time behind a tab bar: each direct child is a panel,
-              its name is the tab label, and the panel fills the group (its position inside is
-              ignored). The open tab is remembered on their device, and hidden panels disable
-              their tab. On the canvas the panels still draw stacked — use ⛶ Focus to edit
-              one at a time.
-            </p>
-          )}
+          <p className="faint tt-prop-hint">
+            Want switchable panels? Insert the "Panel switcher" preset from the palette, or
+            add selector buttons and bind panels via "Show only for" below.
+          </p>
           {el.children.length > 0 && (
             <button type="button" className="btn" onClick={() => onUngroup(el.id)}>
               ⊟ Ungroup
@@ -438,6 +426,7 @@ function ElementProps(props: PropertiesPanelProps & { el: ScreenElement }) {
             nullLabel="Always visible"
           />
         </label>
+        <ShowForSelectorField {...props} el={el} />
         <label className="field">
           <span>Reveal animation</span>
           <select
@@ -945,7 +934,49 @@ function VarTextSection(props: PropertiesPanelProps & { el: VarTextEl }) {
 }
 
 // ---------------------------------------------------------------------------
-// Button (action binding + inline action creation + node-graph script modal)
+// "Show only for [selector button]" (every element kind)
+// ---------------------------------------------------------------------------
+
+function ShowForSelectorField(props: PropertiesPanelProps & { el: ScreenElement }) {
+  const { layout, variant, el, onPatchEl } = props;
+  const options = selectorButtonOptions(variantElements(layout, variant));
+  const missing = el.showForSelector !== undefined
+    && !options.some((o) => o.id === el.showForSelector);
+  if (options.length === 0 && el.showForSelector === undefined) {
+    // Nothing to bind to (and nothing bound): keep the panel quiet.
+    return null;
+  }
+  return (
+    <>
+      <label className="field">
+        <span>Show only for</span>
+        <select
+          className="select"
+          value={el.showForSelector ?? ''}
+          onChange={(e) => onPatchEl(el.id, (c) => {
+            if (e.target.value !== '') return { ...c, showForSelector: e.target.value };
+            const { showForSelector: _gone, ...rest } = c;
+            return rest as ScreenElement;
+          })}
+        >
+          <option value="">Always (no selector)</option>
+          {missing && <option value={el.showForSelector}>⚠ missing selector button</option>}
+          {options.map((o) => (
+            <option key={o.id} value={o.id}>{o.label} ({o.group})</option>
+          ))}
+        </select>
+      </label>
+      <p className="faint tt-prop-hint">
+        The element renders only while that selector button is the chosen one of its
+        group — on top of "Visible when" (both must hold).
+      </p>
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Button (action binding + inline action creation + node-graph script modal
+//  + the Selector role: a radio set switching showForSelector-bound panels)
 // ---------------------------------------------------------------------------
 
 function ButtonSection(props: PropertiesPanelProps & { el: ButtonEl }) {
@@ -961,6 +992,15 @@ function ButtonSection(props: PropertiesPanelProps & { el: ButtonEl }) {
   const bound = el.actionId !== null && el.actionId !== PASS_ACTION_ID
     ? def.actions.find((a) => a.id === el.actionId) ?? null
     : null;
+  const isSelector = el.role === 'selector';
+  const selGroup = (el.selectorGroup ?? '').trim();
+
+  // Selecting a selector button makes it its group's ACTIVE one — written to
+  // the runner's selection store so the canvas preview switches (and stays
+  // switched when the selection moves into the revealed panel).
+  useEffect(() => {
+    if (isSelector && selGroup !== '') writeSelection(def.meta.id, selGroup, el.id);
+  }, [isSelector, selGroup, el.id, def.meta.id]);
 
   /** ONE def update: append the new action AND bind this button to it. */
   const createAction = (a: ActionDef) => {
@@ -979,28 +1019,57 @@ function ButtonSection(props: PropertiesPanelProps & { el: ButtonEl }) {
   return (
     <section className="tt-prop-section">
       <h4>Button</h4>
-      <label className="field">
-        <span>Performs</span>
-        <div className="tt-inline-add">
-          <select
-            className="select"
-            value={el.actionId ?? ''}
-            onChange={(e) => patch({ actionId: e.target.value === '' ? null : e.target.value })}
-          >
-            <option value="">Unbound (decorative)</option>
-            <option value={PASS_ACTION_ID}>Pass (built-in)</option>
-            {missing && <option value={el.actionId!}>⚠ missing action</option>}
-            {plainActions.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-          </select>
-          <button type="button" className="btn" onClick={() => setCreating(true)}>
-            ＋ New action
-          </button>
-        </div>
-      </label>
-      {bound && (
-        <button type="button" className="btn" onClick={() => setEditingScript(true)}>
-          ⚙ Edit script… <span className="tt-script-hint">({bound.script.length} block{bound.script.length === 1 ? '' : 's'})</span>
-        </button>
+      <Check
+        label="Selector (switches panels, not actions)"
+        checked={isSelector}
+        onChange={(v) => patch(v
+          ? { role: 'selector', selectorGroup: el.selectorGroup ?? 'switcher' }
+          : { role: undefined, selectorGroup: undefined })}
+      />
+      {isSelector ? (
+        <>
+          <label className="field">
+            <span>Selector group</span>
+            <input
+              type="text"
+              className="input"
+              value={el.selectorGroup ?? ''}
+              placeholder="e.g. supply"
+              onChange={(e) => patch({ selectorGroup: e.target.value || undefined })}
+            />
+          </label>
+          <p className="faint tt-prop-hint">
+            Buttons sharing a group form a radio set: exactly one is chosen (remembered on
+            the player's device; the first placed is the default). Clicking never performs
+            a game action — bind elements to this button with "Show only for" below.
+          </p>
+        </>
+      ) : (
+        <>
+          <label className="field">
+            <span>Performs</span>
+            <div className="tt-inline-add">
+              <select
+                className="select"
+                value={el.actionId ?? ''}
+                onChange={(e) => patch({ actionId: e.target.value === '' ? null : e.target.value })}
+              >
+                <option value="">Unbound (decorative)</option>
+                <option value={PASS_ACTION_ID}>Pass (built-in)</option>
+                {missing && <option value={el.actionId!}>⚠ missing action</option>}
+                {plainActions.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+              <button type="button" className="btn" onClick={() => setCreating(true)}>
+                ＋ New action
+              </button>
+            </div>
+          </label>
+          {bound && (
+            <button type="button" className="btn" onClick={() => setEditingScript(true)}>
+              ⚙ Edit script… <span className="tt-script-hint">({bound.script.length} block{bound.script.length === 1 ? '' : 's'})</span>
+            </button>
+          )}
+        </>
       )}
       <label className="field">
         <span>Label</span>
@@ -1009,10 +1078,12 @@ function ButtonSection(props: PropertiesPanelProps & { el: ButtonEl }) {
       <div className="tt-grid">
         <Stepper label="Font size" value={el.fontSize ?? 1.8} min={0.5} max={8} step={0.1} onChange={(fontSize) => patch({ fontSize })} />
       </div>
-      <p className="faint tt-prop-hint">
-        Buttons disable themselves while the move isn't legal. The automatic action bar
-        skips moves that have a button.
-      </p>
+      {!isSelector && (
+        <p className="faint tt-prop-hint">
+          Buttons disable themselves while the move isn't legal. The automatic action bar
+          skips moves that have a button.
+        </p>
+      )}
       {creating && (
         <NewActionModal onClose={() => setCreating(false)} onCreate={createAction} />
       )}

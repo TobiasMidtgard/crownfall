@@ -1,9 +1,10 @@
 /**
  * Pure helpers for the table screen: zone bucketing, legal-move indexing,
  * viewer perspective, acting-seat resolution (response windows), screen-
- * layout button gating, burn-zone keys, tabbed-group active-tab persistence,
- * display text rendering (text parts, change signatures, chronicle rows),
- * template lookup, formatting. No React.
+ * layout button gating, burn-zone keys, selector-button selection store
+ * (per-device radio sets behind `showForSelector` gating), display text
+ * rendering (text parts, change signatures, chronicle rows), template
+ * lookup, formatting. No React.
  */
 import type {
   CardInstance, CardTemplate, Expr, GameDef, GameState, Id, LogEntry, Move, PlayerState,
@@ -34,85 +35,150 @@ export function collapseStorageKey(defId: Id, elId: Id): string {
 }
 
 // ---------------------------------------------------------------------------
-// Tabbed groups (group.tabbed) — active-tab persistence + resolution
+// Selector buttons (button role 'selector') — per-device selection store
 // ---------------------------------------------------------------------------
 
 /**
- * localStorage key for a tabbed group's ACTIVE PANEL — the collapse-key
- * pattern; the stored value is the active DIRECT child's element id. One
- * source of truth shared by the renderer's tab bar (ScreenRenderer's
- * TabbedGroup) and the keyboard system (auto tab-flip on a held modifier,
- * active-panel digit filtering).
+ * localStorage key for a selector GROUP's selection — the collapse-key
+ * pattern; the stored value is the selected button ELEMENT id. One source of
+ * truth shared by the renderer (rn-sel-on + showForSelector gating), the
+ * keyboard system (auto selector-flip on a held modifier, shown-set digit
+ * filtering) and the editor's canvas preview.
  */
-export function tabStorageKey(defId: Id, elId: Id): string {
-  return `cardsmith.tab.${defId}.${elId}`;
+export function selStorageKey(defId: Id, groupId: string): string {
+  return `cardsmith.sel.${defId}.${groupId}`;
 }
 
-/** In-session mirror of the tab store: freshest value while mounted, and the
- *  WHOLE store where localStorage is unavailable (private mode, node tests). */
-const tabMemory = new Map<string, string>();
-const tabListeners = new Set<() => void>();
-let tabVersionCounter = 0;
+/** In-session mirror of the selection store: freshest value while mounted,
+ *  and the WHOLE store where localStorage is unavailable (private mode,
+ *  node tests). */
+const selMemory = new Map<string, string>();
+const selListeners = new Set<() => void>();
+let selVersionCounter = 0;
 
 /**
- * Monotonic version bumped by every effective writeActiveTab — a cheap
+ * Monotonic version bumped by every effective writeSelection — a cheap
  * useSyncExternalStore snapshot for consumers that re-derive from reads
- * (the keyboard target index).
+ * (the keyboard target index, the screen renderer's gate context).
  */
-export function tabsVersion(): number {
-  return tabVersionCounter;
+export function selectionVersion(): number {
+  return selVersionCounter;
 }
 
-/** Notify `cb` after any tab write; returns the unsubscribe. */
-export function subscribeActiveTabs(cb: () => void): () => void {
-  tabListeners.add(cb);
+/** Notify `cb` after any selection write; returns the unsubscribe. */
+export function subscribeSelection(cb: () => void): () => void {
+  selListeners.add(cb);
   return () => {
-    tabListeners.delete(cb);
+    selListeners.delete(cb);
   };
 }
 
-/** The stored active-panel element id for a tabbed group (null = never set). */
-export function readActiveTab(defId: Id, elId: Id): string | null {
-  const key = tabStorageKey(defId, elId);
-  const mem = tabMemory.get(key);
+/** The stored selected-button element id for a group (null = never set). */
+export function readSelection(defId: Id, groupId: string): string | null {
+  const key = selStorageKey(defId, groupId);
+  const mem = selMemory.get(key);
   if (mem !== undefined) return mem;
   try {
     return localStorage.getItem(key);
   } catch {
-    return null; // storage unavailable — session-only via tabMemory
+    return null; // storage unavailable — session-only via selMemory
   }
 }
 
-/** Persist + broadcast a tabbed group's active panel (no-op when unchanged). */
-export function writeActiveTab(defId: Id, elId: Id, panelId: Id): void {
-  if (readActiveTab(defId, elId) === panelId) return;
-  tabMemory.set(tabStorageKey(defId, elId), panelId);
+/** Persist + broadcast a group's selected button (no-op when unchanged). */
+export function writeSelection(defId: Id, groupId: string, buttonId: Id): void {
+  if (readSelection(defId, groupId) === buttonId) return;
+  selMemory.set(selStorageKey(defId, groupId), buttonId);
   try {
-    localStorage.setItem(tabStorageKey(defId, elId), panelId);
+    localStorage.setItem(selStorageKey(defId, groupId), buttonId);
   } catch { /* storage unavailable — the in-session mirror carries it */ }
-  tabVersionCounter += 1;
-  for (const cb of tabListeners) cb();
+  selVersionCounter += 1;
+  for (const cb of selListeners) cb();
+}
+
+/** The trimmed selector-group name of a selector button ('' = not one). */
+export function selectorGroupOf(el: ScreenElement): string {
+  if (el.kind !== 'button' || el.role !== 'selector') return '';
+  return (el.selectorGroup ?? '').trim();
 }
 
 /**
- * The panel a tabbed group currently shows: the stored choice while that
- * panel is VISIBLE (its `visible` display expression, viewer-bound), else the
- * FIRST visible panel; null when every panel is hidden (only the tab bar —
- * all tabs disabled — renders).
+ * Every selector button (role 'selector' with a non-empty selectorGroup) in
+ * the tree, in PAINT order (array order, depth-first) — the first of a group
+ * is that group's default selection. Visibility is NOT resolved here: the
+ * radio sets are client chrome, stable across game states.
  */
-export function resolveActiveTab(
-  def: GameDef,
-  state: GameState,
-  group: Extract<ScreenElement, { kind: 'group' }>,
-  viewerId: Id,
-  stored: string | null,
-): Id | null {
-  const visible = group.children.filter(
-    (c) => isDisplayVisible(def, state, c.visible ?? null, viewerId),
-  );
-  if (visible.length === 0) return null;
-  if (stored !== null && visible.some((c) => c.id === stored)) return stored;
-  return visible[0].id;
+export function selectorButtons(
+  elements: readonly ScreenElement[],
+): { id: Id; group: string }[] {
+  const out: { id: Id; group: string }[] = [];
+  const walk = (els: readonly ScreenElement[]) => {
+    for (const el of els) {
+      const group = selectorGroupOf(el);
+      if (group !== '') out.push({ id: el.id, group });
+      if (el.children !== undefined && el.children.length > 0) walk(el.children);
+    }
+  };
+  walk(elements);
+  return out;
+}
+
+/** Resolved selector state for one screen variant (selectorContextFrom). */
+export interface SelectorContext {
+  /** selectorGroup name -> the ACTIVE button element id (exactly one). */
+  active: ReadonlyMap<string, Id>;
+  /** selector button element id -> its selectorGroup name. */
+  groupOf: ReadonlyMap<Id, string>;
+}
+
+const EMPTY_SELECTOR_CONTEXT: SelectorContext = { active: new Map(), groupOf: new Map() };
+
+/**
+ * Resolve every selector group of a tree: the `stored` choice while it names
+ * one of the group's buttons, else the FIRST button in paint order (the
+ * max-1 invariant holds by construction — `active` maps each group to
+ * exactly one id). Pure: `stored` abstracts the store so the editor preview
+ * can layer its own override on top.
+ */
+export function selectorContextFrom(
+  elements: readonly ScreenElement[],
+  stored: (groupId: string) => string | null,
+): SelectorContext {
+  const buttons = selectorButtons(elements);
+  if (buttons.length === 0) return EMPTY_SELECTOR_CONTEXT;
+  const groupOf = new Map<Id, string>();
+  const byGroup = new Map<string, Id[]>();
+  for (const b of buttons) {
+    groupOf.set(b.id, b.group);
+    const list = byGroup.get(b.group);
+    if (list) list.push(b.id);
+    else byGroup.set(b.group, [b.id]);
+  }
+  const active = new Map<string, Id>();
+  for (const [group, ids] of byGroup) {
+    const s = stored(group);
+    active.set(group, s !== null && ids.includes(s) ? s : ids[0]);
+  }
+  return { active, groupOf };
+}
+
+/** The store-backed context the runner renders right now. */
+export function selectorContext(defId: Id, elements: readonly ScreenElement[]): SelectorContext {
+  return selectorContextFrom(elements, (group) => readSelection(defId, group));
+}
+
+/**
+ * The element's `showForSelector` gate: true while the referenced selector
+ * button is its group's active selection. Composes with `visible` — callers
+ * check both. A dangling / non-selector target leaves the gate OPEN (the
+ * element stays visible; validateGameDef warns about the bad reference).
+ */
+export function selectorGateOpen(sel: SelectorContext, el: ScreenElement): boolean {
+  const target = el.showForSelector;
+  if (target === undefined) return true;
+  const group = sel.groupOf.get(target);
+  if (group === undefined) return true; // dangling — warn-only, never hide
+  return sel.active.get(group) === target;
 }
 
 export function templateOf(def: GameDef, card: CardInstance): CardTemplate | null {
@@ -166,10 +232,12 @@ export function cardPxFromScale(screenW: number, cardScale: number | undefined):
 
 /**
  * Action ids bound to button elements that are currently VISIBLE to the
- * viewer (their own `visible` and every ancestor group's pass). The automatic
- * action bar filters these out so a move never shows twice; hidden buttons
- * leave their action in the bar so it always stays reachable. Takes the
- * ACTIVE element tree (desktop or mobile variant).
+ * viewer (their own `visible`, every ancestor group's pass, and any
+ * `showForSelector` gate along the chain). The automatic action bar filters
+ * these out so a move never shows twice; hidden buttons leave their action
+ * in the bar so it always stays reachable. Selector-role buttons never
+ * perform their bound action, so they never count. Takes the ACTIVE element
+ * tree (desktop or mobile variant).
  */
 export function visibleButtonActionIds(
   def: GameDef,
@@ -178,11 +246,14 @@ export function visibleButtonActionIds(
   viewerId: Id,
 ): Set<Id> {
   const out = new Set<Id>();
+  const sel = selectorContext(def.meta.id, elements);
   const walk = (els: readonly ScreenElement[]) => {
     for (const el of els) {
       if (!isDisplayVisible(def, state, el.visible ?? null, viewerId)) continue;
-      if (el.kind === 'button' && el.actionId !== null) out.add(el.actionId);
-      else if (el.kind === 'group') walk(el.children);
+      if (!selectorGateOpen(sel, el)) continue;
+      if (el.kind === 'button' && el.actionId !== null && el.role !== 'selector') {
+        out.add(el.actionId);
+      } else if (el.kind === 'group') walk(el.children);
     }
   };
   walk(elements);

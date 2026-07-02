@@ -34,16 +34,14 @@
  *     turn separators and bottom-anchored autoscroll.
  *   - zone elements honor display 'piles' / cardFilter / collapseDuplicates /
  *     fanAngle / pileBadgeField / pileFace via ZoneBlock's custom config.
- *   - TABBED GROUPS (group.tabbed, the DGT mobile-supply pattern): the
- *     direct children are exclusive panels behind a notch-ready tab bar
- *     (rn-tabbar / rn-tab / rn-tab-active + the sliding rn-tabslider). Only
- *     the ACTIVE panel renders, forced to fill the group's content area —
- *     its authored rect is IGNORED (0/0/100/100; a matched state's rect
- *     still overrides, as authored). The active tab persists per game +
- *     element (layout.tabStorageKey — the collapse-key pattern) and the
- *     keyboard system flips it when a held modifier's zone lives in an
- *     inactive panel. A hidden panel's tab disables; cards moving into an
- *     inactive panel simply don't animate (their FLIP rects unregister).
+ *   - SELECTOR BUTTONS (button role 'selector'): clicking one writes its
+ *     group's CLIENT-side selection (layout's cardsmith.sel store — never a
+ *     game action); the active one carries rn-sel-on (skins restyle it).
+ *     Elements with `showForSelector` render only while that button is the
+ *     selected one of its group — the gate composes with `visible` (both
+ *     must hold), so hiding plays the reveal exit like any visibility flip.
+ *     The keyboard system flips a selection when a held modifier's zone
+ *     lives in a currently-hidden shown-set (keyboard.selectorFlipsForGroup).
  *   - shape elements draw circles/rects/pills via border-radius and diamonds
  *     via a stretched SVG polygon; line elements draw SVG connectors
  *     (h/v/diagonal, dashed, arrowheads) colored by style.borderColor.
@@ -59,8 +57,8 @@ import { prefersReducedMotion } from './flip';
 import { subtreeHasKeyGroup } from './keyboard';
 import {
   cardPxFromScale, collapseStorageKey, elementContentSig, formatVarValue, logRows,
-  readActiveTab, renderTextParts, resolveActiveTab, subscribeActiveTabs, writeActiveTab,
-  zoneInstKey,
+  renderTextParts, selectionVersion, selectorContext, selectorGateOpen, subscribeSelection,
+  writeSelection, zoneInstKey, type SelectorContext,
 } from './layout';
 import {
   filterDisplayCards, layoutStyleCss, lineColor, lineEndpoints, pctToPx,
@@ -134,6 +132,10 @@ export function ScreenRenderer({ ctx, screen, buttonMove, onMove }: {
 }) {
   const [ref, area] = useMeasuredSize();
   const stage = computeStage(area.w, area.h, screen.aspect, screen.scroll);
+  // Selector groups: re-render (and re-resolve every showForSelector gate)
+  // whenever any selection writes; the context itself is a cheap tree walk.
+  useSyncExternalStore(subscribeSelection, selectionVersion, selectionVersion);
+  const selCtx = selectorContext(ctx.def.meta.id, screen.elements);
   return (
     <div className={`rn-screenarea${stage.scrollable ? ' rn-scrollpage' : ''}`} ref={ref}>
       {stage.w > 0 && stage.h > 0 && (
@@ -152,6 +154,7 @@ export function ScreenRenderer({ ctx, screen, buttonMove, onMove }: {
               key={el.id}
               ctx={ctx}
               el={el}
+              selCtx={selCtx}
               screenW={stage.w}
               buttonMove={buttonMove}
               onMove={onMove}
@@ -311,9 +314,11 @@ function useCollapsed(defId: Id, elId: Id, startCollapsed: boolean): [boolean, (
 
 const COLLAPSE_GLYPH = { left: '‹', right: '›', top: '⌃', bottom: '⌄' } as const;
 
-function ElementView({ ctx, el, screenW, buttonMove, onMove, root }: {
+function ElementView({ ctx, el, selCtx, screenW, buttonMove, onMove, root }: {
   ctx: TableCtx;
   el: ScreenElement;
+  /** Resolved selector selections for the ACTIVE screen (showForSelector gates). */
+  selCtx: SelectorContext;
   screenW: number;
   buttonMove: ReadonlyMap<Id, Move>;
   onMove: (m: Move) => void;
@@ -325,7 +330,10 @@ function ElementView({ ctx, el, screenW, buttonMove, onMove, root }: {
     ctx.def.meta.id, el.id, spec?.startCollapsed === true,
   );
   if (!elementRenders(ctx, el)) return null;
-  const show = isDisplayVisible(ctx.def, ctx.state, el.visible ?? null, ctx.viewerId);
+  // showForSelector composes with `visible`: both must hold, and a gate flip
+  // plays the element's reveal transition exactly like a visibility toggle.
+  const show = isDisplayVisible(ctx.def, ctx.state, el.visible ?? null, ctx.viewerId)
+    && selectorGateOpen(selCtx, el);
   // States: first match picks the rect/style this element currently shows.
   const app = resolveElementAppearance(ctx.def, ctx.state, el, ctx.viewerId);
 
@@ -356,6 +364,7 @@ function ElementView({ ctx, el, screenW, buttonMove, onMove, root }: {
     <ElementBody
       ctx={ctx}
       el={el}
+      selCtx={selCtx}
       style={app.style}
       screenW={screenW}
       buttonMove={buttonMove}
@@ -373,6 +382,7 @@ function ElementView({ ctx, el, screenW, buttonMove, onMove, root }: {
             key={child.id}
             ctx={ctx}
             el={child}
+            selCtx={selCtx}
             screenW={screenW}
             buttonMove={buttonMove}
             onMove={onMove}
@@ -531,9 +541,10 @@ function LogView({ ctx, el, screenW }: {
   );
 }
 
-function ElementBody({ ctx, el, style, screenW, buttonMove, onMove }: {
+function ElementBody({ ctx, el, selCtx, style, screenW, buttonMove, onMove }: {
   ctx: TableCtx;
   el: ScreenElement;
+  selCtx: SelectorContext;
   /** State-resolved style (matched state merged over the element's base). */
   style: LayoutStyle | undefined;
   screenW: number;
@@ -626,6 +637,28 @@ function ElementBody({ ctx, el, style, screenW, buttonMove, onMove }: {
       const fontSize = el.fontSize !== undefined
         ? Math.max(9, (screenW * el.fontSize) / 100)
         : undefined;
+      if (el.role === 'selector') {
+        // Selector buttons NEVER perform a game action (actionId is ignored):
+        // clicking writes the group's client-side selection; the active one
+        // carries rn-sel-on (neutral runner dress — skins restyle it).
+        const group = (el.selectorGroup ?? '').trim();
+        if (group === '') {
+          // No group — validation warns; render inert (nothing to switch).
+          return <div className="rn-sl-btn rn-sl-deco" style={{ fontSize }}>{el.label}</div>;
+        }
+        const on = selCtx.active.get(group) === el.id;
+        return (
+          <button
+            type="button"
+            className={`rn-sl-btn rn-sel${on ? ' rn-sel-on' : ''}`}
+            style={{ fontSize }}
+            aria-pressed={on}
+            onClick={() => writeSelection(def.meta.id, group, el.id)}
+          >
+            {el.label}
+          </button>
+        );
+      }
       if (el.actionId === null) {
         return <div className="rn-sl-btn rn-sl-deco" style={{ fontSize }}>{el.label}</div>;
       }
@@ -731,17 +764,6 @@ function ElementBody({ ctx, el, style, screenW, buttonMove, onMove }: {
     }
 
     case 'group':
-      if (el.tabbed === true && el.children.length > 0) {
-        return (
-          <TabbedGroup
-            ctx={ctx}
-            el={el}
-            screenW={screenW}
-            buttonMove={buttonMove}
-            onMove={onMove}
-          />
-        );
-      }
       return (
         <>
           {el.children.map((child) => (
@@ -749,6 +771,7 @@ function ElementBody({ ctx, el, style, screenW, buttonMove, onMove }: {
               key={child.id}
               ctx={ctx}
               el={child}
+              selCtx={selCtx}
               screenW={screenW}
               buttonMove={buttonMove}
               onMove={onMove}
@@ -759,141 +782,3 @@ function ElementBody({ ctx, el, style, screenW, buttonMove, onMove }: {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Tabbed groups (group.tabbed — the DGT mobile-supply pattern)
-// ---------------------------------------------------------------------------
-
-/** Panels fill the group's content area; their authored rects are ignored. */
-const PANEL_RECT = { x: 0, y: 0, w: 100, h: 100 };
-
-/**
- * Exclusive panels behind a notch-ready tab bar: one tab per DIRECT child
- * (label = the child's name), a sliding indicator (rn-tabslider, measured to
- * hug the active tab — runner.css moves it 0.35s out-expo, none under
- * reduced motion/calm), and ONLY the active panel below. The active tab is
- * shared state with the keyboard system through layout's tab store
- * (localStorage `cardsmith.tab.<defId>.<elId>`, value = the panel's element
- * id), so a held modifier can flip the panel from outside. A panel whose
- * `visible` expression fails disables its tab; if the ACTIVE panel hides,
- * the first visible one takes over (resolveActiveTab). aria follows the
- * tablist/tab/tabpanel pattern with roving tabindex — arrows (+ Home/End)
- * cycle the enabled tabs while the bar has focus.
- */
-function TabbedGroup({ ctx, el, screenW, buttonMove, onMove }: {
-  ctx: TableCtx;
-  el: Extract<ScreenElement, { kind: 'group' }>;
-  screenW: number;
-  buttonMove: ReadonlyMap<Id, Move>;
-  onMove: (m: Move) => void;
-}) {
-  const { def, state } = ctx;
-  const stored = useSyncExternalStore(
-    subscribeActiveTabs,
-    () => readActiveTab(def.meta.id, el.id),
-    () => readActiveTab(def.meta.id, el.id),
-  );
-  const activeId = resolveActiveTab(def, state, el, ctx.viewerId, stored);
-  const activePanel = activeId !== null
-    ? el.children.find((c) => c.id === activeId) ?? null
-    : null;
-  const barRef = useRef<HTMLDivElement>(null);
-  const sliderRef = useRef<HTMLSpanElement>(null);
-  const labelsSig = el.children.map((c) => c.name).join('\u0000');
-
-  // The slider hugs the active tab: measured placement (offsetLeft/Width,
-  // like the original setSupplyTab), re-run when the bar resizes.
-  useEffect(() => {
-    const bar = barRef.current;
-    const slider = sliderRef.current;
-    if (!bar || !slider) return;
-    const place = () => {
-      const btn = bar.querySelector<HTMLButtonElement>('.rn-tab-active');
-      if (!btn || btn.offsetWidth === 0) {
-        slider.style.width = '0px';
-        return;
-      }
-      slider.style.width = `${btn.offsetWidth}px`;
-      slider.style.translate = `${btn.offsetLeft}px 0`;
-    };
-    place();
-    if (typeof ResizeObserver !== 'function') return;
-    const ro = new ResizeObserver(place);
-    ro.observe(bar);
-    return () => ro.disconnect();
-  }, [activeId, labelsSig]);
-
-  const select = (panelId: Id) => writeActiveTab(def.meta.id, el.id, panelId);
-  const panelEnabled = (c: ScreenElement) =>
-    isDisplayVisible(def, state, c.visible ?? null, ctx.viewerId);
-
-  // Roving tabindex: arrows cycle the ENABLED tabs (wrapping), Home/End jump.
-  const onBarKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft' && e.key !== 'Home' && e.key !== 'End') {
-      return;
-    }
-    const enabled = el.children.filter(panelEnabled);
-    if (enabled.length === 0) return;
-    const at = Math.max(0, enabled.findIndex((c) => c.id === activeId));
-    const next = e.key === 'ArrowRight' ? enabled[(at + 1) % enabled.length]
-      : e.key === 'ArrowLeft' ? enabled[(at - 1 + enabled.length) % enabled.length]
-        : e.key === 'Home' ? enabled[0]
-          : enabled[enabled.length - 1];
-    e.preventDefault();
-    select(next.id);
-    barRef.current
-      ?.querySelector<HTMLButtonElement>(`[data-tab-id="${next.id}"]`)
-      ?.focus();
-  };
-
-  return (
-    <div className="rn-tabbed">
-      <div
-        className="rn-tabbar"
-        role="tablist"
-        aria-label={el.name}
-        ref={barRef}
-        onKeyDown={onBarKeyDown}
-      >
-        <span className="rn-tabslider" ref={sliderRef} aria-hidden="true" />
-        {el.children.map((c) => {
-          const enabled = panelEnabled(c);
-          const selected = c.id === activeId;
-          return (
-            <button
-              key={c.id}
-              type="button"
-              role="tab"
-              id={`rn-tab-${el.id}-${c.id}`}
-              data-tab-id={c.id}
-              className={`rn-tab${selected ? ' rn-tab-active' : ''}`}
-              aria-selected={selected}
-              aria-controls={`rn-tabpanel-${el.id}`}
-              tabIndex={selected ? 0 : -1}
-              disabled={!enabled}
-              onClick={() => select(c.id)}
-            >
-              {c.name}
-            </button>
-          );
-        })}
-      </div>
-      <div
-        className="rn-tabpanel"
-        role="tabpanel"
-        id={`rn-tabpanel-${el.id}`}
-        aria-labelledby={activePanel !== null ? `rn-tab-${el.id}-${activePanel.id}` : undefined}
-      >
-        {activePanel !== null && (
-          <ElementView
-            key={activePanel.id}
-            ctx={ctx}
-            el={{ ...activePanel, rect: PANEL_RECT }}
-            screenW={screenW}
-            buttonMove={buttonMove}
-            onMove={onMove}
-          />
-        )}
-      </div>
-    </div>
-  );
-}

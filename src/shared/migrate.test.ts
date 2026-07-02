@@ -2,12 +2,15 @@
  * Schema v1 → v2 migration: a pure pass-through (every v2 addition is an
  * optional field or new union member), so v1 documents load unchanged apart
  * from the schemaVersion stamp. Both versions pass the storage soundness gate.
+ * Plus the deprecated `tabbed: true` group conversion: a generated selector-
+ * button row + showForSelector-bound panels, deterministic ids, idempotent.
  */
 import { describe, expect, it } from 'vitest';
-import type { GameDef } from './types';
+import type { GameDef, ScreenElement } from './types';
 import { SCHEMA_VERSION } from './types';
 import { migrateGameDef } from './migrate';
 import { isStructurallySound } from '../storage/storage';
+import { selectorContextFrom, selectorGateOpen } from '../runner/layout';
 
 function v1Def(): GameDef {
   return {
@@ -90,5 +93,136 @@ describe('schemaVersion 2 migration', () => {
     expect(migrated.schemaVersion).toBe(2);
     expect(migrated.tableLayout).toBeUndefined();
     expect(migrated.screenLayout?.elements.some((el) => el.kind === 'zone' && el.zoneId === 'z1')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tabbed groups (deprecated) → selector-button rows
+// ---------------------------------------------------------------------------
+
+const rect = { x: 0, y: 0, w: 20, h: 10 };
+
+function textPanel(id: string, name: string): ScreenElement {
+  return {
+    kind: 'text', id, name, rect: { x: 5, y: 5, w: 90, h: 90 },
+    text: name, fontSize: 2, align: 'left',
+  };
+}
+
+/** A def with a tabbed group in BOTH variants (mobile nests its group). */
+function tabbedDef(): GameDef {
+  return {
+    ...migrateGameDef(v1Def()),
+    screenLayout: {
+      aspect: null,
+      elements: [
+        {
+          kind: 'group', id: 'tabs', name: 'Market', rect: { x: 10, y: 20, w: 60, h: 50 },
+          tabbed: true,
+          children: [
+            textPanel('pa', 'Treasury'),
+            textPanel('pb', 'Victory'),
+            textPanel('pc', 'Kingdom'),
+          ],
+        },
+        textPanel('loose', 'Untouched'),
+      ],
+      mobile: {
+        elements: [{
+          kind: 'group', id: 'mwrap', name: 'Wrapper', rect,
+          children: [{
+            kind: 'group', id: 'mtabs', name: 'Pocket market', rect, tabbed: true,
+            children: [textPanel('mpa', 'A'), textPanel('mpb', 'B')],
+          }],
+        }],
+      },
+    },
+  };
+}
+
+type GroupEl = Extract<ScreenElement, { kind: 'group' }>;
+
+describe('tabbed → selector migration', () => {
+  it('converts a tabbed group into a selector row + bound panels (deterministic ids)', () => {
+    const out = migrateGameDef(tabbedDef());
+    const group = out.screenLayout!.elements[0] as GroupEl;
+    // The group keeps its identity and rect; the flag is GONE (not false).
+    expect(group.id).toBe('tabs');
+    expect(group.rect).toEqual({ x: 10, y: 20, w: 60, h: 50 });
+    expect('tabbed' in group).toBe(false);
+    // Children: the generated selector-button row, then the original panels.
+    expect(group.children).toHaveLength(4);
+    const selbar = group.children[0] as GroupEl;
+    expect(selbar.id).toBe('tabs_selbar');
+    expect(selbar.rect).toEqual({ x: 0, y: 0, w: 100, h: 12 });
+    expect(selbar.children.map((b) => b.id)).toEqual(['pa_sel', 'pb_sel', 'pc_sel']);
+    for (const [i, b] of selbar.children.entries()) {
+      expect(b.kind).toBe('button');
+      if (b.kind !== 'button') continue;
+      expect(b.role).toBe('selector');
+      expect(b.selectorGroup).toBe('tabs');
+      expect(b.actionId).toBeNull();
+      expect(b.label).toBe(['Treasury', 'Victory', 'Kingdom'][i]); // label = panel name
+      expect(b.rect.w).toBeCloseTo(100 / 3, 1);
+    }
+    // Panels: original content, re-seated under the row, bound to their button.
+    const panels = group.children.slice(1);
+    expect(panels.map((p) => p.id)).toEqual(['pa', 'pb', 'pc']);
+    for (const p of panels) {
+      expect(p.rect).toEqual({ x: 0, y: 12, w: 100, h: 88 });
+      expect(p.showForSelector).toBe(`${p.id}_sel`);
+      expect(p.kind).toBe('text'); // content untouched
+    }
+    // Elements outside the tabbed group pass through unchanged.
+    expect(out.screenLayout!.elements[1]).toEqual(textPanel('loose', 'Untouched'));
+  });
+
+  it('converts NESTED tabbed groups in the mobile variant too', () => {
+    const out = migrateGameDef(tabbedDef());
+    const wrapper = out.screenLayout!.mobile!.elements[0] as GroupEl;
+    const mtabs = wrapper.children[0] as GroupEl;
+    expect('tabbed' in mtabs).toBe(false);
+    expect(mtabs.children.map((c) => c.id)).toEqual(['mtabs_selbar', 'mpa', 'mpb']);
+    expect(mtabs.children[1].showForSelector).toBe('mpa_sel');
+  });
+
+  it('renders the same panel content per selection (behavior parity)', () => {
+    const out = migrateGameDef(tabbedDef());
+    const elements = out.screenLayout!.elements;
+    const group = elements[0] as GroupEl;
+    const panels = group.children.slice(1);
+    // Default (no stored selection): the FIRST panel shows — like the old
+    // tab bar's first-visible default.
+    const fresh = selectorContextFrom(elements, () => null);
+    expect(panels.map((p) => selectorGateOpen(fresh, p))).toEqual([true, false, false]);
+    // Each stored button shows exactly ITS panel (max 1 at a time).
+    for (const picked of panels) {
+      const ctx = selectorContextFrom(elements, () => `${picked.id}_sel`);
+      for (const p of panels) {
+        expect(selectorGateOpen(ctx, p)).toBe(p.id === picked.id);
+      }
+    }
+  });
+
+  it('is idempotent: a second migrate changes nothing', () => {
+    const once = migrateGameDef(tabbedDef());
+    const twice = migrateGameDef(once);
+    expect(twice).toEqual(once);
+    // Same object back when nothing needs converting (pure fast path).
+    expect(twice.screenLayout).toBe(once.screenLayout);
+  });
+
+  it('a tabbed group with no children just drops the flag', () => {
+    const def: GameDef = {
+      ...migrateGameDef(v1Def()),
+      screenLayout: {
+        aspect: null,
+        elements: [{ kind: 'group', id: 'empty', name: 'Empty', rect, tabbed: true, children: [] }],
+      },
+    };
+    const out = migrateGameDef(def);
+    const g = out.screenLayout!.elements[0] as GroupEl;
+    expect('tabbed' in g).toBe(false);
+    expect(g.children).toEqual([]);
   });
 });

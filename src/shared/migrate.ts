@@ -131,6 +131,77 @@ function hasPhaseDots(elements: AnyElement[]): boolean {
     el.kind === 'phaseDots' || (el.kind === 'group' && hasPhaseDots(el.children as AnyElement[])));
 }
 
+// ---------------------------------------------------------------------------
+// Tabbed groups (deprecated group.tabbed) → selector buttons
+// ---------------------------------------------------------------------------
+
+/** The generated selector-button row's slice of the group (top, 12% tall). */
+const SELBAR_RECT = { x: 0, y: 0, w: 100, h: 12 };
+/** Each former panel fills the rest of the group under the button row. */
+const PANEL_RECT = { x: 0, y: 12, w: 100, h: 88 };
+
+const round2 = (v: number) => Math.round(v * 100) / 100;
+
+/**
+ * Convert every `tabbed: true` group into the selector-button pattern the
+ * runner renders today: the group keeps its rect; its children become a
+ * generated selector-button row (`<groupId>_selbar`, one `role: 'selector'`
+ * button `<panelId>_sel` per panel, `selectorGroup` = the group's id, label
+ * = the panel's name) followed by the original panels, each bound via
+ * `showForSelector` to its button and re-seated at the panel slice (their
+ * authored rects were IGNORED by the old tabbed runtime). Ids derive from
+ * existing ids, so the conversion is deterministic — and idempotent, since
+ * the `tabbed` flag is dropped. Walks every container kind (nested tabbed
+ * groups inside panels convert too).
+ */
+function migrateTabbedGroups(elements: ScreenElement[]): ScreenElement[] {
+  return elements.map((el): ScreenElement => {
+    const children = el.children !== undefined && el.children.length > 0
+      ? migrateTabbedGroups(el.children)
+      : el.children;
+    if (el.kind !== 'group' || el.tabbed !== true) {
+      return children === el.children ? el : { ...el, children } as ScreenElement;
+    }
+    const { tabbed: _gone, ...group } = el;
+    const panels = children ?? [];
+    if (panels.length === 0) return { ...group, children: [] };
+    const w = round2(100 / panels.length);
+    const selbar: ScreenElement = {
+      kind: 'group',
+      id: `${el.id}_selbar`,
+      name: `${el.name} switcher`,
+      rect: { ...SELBAR_RECT },
+      children: panels.map((p, i): ScreenElement => ({
+        kind: 'button',
+        id: `${p.id}_sel`,
+        name: p.name,
+        rect: { x: round2(i * (100 / panels.length)), y: 0, w, h: 100 },
+        actionId: null,
+        label: p.name,
+        role: 'selector',
+        selectorGroup: el.id,
+      })),
+    };
+    return {
+      ...group,
+      children: [
+        selbar,
+        ...panels.map((p): ScreenElement => ({
+          ...p,
+          rect: { ...PANEL_RECT },
+          showForSelector: `${p.id}_sel`,
+        })),
+      ],
+    };
+  });
+}
+
+function hasTabbed(elements: ScreenElement[]): boolean {
+  return elements.some((el) =>
+    (el.kind === 'group' && el.tabbed === true)
+    || (el.children !== undefined && hasTabbed(el.children)));
+}
+
 /** Migrate in place-of: returns a NEW def when migration applies. */
 export function migrateGameDef(def: GameDef): GameDef {
   let out = def;
@@ -163,6 +234,25 @@ export function migrateGameDef(def: GameDef): GameDef {
         elements: migratePhaseDots(out, out.screenLayout.elements),
       },
     };
+  }
+  // Tabbed groups (deprecated) → selector-button rows, in BOTH variants.
+  if (out.screenLayout) {
+    const sl = out.screenLayout;
+    const mobile = sl.mobile ?? null;
+    const deskTabbed = hasTabbed(sl.elements);
+    const mobTabbed = mobile !== null && hasTabbed(mobile.elements);
+    if (deskTabbed || mobTabbed) {
+      out = {
+        ...out,
+        screenLayout: {
+          ...sl,
+          elements: deskTabbed ? migrateTabbedGroups(sl.elements) : sl.elements,
+          ...(mobTabbed && mobile !== null
+            ? { mobile: { ...mobile, elements: migrateTabbedGroups(mobile.elements) } }
+            : {}),
+        },
+      };
+    }
   }
   // Card vocabulary (types / tags / named filters): seed absent lists to []
   // so editors can append without null checks. Additive — no version bump.

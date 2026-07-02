@@ -25,20 +25,22 @@
  *     digit selection of sheet options, bridged by clicking the sheet's
  *     `[data-choice-digit="N"]` buttons (stamped by the choice sheets).
  *   - Badges and the spotlight only render while a human may act.
- *   - TABBED GROUPS (group.tabbed): only the ACTIVE panel is mounted, so
- *     digits resolve against it alone and Enter never reaches a hidden
- *     panel's buttons. Holding a modifier whose keyGroup zone lives in an
- *     INACTIVE panel first FLIPS that panel active (persisting, the DGT
- *     setSupplyTab) so the spotlight + badges are actually visible.
- *   - Nothing is persisted here except the tab flips (layout.writeActiveTab —
- *     the same store the renderer's tab bar uses).
+ *   - SELECTOR GROUPS (button role 'selector' + showForSelector): only the
+ *     currently SHOWN elements mount, so digits resolve against them alone
+ *     and Enter never reaches a gated-hidden button. Holding a modifier
+ *     whose keyGroup zone lives in a hidden shown-set first SELECTS the
+ *     selector button whose shown set contains that zone (persisting — the
+ *     DGT setSupplyTab made generic) so the spotlight + badges are actually
+ *     visible.
+ *   - Nothing is persisted here except the selector flips (layout's
+ *     writeSelection — the same store the renderer's buttons write).
  */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { GameDef, GameState, Id, Move, ScreenElement } from '../shared/types';
 import { isDisplayVisible } from '../engine';
 import {
-  collapseStorageKey, readActiveTab, resolveActiveTab, subscribeActiveTabs, tabsVersion,
-  writeActiveTab, zoneInstKey,
+  collapseStorageKey, selectionVersion, selectorContext, selectorGateOpen,
+  subscribeSelection, writeSelection, zoneInstKey,
 } from './layout';
 import { filterDisplayCards, groupPiles, resolveSeat, topLegalCard } from './layoutGeometry';
 
@@ -126,9 +128,10 @@ export function groupForDigit(live: HeldModifiers, held: HeldModifiers): Keyboar
  * the activation target; stack-layout zones contribute the top card; other
  * layouts contribute each legal card. Items beyond the tenth per group are
  * unaddressable (dropped). Invisible elements (their `visible` expression,
- * viewer-bound) contribute nothing, and a TABBED group contributes only its
- * ACTIVE panel (resolved from the persisted tab store — inactive panels are
- * not mounted, so their zones must not take digits or spotlight).
+ * viewer-bound) contribute nothing, and neither does anything hidden by a
+ * selector gate (showForSelector, resolved from the persisted selection
+ * store) — gated-out elements are not mounted, so their zones must not take
+ * digits or spotlight.
  */
 export function computeKeyTargets(
   def: GameDef,
@@ -140,6 +143,7 @@ export function computeKeyTargets(
   const playerIds = state.players.map((p) => p.id);
   const raw = new Map<KeyboardGroup, { faceId: Id; activateId: Id }[]>();
   const present = new Set<ModifierGroup>();
+  const selCtx = selectorContext(def.meta.id, elements);
 
   const collect = (el: Extract<ScreenElement, { kind: 'zone' }>, group: KeyboardGroup) => {
     const zone = def.zones.find((z) => z.id === el.zoneId);
@@ -180,17 +184,12 @@ export function computeKeyTargets(
   const walk = (els: readonly ScreenElement[]) => {
     for (const el of els) {
       if (!isDisplayVisible(def, state, el.visible ?? null, viewerId)) continue;
+      // Only the SHOWN set is rendered — digits resolve against it alone
+      // (selectorFlipsForGroup selects a button before its zone is used).
+      if (!selectorGateOpen(selCtx, el)) continue;
       if (el.kind === 'zone' && el.keyGroup !== undefined) {
         if (el.keyGroup !== 'plain') present.add(el.keyGroup);
         collect(el, el.keyGroup);
-      }
-      if (el.kind === 'group' && el.tabbed === true) {
-        // Only the active panel is rendered — digits resolve against it
-        // alone (tabFlipsForGroup activates a panel before its zone is used).
-        const active = resolveActiveTab(def, state, el, viewerId, readActiveTab(def.meta.id, el.id));
-        const panel = active !== null ? el.children.find((c) => c.id === active) : undefined;
-        if (panel !== undefined) walk([panel]);
-        continue;
       }
       if (el.children !== undefined && el.children.length > 0) walk(el.children);
     }
@@ -223,60 +222,73 @@ export function subtreeHasKeyGroup(el: ScreenElement, group: KeyboardGroup): boo
 }
 
 /**
- * The tab flips a held modifier demands (the DGT setSupplyTab on mobile):
- * for every visible TABBED group whose keyGroup-`group` zone lives in a
- * visible NON-ACTIVE panel, the panel to activate so the spotlight and digit
- * badges are actually on screen. The first panel containing such a zone wins
- * per group; the walk descends into that panel (nested tabbed groups flip
- * too), else into the active one. Hidden zones/panels never ask for a flip.
+ * The selector flips a held modifier demands (the DGT setSupplyTab made
+ * generic): find the selector button whose SHOWN set contains a keyGroup-
+ * `group` zone and select it. Precisely: walk the tree in paint order,
+ * accumulating the showForSelector requirements along each ancestor chain
+ * (selectorGroup -> the button that chain needs; a chain needing two
+ * DIFFERENT buttons of one group can never show — pruned; a dangling target
+ * gates nothing, mirroring the renderer). The FIRST display-visible
+ * keyGroup-`group` zone (viewer-bound `visible`, paint order) claims each
+ * selector group it needs; claimed pairs whose button is not currently the
+ * active selection become flips. Hidden zones never ask for a flip; a zone
+ * with no requirements is already shown and asks for nothing.
  */
-export function tabFlipsForGroup(
+export function selectorFlipsForGroup(
   def: GameDef,
   state: GameState,
   elements: readonly ScreenElement[],
   viewerId: Id,
   group: ModifierGroup,
-): { groupId: Id; panelId: Id }[] {
-  const out: { groupId: Id; panelId: Id }[] = [];
+): { selectorGroup: string; buttonId: Id }[] {
+  const selCtx = selectorContext(def.meta.id, elements);
   const visible = (el: ScreenElement) =>
     isDisplayVisible(def, state, el.visible ?? null, viewerId);
-  // Visibility-aware subtree check: a hidden zone contributes no targets
-  // (computeKeyTargets skips it), so flipping to it would show nothing.
-  const contains = (el: ScreenElement): boolean => {
-    if (!visible(el)) return false;
-    if (el.kind === 'zone' && el.keyGroup === group) return true;
-    return (el.children ?? []).some(contains);
-  };
-  const walk = (els: readonly ScreenElement[]) => {
+  /** selectorGroup -> the button id the first needing zone claimed. */
+  const claimed = new Map<string, Id>();
+  const walk = (els: readonly ScreenElement[], req: ReadonlyMap<string, Id>) => {
     for (const el of els) {
       if (!visible(el)) continue;
-      if (el.kind === 'group' && el.tabbed === true) {
-        const active = resolveActiveTab(def, state, el, viewerId, readActiveTab(def.meta.id, el.id));
-        const panel = el.children.find(contains);
-        if (panel !== undefined) {
-          if (panel.id !== active) out.push({ groupId: el.id, panelId: panel.id });
-          walk(panel.children ?? []);
-        } else if (active !== null) {
-          const activeEl = el.children.find((c) => c.id === active);
-          if (activeEl !== undefined) walk(activeEl.children ?? []);
+      let here = req;
+      const target = el.showForSelector;
+      if (target !== undefined) {
+        const g = selCtx.groupOf.get(target);
+        if (g !== undefined) {
+          const needed = req.get(g);
+          if (needed !== undefined && needed !== target) continue; // unsatisfiable chain
+          if (needed === undefined) {
+            const next = new Map(req);
+            next.set(g, target);
+            here = next;
+          }
         }
-        continue;
       }
-      if (el.children !== undefined && el.children.length > 0) walk(el.children);
+      if (el.kind === 'zone' && el.keyGroup === group) {
+        for (const [g, buttonId] of here) {
+          if (!claimed.has(g)) claimed.set(g, buttonId);
+        }
+      }
+      if (el.children !== undefined && el.children.length > 0) walk(el.children, here);
     }
   };
-  walk(elements);
+  walk(elements, new Map());
+  const out: { selectorGroup: string; buttonId: Id }[] = [];
+  for (const [g, buttonId] of claimed) {
+    if (selCtx.active.get(g) !== buttonId) out.push({ selectorGroup: g, buttonId });
+  }
   return out;
 }
 
 /**
  * The first ENABLED screen button in paint order (gated like the renderer:
- * visibility AND collapse) and its legal move — what Enter performs. Null
- * when none. `isCollapsed` mirrors ScreenRenderer's collapsible handling: a
- * collapsed element renders only its dock tab, so its whole subtree —
- * buttons included — never mounts and must not receive Enter. A TABBED
- * group's inactive panels are skipped the same way (only the active panel
- * is rendered; resolved from the persisted tab store).
+ * visibility AND collapse AND selector gates) and its legal move — what
+ * Enter performs. Null when none. `isCollapsed` mirrors ScreenRenderer's
+ * collapsible handling: a collapsed element renders only its dock tab, so
+ * its whole subtree — buttons included — never mounts and must not receive
+ * Enter. Elements hidden by a showForSelector gate are skipped the same way
+ * (only the shown set is rendered; resolved from the persisted selection
+ * store), and selector-role buttons never take Enter — they perform no
+ * game action.
  */
 export function firstEnabledButtonMove(
   def: GameDef,
@@ -286,28 +298,24 @@ export function firstEnabledButtonMove(
   buttonMove: ReadonlyMap<Id, Move>,
   isCollapsed: (el: ScreenElement) => boolean = () => false,
 ): Move | null {
-  for (const el of elements) {
-    if (!isDisplayVisible(def, state, el.visible ?? null, viewerId)) continue;
-    if (isCollapsed(el)) continue; // collapsed panel: nothing inside is rendered
-    if (el.kind === 'button' && el.actionId !== null) {
-      const move = buttonMove.get(el.actionId);
-      if (move !== undefined) return move;
-    }
-    if (el.kind === 'group' && el.tabbed === true) {
-      const active = resolveActiveTab(def, state, el, viewerId, readActiveTab(def.meta.id, el.id));
-      const panel = active !== null ? el.children.find((c) => c.id === active) : undefined;
-      if (panel !== undefined) {
-        const nested = firstEnabledButtonMove(def, state, [panel], viewerId, buttonMove, isCollapsed);
+  const selCtx = selectorContext(def.meta.id, elements);
+  const walk = (els: readonly ScreenElement[]): Move | null => {
+    for (const el of els) {
+      if (!isDisplayVisible(def, state, el.visible ?? null, viewerId)) continue;
+      if (!selectorGateOpen(selCtx, el)) continue; // gated out: not rendered
+      if (isCollapsed(el)) continue; // collapsed panel: nothing inside is rendered
+      if (el.kind === 'button' && el.actionId !== null && el.role !== 'selector') {
+        const move = buttonMove.get(el.actionId);
+        if (move !== undefined) return move;
+      }
+      if (el.children !== undefined && el.children.length > 0) {
+        const nested = walk(el.children);
         if (nested !== null) return nested;
       }
-      continue;
     }
-    if (el.children !== undefined && el.children.length > 0) {
-      const nested = firstEnabledButtonMove(def, state, el.children, viewerId, buttonMove, isCollapsed);
-      if (nested !== null) return nested;
-    }
-  }
-  return null;
+    return null;
+  };
+  return walk(elements);
 }
 
 /**
@@ -408,9 +416,9 @@ export function useTableKeyboard(opts: {
 
   const [held, setHeld] = useState<HeldModifiers>(NO_MODIFIERS);
 
-  // Tabbed groups: digits resolve against the ACTIVE panel, so the target
-  // index re-derives whenever any tab flips (writes bump layout.tabsVersion).
-  const tabsN = useSyncExternalStore(subscribeActiveTabs, tabsVersion, tabsVersion);
+  // Selector groups: digits resolve against the SHOWN set, so the target
+  // index re-derives whenever any selection flips (writes bump the version).
+  const selN = useSyncExternalStore(subscribeSelection, selectionVersion, selectionVersion);
 
   const index = useMemo<KeyTargetIndex>(() => {
     if (!enabled || !humanCanAct) return EMPTY_INDEX;
@@ -418,19 +426,21 @@ export function useTableKeyboard(opts: {
       def, state, elements, viewerId,
       (id) => (cardMoves.get(id)?.length ?? 0) > 0,
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- tabsN: the tab
-    // store is read inside computeKeyTargets, not passed as an argument.
-  }, [enabled, humanCanAct, def, state, elements, viewerId, cardMoves, tabsN]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selN: the
+    // selection store is read inside computeKeyTargets, not passed as an
+    // argument.
+  }, [enabled, humanCanAct, def, state, elements, viewerId, cardMoves, selN]);
 
-  // Held modifier → auto tab-flip (the DGT setSupplyTab): when the group's
-  // keyGroup zone lives in an INACTIVE panel of a tabbed group, activate
-  // (and persist) that panel so the spotlight + badges are actually visible.
+  // Held modifier → auto selector-flip (the DGT setSupplyTab made generic):
+  // when the group's keyGroup zone lives in a hidden shown-set, select (and
+  // persist) the selector button whose shown set contains it so the
+  // spotlight + badges are actually visible.
   const heldNow = heldGroup(held);
   useEffect(() => {
     if (!enabled || !humanCanAct || overlayOpen || heldNow === null) return;
     if (elements === null) return;
-    for (const flip of tabFlipsForGroup(def, state, elements, viewerId, heldNow)) {
-      writeActiveTab(def.meta.id, flip.groupId, flip.panelId);
+    for (const flip of selectorFlipsForGroup(def, state, elements, viewerId, heldNow)) {
+      writeSelection(def.meta.id, flip.selectorGroup, flip.buttonId);
     }
   }, [enabled, humanCanAct, overlayOpen, heldNow, def, state, elements, viewerId]);
 

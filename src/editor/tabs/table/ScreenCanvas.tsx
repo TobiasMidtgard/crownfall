@@ -45,7 +45,7 @@ import { SAMPLE_VIEWER_ID, buildSampleState } from './sampleState';
 import {
   ASPECT_VALUES, GROUP_MIN, MIN_H, MIN_W, PHONE_ASPECT, absToGroupRel, applyElementState,
   aspectPresetOf, boundingRect, deepestGroupAt, fanMarginPx, fitCount, groupRelToAbs,
-  indexElements, layoutStyleCss, pathToEl, pctToPx, previewElementVisible, pruneNested,
+  indexElements, layoutStyleCss, pathToEl, pctToPx, previewShownMap, pruneNested,
   variantElements, withDescendants, zonePreview, zoneSampleCount,
   type AspectPreset, type PlainRect, type VariantKey, type ZonePreview,
 } from './screenModel';
@@ -226,15 +226,15 @@ export function ScreenCanvas({
   const selSet = useMemo(() => new Set(sel), [sel]);
 
   // Runner-parity visibility per element (null = preview off): dangling
-  // refs / unresolvable seats / falsy `visible`, viewer = sample seat p0.
+  // refs / unresolvable seats / falsy `visible` / closed showForSelector
+  // gates, viewer = sample seat p0. Selector gates resolve against the FULL
+  // variant tree; the editor selection (`sel`) overrides the persisted
+  // selection store, so clicking a selector button on the canvas switches
+  // its group's panels live (previewShownMap documents the precedence).
   const pvVisibleMap = useMemo(() => {
     if (pvState === null) return null;
-    const m = new Map<Id, boolean>();
-    for (const [id, info] of index) {
-      m.set(id, previewElementVisible(def, pvState, info.el, SAMPLE_VIEWER_ID));
-    }
-    return m;
-  }, [pvState, index, def]);
+    return previewShownMap(def, pvState, index, fullElements, SAMPLE_VIEWER_ID, sel);
+  }, [pvState, index, def, fullElements, sel]);
 
   /**
    * The preview actually paints this element: it and every ancestor pass

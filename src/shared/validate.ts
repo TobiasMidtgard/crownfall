@@ -197,10 +197,44 @@ export function validateGameDef(def: GameDef): ValidationIssue[] {
   }
 
   if (def.screenLayout) {
+    // Selector-button catalogs per variant: showForSelector must point at a
+    // role:'selector' button IN THE SAME variant (desktop and mobile are
+    // separate trees — a cross-variant reference can never gate anything).
+    type AnyScreenElement = import('./types').ScreenElement;
+    const catalogOf = (elements: AnyScreenElement[]): Map<string, AnyScreenElement> => {
+      const map = new Map<string, AnyScreenElement>();
+      const collect = (els: AnyScreenElement[]) => {
+        for (const el of els) {
+          map.set(el.id, el);
+          if (el.children) collect(el.children);
+        }
+      };
+      collect(elements);
+      return map;
+    };
+    const isSelectorButton = (el: AnyScreenElement | undefined): boolean =>
+      el !== undefined && el.kind === 'button' && el.role === 'selector'
+      && (el.selectorGroup ?? '').trim() !== '';
+    const desktopCatalog = catalogOf(def.screenLayout.elements);
+    const mobileCatalog = catalogOf(def.screenLayout.mobile?.elements ?? []);
     // Ids must be unique within a tree; desktop and mobile are separate trees
     // (a mobile variant typically starts as a copy of the desktop layout).
-    const makeWalker = (seen: Set<string>) => {
-      const walkElements = (elements: import('./types').ScreenElement[], where: string) => {
+    const makeWalker = (
+      seen: Set<string>,
+      own: Map<string, AnyScreenElement>,
+      other: Map<string, AnyScreenElement>,
+      otherName: string,
+    ) => {
+      // role:'selector' buttons per selectorGroup name in THIS variant — a
+      // group every selector button of which is missing can never switch.
+      const selectorGroups = new Set<string>();
+      for (const el of own.values()) {
+        if (el.kind === 'button' && el.role === 'selector') {
+          const g = (el.selectorGroup ?? '').trim();
+          if (g !== '') selectorGroups.add(g);
+        }
+      }
+      const walkElements = (elements: AnyScreenElement[], where: string) => {
         for (const el of elements) {
           const here = `${where} > "${el.name}"`;
           if (seen.has(el.id)) err(here, 'Duplicate element id.');
@@ -208,6 +242,27 @@ export function validateGameDef(def: GameDef): ValidationIssue[] {
           if (el.visible) walkExpr(el.visible, `${here} > visible when`);
           for (const st of el.states ?? []) {
             walkExpr(st.when, `${here} > state "${st.name}"`);
+          }
+          if (el.showForSelector !== undefined) {
+            const target = own.get(el.showForSelector);
+            if (target === undefined) {
+              if (other.has(el.showForSelector)) {
+                warn(here, `"Show only for" points at a selector button in the ${otherName} — pick one from this screen (each variant switches on its own).`);
+              } else {
+                warn(here, '"Show only for" points at a selector button that no longer exists — the element always shows.');
+              }
+            } else if (!isSelectorButton(target)) {
+              warn(here, `"Show only for" points at "${target.name}", which is not a selector button — the element always shows.`);
+            }
+          }
+          if (el.kind === 'button') {
+            const group = (el.selectorGroup ?? '').trim();
+            if (el.role === 'selector' && group === '') {
+              warn(here, 'Selector button has no group name — give its radio set a group so it can switch panels.');
+            }
+            if (el.role !== 'selector' && group !== '' && !selectorGroups.has(group)) {
+              warn(here, `Selector group "${group}" has no selector buttons — turn on the Selector role for the buttons that should switch it.`);
+            }
           }
           // Children are allowed on every element (groups require them).
           if (el.kind !== 'group' && el.children) walkElements(el.children, here);
@@ -265,9 +320,9 @@ export function validateGameDef(def: GameDef): ValidationIssue[] {
       };
       return walkElements;
     };
-    makeWalker(new Set<string>())(def.screenLayout.elements, 'Screen');
+    makeWalker(new Set<string>(), desktopCatalog, mobileCatalog, 'mobile layout')(def.screenLayout.elements, 'Screen');
     if (def.screenLayout.mobile) {
-      makeWalker(new Set<string>())(def.screenLayout.mobile.elements, 'Mobile screen');
+      makeWalker(new Set<string>(), mobileCatalog, desktopCatalog, 'desktop layout')(def.screenLayout.mobile.elements, 'Mobile screen');
       if (def.screenLayout.mobile.scroll && def.screenLayout.mobile.aspect == null) {
         warn('Mobile screen', 'Scrolling needs a page aspect (height) — set one or the page cannot be taller than the viewport.');
       }

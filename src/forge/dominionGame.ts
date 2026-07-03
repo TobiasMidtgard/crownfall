@@ -20,8 +20,12 @@
  *     `triggerAbilities` — no more reserve bounce, no zone churn;
  *   - the victory recount is `sumCards` over the four owned zones, run by
  *     the turnEnd trigger plus ONE tagged trigger on every 'gain';
- *   - Moat is typed 'action reaction' and Militia/Witch 'action attack' —
- *     the `contains` op restores the original's multi-type membership;
+ *   - the card catalogue speaks the REAL type/tag vocabulary now (spec A):
+ *     types Treasure / Victory / Curse / Action, tags Attack / Reaction /
+ *     Kingdom / Basic, the named filter "The basic cards" — and every
+ *     condition reads cardTypeIs / cardHasTag / filterRef instead of the
+ *     retired dom_field_ctype text field (dom_field_kind still carries the
+ *     pretty "Action – Attack" display line);
  *   - IMMUNE resets in ONE `effectResolved` trigger after each attack
  *     resolves (per-attack immunity, no per-card boilerplate);
  *   - inactive kingdom piles wait in a hidden shared RESERVE zone — which is
@@ -37,17 +41,20 @@
  * the hand plain digit badges; the hand fans at 1.6°/step; motion.byTag
  * carries the original's per-event animation table. The MOBILE variant is
  * rebuilt to the original's phone design (styles.css ≤45rem): ONE
- * non-scrolling viewport — foe strip with their appearing play row, ONE
- * tabbed supply group (Treasury/Victory/Kingdom tile carousels), the
- * battlefield band with the compact seal (no keyboard hint), the hand fan,
- * the harbor spots, and the chronicle as a collapsible bottom sheet.
+ * non-scrolling viewport — foe strip with their appearing play row, the
+ * supply switcher (three DESIGNED selector buttons over one bound
+ * Treasury/Victory/Kingdom tile carousel at a time — spec B §2), the
+ * battlefield band with the compact seal (no keyboard hint), the hand fan
+ * and the harbor spots. The chronicle elements are GONE from both variants
+ * (spec B §3): the runner's Log drawer is the one history, and the status
+ * bar peeks (screenLayout.statusBar 'peek') instead of pinning.
  *
  * Every choice a script can open always has at least one candidate (guarded
  * by iff) or is optional, so the random session AI can never hang on one.
  */
 import type {
-  AbilityDef, Block, CardDef, CardSelector, Expr, GameDef, LayoutStyle, ScreenElement,
-  ScreenVariant, ZoneRef,
+  AbilityDef, Block, CardDef, CardSelector, CardTypeDef, Expr, GameDef, LayoutStyle,
+  ScreenElement, ScreenVariant, TagDef, ZoneRef,
 } from '../shared/types';
 import { deepClone } from '../shared/defaults';
 import { dominionGame } from '../examples/dominion';
@@ -82,11 +89,17 @@ const SCRATCH = 'dom_var_scratch';
 const GAME_OVER = 'dom_var_game_over';
 
 const COST = 'dom_field_cost';
+/**
+ * The RETIRED machine-type text field: conditions read the real type/tag
+ * vocabulary now and the face renders KIND_F, so buildDominionDef scrubs
+ * this field (definition + every value) from the cloned example wholesale —
+ * it would be data feeding nothing.
+ */
 const CTYPE = 'dom_field_ctype';
 const COINS_F = 'dom_field_coins';
 const VP_F = 'dom_field_vp';
 const TEXT = 'dom_field_text';
-/** Display-only type line ("Action – Attack") — CTYPE stays machine-readable. */
+/** Display-only type line ("Action – Attack"), derived from typeId + tags. */
 const KIND_F = 'dom_field_kind';
 
 const PHASE_ACTION = 'dom_phase_action';
@@ -155,12 +168,53 @@ const playAgain = (card: Expr): Block =>
 const sumCards = (z: ZoneRef, fieldId: string, filter: Expr | null = null): Expr =>
   ({ kind: 'sumCards', zone: z, fieldId, filter });
 
-/** Multi-type membership: CTYPE holds words like 'action attack'. */
-const hasType = (card: Expr, word: string): Expr =>
-  ({ kind: 'compare', op: 'contains', left: field(card, CTYPE), right: str(word) });
+// --- the type/tag vocabulary (spec A §Dominion migration) ----------------------
 
-const IS_ACTION_CARD = hasType(CARD, 'action');
-const IS_TREASURE_CARD = eq(field(CARD, CTYPE), str('treasure'));
+/**
+ * MOAT DECISION — the original card is "Action – Reaction", but a card here
+ * has exactly ONE primary type (CardDef.typeId). Moat's primary type is
+ * Action (Throne Room can play it, it costs an action to play), so Reaction
+ * rides as a TAG and the spec's Reaction TYPE is dropped from the list:
+ * nothing could ever carry it as a primary without ceasing to be an Action.
+ * The reveal-Moat legality checks the tag; later slices (attack warnings,
+ * reaction prompts) key off the same tag.
+ *
+ * DURATION — the spec reserves a Duration tag, but validateGameDef warns on
+ * defined-but-unused tags and this def ships validating with ZERO warnings,
+ * so the tag is NOT pre-declared: slice D introduces it together with the
+ * first Duration card (adding a tag is one row in the Types & tags panel).
+ */
+const TYPE_TREASURE = 'dom_type_treasure';
+const TYPE_VICTORY = 'dom_type_victory';
+const TYPE_CURSE = 'dom_type_curse';
+const TYPE_ACTION = 'dom_type_action';
+const TAG_ATTACK = 'dom_tag_attack';
+const TAG_REACTION = 'dom_tag_reaction';
+const TAG_KINGDOM = 'dom_tag_kingdom';
+const TAG_BASIC = 'dom_tag_basic';
+/** The named filter "The basic cards" (condition: card has tag Basic). */
+const FILTER_BASIC = 'dom_filter_basic';
+
+/** Type accents = hex twins of the skin's OKLCH palette (aurum / verdict / umbra / bone). */
+const CARD_TYPES: CardTypeDef[] = [
+  { id: TYPE_TREASURE, name: 'Treasure', color: '#d2ab66' },
+  { id: TYPE_VICTORY, name: 'Victory', color: '#4f9e63' },
+  { id: TYPE_CURSE, name: 'Curse', color: '#9460b7' },
+  { id: TYPE_ACTION, name: 'Action', color: '#ece4d8' },
+];
+const CARD_TAGS: TagDef[] = [
+  { id: TAG_ATTACK, name: 'Attack' },
+  { id: TAG_REACTION, name: 'Reaction' },
+  { id: TAG_KINGDOM, name: 'Kingdom' },
+  { id: TAG_BASIC, name: 'Basic' },
+];
+
+const isA = (card: Expr, typeId: string): Expr => ({ kind: 'cardTypeIs', card, typeId });
+const hasTag = (card: Expr, tagId: string): Expr => ({ kind: 'cardHasTag', card, tagId });
+const matchesFilter = (filterId: string, card: Expr): Expr => ({ kind: 'filterRef', filterId, card });
+
+const IS_ACTION_CARD = isA(CARD, TYPE_ACTION);
+const IS_TREASURE_CARD = isA(CARD, TYPE_TREASURE);
 
 // --- the supply catalogue (build-time truth for counts / watcher) -------------
 
@@ -242,6 +296,39 @@ const EXAMPLE_CARD_ID: Record<string, string> = {
 
 const cardIdFor = (name: string): string => NEW_CARD_ID[name] ?? EXAMPLE_CARD_ID[name];
 
+// --- per-card type lines (typeId + tags, built from the pile catalogues) -------
+
+interface TypeLine { typeId: string; tags: string[] }
+
+/**
+ * Every card's type line: basics wear Basic (treasure piles → Treasure,
+ * Curse → Curse, the rest → Victory); kingdom cards wear Kingdom (Gardens is
+ * victory-TYPED but stays a kingdom card, exactly like the original);
+ * Militia/Witch add Attack, Moat adds Reaction (see the MOAT DECISION note).
+ */
+const TYPE_LINE: Record<string, TypeLine> = {};
+for (const p of BASIC_PILES) {
+  TYPE_LINE[p.name] = {
+    typeId: p.treasure === true ? TYPE_TREASURE : p.name === 'Curse' ? TYPE_CURSE : TYPE_VICTORY,
+    tags: [TAG_BASIC],
+  };
+}
+for (const p of KINGDOM_PILES) {
+  const tags = [TAG_KINGDOM];
+  if (p.name === 'Militia' || p.name === 'Witch') tags.push(TAG_ATTACK);
+  if (p.name === 'Moat') tags.push(TAG_REACTION);
+  TYPE_LINE[p.name] = { typeId: p.name === 'Gardens' ? TYPE_VICTORY : TYPE_ACTION, tags };
+}
+
+/** The pretty display line for KIND_F: "Treasure", "Action – Attack"… */
+function kindLabelFor(line: TypeLine): string {
+  const typeName = CARD_TYPES.find((t) => t.id === line.typeId)!.name;
+  const extras = line.tags
+    .filter((t) => t === TAG_ATTACK || t === TAG_REACTION)
+    .map((t) => CARD_TAGS.find((d) => d.id === t)!.name);
+  return [typeName, ...extras].join(' – ');
+}
+
 // --- card plumbing ------------------------------------------------------------
 
 /** "When you play this" ability: fires when the card enters In Play. */
@@ -249,33 +336,21 @@ function onPlay(id: string, name: string, script: Block[], stacked = false): Abi
   return { id, name, on: 'enterZone', zoneId: INPLAY, phaseId: null, condition: null, script, stacked };
 }
 
+/**
+ * A forge-added card. No CTYPE value: typeId / tags / the KIND_F display
+ * line are assigned to EVERY card (example clones + these) by the surgery
+ * loop in buildDominionDef, off the one TYPE_LINE table.
+ */
 function card(
-  name: string, cost: number, ctype: string, coins: number, vp: number, text: string,
+  name: string, cost: number, coins: number, vp: number, text: string,
   abilities: AbilityDef[] = [],
 ): CardDef {
   return {
     id: cardIdFor(name), name, templateId: 'dom_tpl_kingdom',
-    fields: { [COST]: cost, [CTYPE]: ctype, [COINS_F]: coins, [VP_F]: vp, [TEXT]: text },
+    fields: { [COST]: cost, [COINS_F]: coins, [VP_F]: vp, [TEXT]: text },
     abilities,
   };
 }
-
-/**
- * The original's multi-type lines, restored via `contains`: CTYPE holds
- * space-separated words; KIND_F is the pretty display line on the card face.
- */
-const CTYPE_OVERRIDE: Record<string, string> = {
-  Militia: 'action attack',
-  Moat: 'action reaction',
-};
-const KIND_LABEL: Record<string, string> = {
-  treasure: 'Treasure',
-  victory: 'Victory',
-  curse: 'Curse',
-  action: 'Action',
-  'action attack': 'Action – Attack',
-  'action reaction': 'Action – Reaction',
-};
 
 /**
  * Gardens-aware victory recount: `sumCards` of the VP field over everything a
@@ -331,10 +406,10 @@ function gainFromSupply(opts: {
 // --- the added cards ----------------------------------------------------------
 
 const EXTRA_CARDS: CardDef[] = [
-  card('Curse', 0, 'curse', 0, -1, 'Worth −1 victory point.'),
-  card('Gardens', 4, 'victory', 0, 0,
+  card('Curse', 0, 0, -1, 'Worth −1 victory point.'),
+  card('Gardens', 4, 0, 0,
     'Worth 1 victory point per 10 cards you own (rounded down).'),
-  card('Cellar', 2, 'action', 0, 0,
+  card('Cellar', 2, 0, 0,
     'Gain 1 action. Discard any number of cards, then draw that many.', [
       onPlay('dom_ab_cellar', 'Down to the cellar', [
         changeVar(ACTIONS, num(1), OWNER),
@@ -350,7 +425,7 @@ const EXTRA_CARDS: CardDef[] = [
         drawN(OWNER, getVar(SCRATCH, OWNER)),
       ]),
     ]),
-  card('Chapel', 2, 'action', 0, 0, 'Trash up to 4 cards from your hand.', [
+  card('Chapel', 2, 0, 0, 'Trash up to 4 cards from your hand.', [
     onPlay('dom_ab_chapel', 'Cleansing rite', [
       chooseCardsBlock({
         who: OWNER, from: zone(HAND, OWNER), min: num(0), max: num(4),
@@ -362,14 +437,14 @@ const EXTRA_CARDS: CardDef[] = [
       }),
     ]),
   ]),
-  card('Workshop', 3, 'action', 0, 0, 'Gain a card costing up to 4 coins.', [
+  card('Workshop', 3, 0, 0, 'Gain a card costing up to 4 coins.', [
     onPlay('dom_ab_workshop', 'Commissioned work', gainFromSupply({
       limit: num(4),
       prompt: 'Workshop: gain a card costing up to 4',
       whiff: [announce(OWNER, ' finds nothing to gain.')],
     })),
   ]),
-  card('Black Market', 3, 'action', 0, 0,
+  card('Black Market', 3, 0, 0,
     '+2 Coins. You may buy a card from the Black Market’s stock.', [
       onPlay('dom_ab_black_market', 'Under the counter', [
         changeVar(COINS, num(2), OWNER),
@@ -391,7 +466,7 @@ const EXTRA_CARDS: CardDef[] = [
         ], [announce('The Black Market has nothing left to sell.')]),
       ]),
     ]),
-  card('Throne Room', 4, 'action', 0, 0,
+  card('Throne Room', 4, 0, 0,
     'Choose an action card from your hand. Play it twice.', [
       onPlay('dom_ab_throne_room', 'By royal decree', [
         iff(gt(countCards(zone(HAND, OWNER), IS_ACTION_CARD), num(0)), [
@@ -407,7 +482,7 @@ const EXTRA_CARDS: CardDef[] = [
         ], [announce(OWNER, ' has no action for the throne.')]),
       ]),
     ]),
-  card('Remodel', 4, 'action', 0, 0,
+  card('Remodel', 4, 0, 0,
     'Trash a card from your hand. Gain a card costing up to 2 coins more than it.', [
       onPlay('dom_ab_remodel', 'Tear down, build up', [
         iff(gt(zoneCount(zone(HAND, OWNER)), num(0)), [
@@ -423,7 +498,7 @@ const EXTRA_CARDS: CardDef[] = [
         ], [announce(OWNER, ' has nothing to remodel.')]),
       ]),
     ]),
-  card('Mine', 5, 'action', 0, 0,
+  card('Mine', 5, 0, 0,
     'Trash a Treasure from your hand. Gain a Treasure costing up to 3 coins more, into your hand.', [
       onPlay('dom_ab_mine', 'Deep veins', [
         iff(gt(countCards(zone(HAND, OWNER), IS_TREASURE_CARD), num(0)), [
@@ -443,7 +518,7 @@ const EXTRA_CARDS: CardDef[] = [
         ], [announce(OWNER, ' has no Treasure to mine.')]),
       ]),
     ]),
-  card('Witch', 5, 'action attack', 0, 0,
+  card('Witch', 5, 0, 0,
     '+2 Cards. Every other player gains a Curse (Moat blocks this).', [
       // Like Militia: the draw is immediate, only the attack half goes
       // through the stack so Moat owners get a response window first.
@@ -831,11 +906,15 @@ function roundNumberParts(): TextEl['parts'] {
   return ['TURN ', div(sub(next, mod(next, num(2))), num(2))];
 }
 
-// Slice filters by NAME so Gardens (a victory-typed kingdom card) stays in
-// the kingdom region and Curse joins the victory column, like the original.
-const anyName = (names: string[]): Expr => names.map(nameIs).reduce((a, b) => or(a, b));
-const IS_BASIC_VICTORY_PILE = anyName(['Estate', 'Duchy', 'Province', 'Curse']);
-const IS_KINGDOM_PILE = not(anyName(BASIC_NAMES));
+// Slice filters on the type/tag vocabulary (the old name chains are gone).
+// Victory column = the basic cards that are not treasures — Estate / Duchy /
+// Province + Curse, so Gardens (a victory-TYPED kingdom card) stays in the
+// kingdom region and Curse joins the victory column, like the original. This
+// slice is also the named filter's consumer: "The basic cards" earns its keep
+// through filterRef instead of sitting unused in the library.
+const IS_BASIC_VICTORY_PILE = allOf(matchesFilter(FILTER_BASIC, CARD), not(IS_TREASURE_CARD));
+/** Kingdom slice = ONE tag clause (the spec's poster child). */
+const IS_KINGDOM_PILE = hasTag(CARD, TAG_KINGDOM);
 
 // --- the mobile variant (the original's pocket table, ≤45rem) -------------------
 
@@ -861,13 +940,35 @@ function mLabel(id: string, text: string, x: number, y: number, w: number): Scre
   };
 }
 
+/** The mobile supply's radio-set id — the three tab buttons share it. */
+const M_SUPPLY_GROUP = 'dom_el_m_supply';
+
 /**
- * One panel of the tabbed supply: a group named EXACTLY like its tab label
- * (the runner's tab bar reads the direct children's names), holding that
- * slice's carousel of DGT pile tiles. The panel fills the group — the
- * runner's tabbed chrome owns the bar and seats the active panel under it.
- * Digit badges 1–9/0 ride the keyGroup (Shift/Ctrl/Alt, like the desktop
- * slices), and the held modifier flips the group to this panel.
+ * One DESIGNED selector button of the supply switcher (spec B §2): a third
+ * of the selector row, role 'selector' (clicking switches the bound panel,
+ * never a game action — the runner marks the active one rn-sel-on).
+ * dominion-skin.css dresses the row per the DGT tab-slider: engraved
+ * uppercase labels, ash → bone, the ACTIVE button wearing the notched
+ * crimson plate. fontSize 2.7% of the ~390px stage ≈ 10.5px — the original
+ * .supply-tabs 0.66rem label.
+ */
+function mSupplyTab(panelId: string, label: string, i: number): ScreenElement {
+  return {
+    kind: 'button', id: `${panelId}_sel`, name: `${label} selector`,
+    rect: { x: i * 33.33, y: 0, w: i === 2 ? 33.34 : 33.33, h: 100 },
+    actionId: null, label, fontSize: 2.7,
+    role: 'selector', selectorGroup: M_SUPPLY_GROUP,
+  };
+}
+
+/**
+ * One panel of the supply switcher: a group bound to ITS selector button
+ * via showForSelector (exactly one panel renders at a time), holding that
+ * slice's carousel of DGT pile tiles under the selector row. Digit badges
+ * 1–9/0 ride the keyGroup (Shift/Ctrl/Alt, like the desktop slices), and
+ * the held modifier flips the switcher to this panel — the runner's
+ * keyboard flip selects the button whose bound panel holds the keyGroup
+ * zone (selectorFlipsForGroup).
  */
 function mSupplyPanel(
   panelId: string, label: string, zoneElId: string,
@@ -875,7 +976,8 @@ function mSupplyPanel(
 ): ScreenElement {
   return {
     kind: 'group', id: panelId, name: label,
-    rect: { x: 0, y: 0, w: 100, h: 100 },
+    rect: { x: 0, y: 13, w: 100, h: 87 },
+    showForSelector: `${panelId}_sel`,
     children: [{
       kind: 'zone', id: zoneElId, name: `Supply — ${label.toLowerCase()}`,
       rect: { x: 0, y: 0, w: 100, h: 100 },
@@ -899,15 +1001,14 @@ function mSupplyPanel(
  * the way the original's flex column did. Top to bottom:
  *   - the compact foe strip — banner, deck/hand/discard tallies, and THEIR
  *     play row appearing at the right (0.7× cards, the foePlayWrap rule);
- *   - the TABBED supply: one panel at a time behind a notched tab bar
- *     (Treasury / Victory / Kingdom tile carousels);
+ *   - the supply SWITCHER: three designed selector buttons over one bound
+ *     Treasury / Victory / Kingdom tile carousel at a time (spec B §2);
  *   - the battlefield band: TURN + tickers left, the compact seal right
  *     (no keyboard hint), and the appearing in-play row;
  *   - the hand fan (thumb-reachable, plain digit badges);
- *   - the harbor's compact deck / discard / trash spots;
- *   - the chronicle as a bottom sheet behind a docked toggle (the runner's
- *     collapsible, side 'bottom' — the closest generic shape of the
- *     original's 70dvh slide-up sheet; it opens over ~73% of the screen).
+ *   - the harbor's compact deck / discard / trash spots.
+ * No chronicle: the Log drawer is the history (spec B §3), and the peeking
+ * status bar's handle keeps the strip below the harbor clear.
  */
 function buildMobileScreen(): ScreenVariant {
   return {
@@ -957,12 +1058,24 @@ function buildMobileScreen(): ScreenVariant {
           },
         ],
       },
-      // --- the TABBED supply (~8-38%): one panel at a time --------------------
+      // --- the supply switcher (~8-38%): one bound panel at a time ------------
+      // Three designed selector buttons over three showForSelector-bound
+      // carousel panels (spec B §2 — the retired `tabbed: true` runner
+      // chrome is replaced by real, restylable def elements). Treasury is
+      // first in paint order, so it is the default selection.
       {
-        kind: 'group', id: 'dom_el_m_supply', name: 'Supply',
+        kind: 'group', id: M_SUPPLY_GROUP, name: 'Supply',
         rect: { x: 1.5, y: 8.4, w: 97, h: 29.8 },
-        tabbed: true,
         children: [
+          {
+            kind: 'group', id: 'dom_el_m_supply_selbar', name: 'Supply switcher',
+            rect: { x: 0, y: 0, w: 100, h: 13 },
+            children: [
+              mSupplyTab('dom_el_m_tab_treasury', 'Treasury', 0),
+              mSupplyTab('dom_el_m_tab_victory', 'Victory', 1),
+              mSupplyTab('dom_el_m_tab_kingdom', 'Kingdom', 2),
+            ],
+          },
           mSupplyPanel('dom_el_m_tab_treasury', 'Treasury', 'dom_el_m_supply_treasures', IS_TREASURE_CARD, 'shift'),
           mSupplyPanel('dom_el_m_tab_victory', 'Victory', 'dom_el_m_supply_victory', IS_BASIC_VICTORY_PILE, 'ctrl'),
           mSupplyPanel('dom_el_m_tab_kingdom', 'Kingdom', 'dom_el_m_supply_kingdom', IS_KINGDOM_PILE, 'alt'),
@@ -1048,17 +1161,9 @@ function buildMobileScreen(): ScreenVariant {
         zoneId: TRASH, seat: 'shared', cardScale: 7.5, showName: true, showCount: true,
         arriveEffect: 'burn', style: M_TRASH, visible: HAS_TRASH, reveal: 'fade',
       },
-      // --- the chronicle: a bottom sheet behind a docked toggle ---------------
-      // Collapsed (the default) it is ONLY the bottom-center tab — the strip
-      // below the harbor stays clear for it. Open, it slides over ~73% of
-      // the screen, the nearest collapsible gets to the original's 70dvh.
-      {
-        kind: 'log', id: 'dom_el_m_log', name: 'Chronicle',
-        rect: { x: 0, y: 27, w: 100, h: 73 },
-        fontSize: 3.2, turnSeparators: true,
-        style: { background: '#211816', borderColor: '#453530', borderWidth: 1, borderRadius: 0 },
-        collapsible: { side: 'bottom', label: 'Chronicle', startCollapsed: true },
-      },
+      // NO chronicle element (spec B §3): the runner's Log drawer is the one
+      // history, and the strip below the harbor stays clear for the peeking
+      // status bar's handle.
     ],
   };
 }
@@ -1110,20 +1215,33 @@ export function buildDominionDef(): GameDef {
 
   def.cards.push(...EXTRA_CARDS);
 
+  // The type/tag vocabulary + the one named filter (spec A §Dominion
+  // migration). Deep-cloned: the def is keeper-editable stored data and must
+  // never share mutable rows with this module's constants.
+  def.cardTypes = deepClone(CARD_TYPES);
+  def.cardTags = deepClone(CARD_TAGS);
+  def.filters = [
+    { id: FILTER_BASIC, name: 'The basic cards', condition: hasTag(CARD, TAG_BASIC) },
+  ];
+
   // Card surgery over the whole catalogue (example clones + the extras):
-  // multi-type CTYPE lines, the pretty KIND display field, and the example
-  // abilities re-expressed on the draw block + move tags.
+  // every card gets its typeId + tags + the pretty KIND display line off the
+  // one TYPE_LINE table; the retired CTYPE text field is scrubbed wholesale
+  // (definition, face binding and every value — nothing reads it anymore);
+  // the example abilities are re-expressed on the draw block + move tags.
   const tpl = def.templates.find((t) => t.id === 'dom_tpl_kingdom');
   if (tpl) {
+    tpl.fields = tpl.fields.filter((f) => f.id !== CTYPE);
     tpl.fields.push({ id: KIND_F, name: 'Kind', type: 'text' });
     const typeEl = tpl.elements.find((e) => e.id === 'dom_el_type');
     if (typeEl && typeEl.kind === 'text') typeEl.bind = KIND_F;
   }
   for (const c of def.cards) {
-    const ctypeOverride = CTYPE_OVERRIDE[c.name];
-    if (ctypeOverride !== undefined) c.fields[CTYPE] = ctypeOverride;
-    const ctype = String(c.fields[CTYPE]);
-    c.fields[KIND_F] = KIND_LABEL[ctype] ?? ctype;
+    delete c.fields[CTYPE];
+    const line = TYPE_LINE[c.name];
+    c.typeId = line.typeId;
+    c.tags = [...line.tags];
+    c.fields[KIND_F] = kindLabelFor(line);
     const abilities = EXAMPLE_ABILITY_OVERRIDES[c.name];
     if (abilities !== undefined) c.abilities = deepClone(abilities);
   }
@@ -1163,12 +1281,14 @@ export function buildDominionDef(): GameDef {
     forEachPlayer([draw(PLAYER, 5)]),
   ];
 
-  // Actions, re-expressed with cause tags. Playing an action is a 'contains'
-  // membership test now (Militia 'action attack' and Moat 'action reaction'
-  // both count as actions, like the original's types.includes).
+  // Actions, re-expressed with cause tags. Play/treasure legality speaks the
+  // primary type now (is-a Action / is-a Treasure — Militia, Witch and Moat
+  // are all Action-TYPED; Attack and Reaction ride as tags), and revealing a
+  // Moat is a has-tag Reaction check: any future reaction card joins the
+  // response window by wearing the tag, no legality edit needed.
   const play = def.actions.find((a) => a.id === 'dom_action_play');
   if (play) {
-    play.legality = allOf(hasType(bnd('$card'), 'action'), gt(getVar(ACTIONS), num(0)));
+    play.legality = allOf(IS_ACTION_CARD, gt(getVar(ACTIONS), num(0)));
     play.script = [
       changeVar(ACTIONS, num(-1)),
       announce(CURRENT, ' plays ', bnd('$card'), '.'),
@@ -1177,10 +1297,19 @@ export function buildDominionDef(): GameDef {
   }
   const treasure = def.actions.find((a) => a.id === 'dom_action_treasure');
   if (treasure) {
+    treasure.legality = IS_TREASURE_CARD;
     treasure.script = [
       changeVar(COINS, field(bnd('$card'), COINS_F)),
       tmove(specific(bnd('$card')), zone(HAND), zone(INPLAY), 'play', { faceUp: true }),
     ];
+  }
+  const revealMoat = def.actions.find((a) => a.id === 'dom_action_reveal_moat');
+  if (revealMoat) {
+    revealMoat.legality = allOf(
+      hasTag(CARD, TAG_REACTION),
+      gt(STACK_SIZE, num(0)),
+      eq(getVar(IMMUNE, bnd('$player')), num(0)),
+    );
   }
   const buy = def.actions.find((a) => a.id === 'dom_action_buy');
   if (buy) {
@@ -1282,7 +1411,11 @@ export function buildDominionDef(): GameDef {
   if (layout) {
     patchTextEl(layout.elements, 'dom_el_turn', { parts: roundNumberParts() });
     // Supply slices + keyboard groups; the captions name their modifier keys.
-    patchZoneEl(layout.elements, 'dom_el_supply_treasures', { keyGroup: 'shift' });
+    // Every slice filter speaks the type/tag vocabulary (the example's ctype
+    // compares are gone with the field itself).
+    patchZoneEl(layout.elements, 'dom_el_supply_treasures', {
+      cardFilter: IS_TREASURE_CARD, keyGroup: 'shift',
+    });
     patchZoneEl(layout.elements, 'dom_el_supply_victory', {
       cardFilter: IS_BASIC_VICTORY_PILE, rows: 4, cardScale: 4, gap: 0.5, keyGroup: 'ctrl',
     });
@@ -1334,6 +1467,13 @@ export function buildDominionDef(): GameDef {
       el.states = sealStates(false);
       el.children = sealChildren(false);
     });
+    // The chronicle leaves the table (spec B §3): the runner's Log drawer is
+    // the one history on BOTH variants (the rebuilt mobile never had one),
+    // and the status bar peeks instead of pinning — it collapses to the
+    // safe-area-clear handle after ~2s idle and returns on hover / tap /
+    // drag-up / focus (dominion-skin.css dresses the handle).
+    removeEl(layout.elements, 'dom_el_chronicle');
+    layout.statusBar = 'peek';
     // The original's per-event flight table (motion.byTag): draw 300/22/45ms,
     // play 320/38, buy+gain 340/40/6°, discard & cleanup sweep 320/36/7°/35ms.
     // Untagged moves keep the 430/46 base — which IS the original's default
@@ -1352,8 +1492,8 @@ export function buildDominionDef(): GameDef {
     // The mobile variant is REBUILT, not patched: the example's tall scroll
     // page (aspect 0.38) buried the supply carousels down a scrolling column
     // — the original's phone design is one fixed viewport. buildMobileScreen
-    // authors the whole pocket table (tabbed supply, compact seal, chronicle
-    // sheet) from scratch.
+    // authors the whole pocket table (supply switcher, compact seal) from
+    // scratch.
     layout.mobile = buildMobileScreen();
   }
 

@@ -298,24 +298,24 @@ function isDocumentedAdvanced(e: Expr): boolean {
 describe('parsing the current Dominion def', () => {
   const def = buildDominionDef();
 
-  it('play legality parses into clause rows (contains-type + variable)', () => {
+  it('play legality parses into clause rows (is-a type + variable)', () => {
     const play = def.actions.find((a) => a.id === 'dom_action_play')!;
     expect(parse(play.legality!)).toEqual(all([
-      { kind: 'fieldCompare', card: '$card', fieldId: 'dom_field_ctype', op: 'contains', value: 'action', negate: false },
+      { kind: 'isType', card: '$card', typeId: 'dom_type_action', negate: false },
       { kind: 'varCompare', varId: 'dom_var_actions', target: null, op: '>', value: 0, negate: false },
     ]));
     // …and compiles back to the identical Expr (left-folded chain).
     expect(compile(parse(play.legality!))).toEqual(play.legality);
   });
 
-  it('treasure legality is an IS_TREASURE-style field compare', () => {
+  it('treasure legality is an IS_TREASURE-style type clause', () => {
     const treasure = def.actions.find((a) => a.id === 'dom_action_treasure')!;
     expect(parse(treasure.legality!)).toEqual(all([
-      { kind: 'fieldCompare', card: '$card', fieldId: 'dom_field_ctype', op: '==', value: 'treasure', negate: false },
+      { kind: 'isType', card: '$card', typeId: 'dom_type_treasure', negate: false },
     ]));
   });
 
-  it('the kingdom slice filter is ONE negated "name is one of" row', () => {
+  it('the kingdom slice filter is ONE "has tag" row; victory rides the named filter', () => {
     const findEl = (els: ScreenElement[], id: string): ScreenElement | null => {
       for (const el of els) {
         if (el.id === id) return el;
@@ -326,18 +326,23 @@ describe('parsing the current Dominion def', () => {
       }
       return null;
     };
-    const kingdom = findEl(def.screenLayout!.elements, 'dom_el_supply_kingdom');
-    expect(kingdom?.kind).toBe('zone');
-    const filter = kingdom?.kind === 'zone' ? kingdom.cardFilter : null;
-    expect(parse(filter!)).toEqual(all([
-      {
-        kind: 'nameOneOf', card: '$card',
-        names: ['Copper', 'Silver', 'Gold', 'Estate', 'Duchy', 'Province', 'Curse'],
-        negate: true,
-      },
+    const sliceFilter = (id: string) => {
+      const el = findEl(def.screenLayout!.elements, id);
+      expect(el?.kind).toBe('zone');
+      return el?.kind === 'zone' ? el.cardFilter : null;
+    };
+    const kingdom = sliceFilter('dom_el_supply_kingdom');
+    expect(parse(kingdom!)).toEqual(all([
+      { kind: 'hasTag', card: '$card', tagId: 'dom_tag_kingdom', negate: false },
     ]));
-    // Compiles back to the exact not(or(…)) chain the def carries today.
-    expect(compile(parse(filter!))).toEqual(filter);
+    expect(compile(parse(kingdom!))).toEqual(kingdom);
+    // The victory column: "matches The basic cards" AND "is not a Treasure".
+    const victory = sliceFilter('dom_el_supply_victory');
+    expect(parse(victory!)).toEqual(all([
+      { kind: 'matchesFilter', card: '$card', filterId: 'dom_filter_basic', negate: false },
+      { kind: 'isType', card: '$card', typeId: 'dom_type_treasure', negate: true },
+    ]));
+    expect(compile(parse(victory!))).toEqual(victory);
   });
 
   it('end conditions parse fully (variable gate + Province pile count)', () => {
@@ -356,12 +361,12 @@ describe('parsing the current Dominion def', () => {
     ]));
   });
 
-  it('Moat legality: name + immunity parse; only the stack gate is advanced', () => {
+  it('Moat legality: has-tag Reaction + immunity parse; only the stack gate is advanced', () => {
     const moat = def.actions.find((a) => a.id === 'dom_action_reveal_moat')!;
     const tree = parse(moat.legality!);
     expect(tree.op).toBe('all');
     const kinds = tree.rows.map((r) => r.kind);
-    expect(kinds).toContain('nameOneOf');
+    expect(kinds).toContain('hasTag');
     expect(kinds).toContain('varCompare');
     const advanced = collectAdvanced(tree);
     expect(advanced).toHaveLength(1);

@@ -1,8 +1,10 @@
 /**
- * The hall's Dominion def: validates clean, hosts all three lobby kingdom
- * sets, is expressed on the schema-v2 vocabulary (choosePile / draw / move
- * tags / triggerAbilities / sumCards / contains), and each set plays to
- * completion through the REAL engine under the example playthrough harness.
+ * The hall's Dominion def: validates clean (zero errors AND zero warnings),
+ * hosts all three lobby kingdom sets, is expressed on the schema-v2
+ * vocabulary (choosePile / draw / move tags / triggerAbilities / sumCards)
+ * plus the type/tag/filter vocabulary (cardTypeIs / cardHasTag / filterRef —
+ * spec A §Dominion migration), and each set plays to completion through the
+ * REAL engine under the example playthrough harness.
  *
  * SEEDED PARITY — approach: invariants, not exact-fixture equality.
  * Pre-refactor baseline (captured on the PICKROW-era def, same harness,
@@ -32,6 +34,7 @@ import { KINGDOM_SETS } from '../shared/kingdoms';
 import { createEngine, isDisplayVisible } from '../engine';
 import { playThrough, totalCards } from '../examples/testHarness';
 import { renderTextParts } from '../runner/layout';
+import { filterDisplayCards } from '../runner/layoutGeometry';
 import { buildDominionDef, kingdomCardNames, pickKingdom } from './dominionGame';
 
 const BASIC_NAMES = ['Copper', 'Silver', 'Gold', 'Estate', 'Duchy', 'Province', 'Curse'];
@@ -74,8 +77,8 @@ function findEl(els: ScreenElement[], id: string): ScreenElement | null {
 describe('buildDominionDef', () => {
   const def = buildDominionDef();
 
-  it('validates with zero errors', () => {
-    expect(errorsOf(def)).toEqual([]);
+  it('validates with zero errors AND zero warnings', () => {
+    expect(validateGameDef(def)).toEqual([]);
   });
 
   it('is the seeded, keeper-editable flagship (not a built-in example)', () => {
@@ -175,15 +178,65 @@ describe('the schema-v2 vocabulary (no staging machinery left)', () => {
     }
   });
 
-  it("multi-type lines are back: 'contains' membership, dual-typed Moat", () => {
-    expect(cardByName('Moat').fields['dom_field_ctype']).toBe('action reaction');
-    expect(cardByName('Militia').fields['dom_field_ctype']).toBe('action attack');
-    expect(cardByName('Witch').fields['dom_field_ctype']).toBe('action attack');
+  it('defines the type/tag vocabulary + the one named filter (spec A)', () => {
+    expect(def.cardTypes?.map((t) => t.name)).toEqual(['Treasure', 'Victory', 'Curse', 'Action']);
+    // Every type wears its skin-palette accent color.
+    for (const t of def.cardTypes!) expect(t.color).toMatch(/^#[0-9a-f]{6}$/);
+    // MOAT DECISION (see dominionGame.ts): a card has ONE primary type, so
+    // "Action – Reaction" is Action-TYPED with a Reaction TAG and the spec's
+    // Reaction TYPE is dropped. Duration stays undeclared until slice D
+    // ships a Duration card — an unused tag would be a validation warning.
+    expect(def.cardTags?.map((t) => t.name)).toEqual(['Attack', 'Reaction', 'Kingdom', 'Basic']);
+    expect(def.filters?.map((f) => f.name)).toEqual(['The basic cards']);
+    expect(json(def.filters![0].condition)).toContain('"kind":"cardHasTag"');
+  });
+
+  it('every card carries a primary type + tags (basics Basic, kingdom Kingdom)', () => {
+    for (const c of def.cards) {
+      expect(c.typeId, `${c.name} is typed`).toBeTruthy();
+      expect(c.tags !== undefined && c.tags.length > 0, `${c.name} is tagged`).toBe(true);
+    }
+    const typeOf = (n: string) => cardByName(n).typeId;
+    for (const n of ['Copper', 'Silver', 'Gold']) expect(typeOf(n)).toBe('dom_type_treasure');
+    for (const n of ['Estate', 'Duchy', 'Province']) expect(typeOf(n)).toBe('dom_type_victory');
+    expect(typeOf('Curse')).toBe('dom_type_curse');
+    for (const n of ['Copper', 'Province', 'Curse']) {
+      expect(cardByName(n).tags).toEqual(['dom_tag_basic']);
+    }
+    // Gardens is victory-TYPED but stays a kingdom card, like the original.
+    expect(typeOf('Gardens')).toBe('dom_type_victory');
+    expect(cardByName('Gardens').tags).toEqual(['dom_tag_kingdom']);
+    for (const n of ['Village', 'Smithy', 'Militia', 'Witch', 'Moat', 'Throne Room']) {
+      expect(typeOf(n), `${n} is an action`).toBe('dom_type_action');
+    }
+    expect(cardByName('Militia').tags).toEqual(['dom_tag_kingdom', 'dom_tag_attack']);
+    expect(cardByName('Witch').tags).toEqual(['dom_tag_kingdom', 'dom_tag_attack']);
+    expect(cardByName('Moat').tags).toEqual(['dom_tag_kingdom', 'dom_tag_reaction']);
+  });
+
+  it('conditions read the vocabulary; the ctype field is scrubbed wholesale', () => {
+    // Play/treasure legality = primary-type checks; Moat reveal = has-tag
+    // Reaction (any future reaction joins the window by wearing the tag).
     const play = def.actions.find((a) => a.id === 'dom_action_play')!;
-    expect(json(play.legality)).toContain('"op":"contains"');
+    expect(json(play.legality)).toContain('"kind":"cardTypeIs"');
+    expect(json(play.legality)).toContain('dom_type_action');
+    const treasure = def.actions.find((a) => a.id === 'dom_action_treasure')!;
+    expect(json(treasure.legality)).toContain('dom_type_treasure');
+    const reveal = def.actions.find((a) => a.id === 'dom_action_reveal_moat')!;
+    expect(json(reveal.legality)).toContain('"kind":"cardHasTag"');
+    expect(json(reveal.legality)).toContain('dom_tag_reaction');
+    // Throne Room filters is-a Action; Mine filters is-a Treasure.
+    expect(json(cardByName('Throne Room').abilities)).toContain('"kind":"cardTypeIs"');
+    expect(json(cardByName('Mine').abilities)).toContain('dom_type_treasure');
+    // The retired machine field is GONE — definition, face binding, values,
+    // and every condition that once read it.
+    expect(json(def)).not.toContain('dom_field_ctype');
+    expect(json(def)).not.toContain('"op":"contains"');
     // The display line stays pretty (the KIND field carries the em-dash text).
     expect(cardByName('Moat').fields['dom_field_kind']).toBe('Action – Reaction');
+    expect(cardByName('Militia').fields['dom_field_kind']).toBe('Action – Attack');
     expect(cardByName('Copper').fields['dom_field_kind']).toBe('Treasure');
+    expect(cardByName('Gardens').fields['dom_field_kind']).toBe('Victory');
   });
 });
 
@@ -533,6 +586,35 @@ describe('the screen layout speaks the original table\'s language', () => {
     expect(zoneEl('dom_el_my_hand').fanAngle).toBe(1.6);
   });
 
+  it('supply slices resolve through the type/tag exprs: the kingdom slice is EXACTLY the ten piles', async () => {
+    // The slices speak the new vocabulary — Treasury "is-a Treasure",
+    // Victory "matches The basic cards AND is not a Treasure" (the named
+    // filter's consumer), Kingdom "has tag Kingdom" — evaluated here by the
+    // runner's own display filter against a REAL started engine.
+    const { engine, errors } = probeEngine(def, () => { throw new Error('no choices expected'); });
+    await engine.start();
+    const state = engine.getState();
+    const supplyIds = state.zones['dom_zone_supply'].cardIds;
+    const slice = (id: string) => {
+      const el = findEl(els, id) as Extract<ScreenElement, { kind: 'zone' }>;
+      const names = filterDisplayCards(def, state, supplyIds, el.cardFilter, 'p0')
+        .map((cid) => state.cards[cid].name);
+      return [...new Set(names)].sort();
+    };
+    expect(slice('dom_el_supply_treasures')).toEqual(['Copper', 'Gold', 'Silver']);
+    expect(slice('dom_el_supply_victory')).toEqual(['Curse', 'Duchy', 'Estate', 'Province']);
+    // Ten piles, exactly — the default First Game set, Gardens-style
+    // victory-typed kingdom cards included, no basics leaking in.
+    expect(slice('dom_el_supply_kingdom')).toEqual([...KINGDOM_SETS[0].cards].sort());
+    // The mobile panels carry the same three exprs against the same zone.
+    const mEls = def.screenLayout!.mobile!.elements;
+    const mKingdom = findEl(mEls, 'dom_el_m_supply_kingdom') as Extract<ScreenElement, { kind: 'zone' }>;
+    const mNames = filterDisplayCards(def, state, supplyIds, mKingdom.cardFilter, 'p0')
+      .map((cid) => state.cards[cid].name);
+    expect([...new Set(mNames)].sort()).toEqual([...KINGDOM_SETS[0].cards].sort());
+    expect(errors).toEqual([]);
+  });
+
   it('desktop kingdom piles wear the DGT tile at the --pile-w-k width; basics stay mini cards', () => {
     const zoneEl = (id: string) => findEl(els, id) as Extract<ScreenElement, { kind: 'zone' }>;
     // The original's desktop kingdom was a grid of makePile plates, not card
@@ -627,16 +709,34 @@ describe("the mobile variant is the original's pocket table (one viewport)", () 
     expect(m.aspect ?? null).toBeNull();
   });
 
-  it('the supply is ONE tabbed group with Treasury / Victory / Kingdom panels', () => {
+  it('the supply is a SWITCHER: three selector buttons + three bound panels (no tabbed flag)', () => {
+    // The deprecated tabbed:true runner chrome is gone from the def source.
+    expect(JSON.stringify(def)).not.toContain('"tabbed"');
     const supply = findEl(m.elements, 'dom_el_m_supply') as Extract<ScreenElement, { kind: 'group' }>;
     expect(supply.kind).toBe('group');
-    expect(supply.tabbed).toBe(true);
-    // Tab labels come from the direct children's names — exact, in order.
-    expect(supply.children.map((p) => p.name)).toEqual(['Treasury', 'Victory', 'Kingdom']);
-    // Each panel holds ITS slice of the one shared supply zone.
-    expect(findEl([supply.children[0]], 'dom_el_m_supply_treasures')).not.toBeNull();
-    expect(findEl([supply.children[1]], 'dom_el_m_supply_victory')).not.toBeNull();
-    expect(findEl([supply.children[2]], 'dom_el_m_supply_kingdom')).not.toBeNull();
+    expect(supply.children.map((p) => p.name))
+      .toEqual(['Supply switcher', 'Treasury', 'Victory', 'Kingdom']);
+    // The selector row: three designed buttons, ONE radio group, no actions.
+    const selbar = supply.children[0] as Extract<ScreenElement, { kind: 'group' }>;
+    const buttons = selbar.children as Extract<ScreenElement, { kind: 'button' }>[];
+    expect(buttons.map((b) => b.id)).toEqual([
+      'dom_el_m_tab_treasury_sel', 'dom_el_m_tab_victory_sel', 'dom_el_m_tab_kingdom_sel',
+    ]);
+    expect(buttons.map((b) => b.label)).toEqual(['Treasury', 'Victory', 'Kingdom']);
+    for (const b of buttons) {
+      expect(b.kind).toBe('button');
+      expect(b.role, `${b.id} switches, never acts`).toBe('selector');
+      expect(b.selectorGroup).toBe('dom_el_m_supply');
+      expect(b.actionId).toBeNull();
+    }
+    // Each panel binds to ITS button and holds ITS slice of the one supply.
+    const panels = supply.children.slice(1);
+    expect(panels.map((p) => p.showForSelector)).toEqual([
+      'dom_el_m_tab_treasury_sel', 'dom_el_m_tab_victory_sel', 'dom_el_m_tab_kingdom_sel',
+    ]);
+    expect(findEl([panels[0]], 'dom_el_m_supply_treasures')).not.toBeNull();
+    expect(findEl([panels[1]], 'dom_el_m_supply_victory')).not.toBeNull();
+    expect(findEl([panels[2]], 'dom_el_m_supply_kingdom')).not.toBeNull();
   });
 
   it('supply slices are tile-faced carousels with the DGT digit semantics', () => {
@@ -661,13 +761,19 @@ describe("the mobile variant is the original's pocket table (one viewport)", () 
     expect(hand.collapseDuplicates).toBe(true);
   });
 
-  it('the chronicle is a collapsible bottom sheet (the 70dvh slide-up)', () => {
-    const log = findEl(m.elements, 'dom_el_m_log')!;
-    expect(log.kind).toBe('log');
-    expect(log.collapsible?.side).toBe('bottom');
-    expect(log.collapsible?.startCollapsed).toBe(true);
-    // ~70dvh: the open sheet covers most of the screen from the bottom.
-    expect(log.rect.h).toBeGreaterThanOrEqual(65);
+  it('NO chronicle on either variant; the status bar peeks (spec B §3)', () => {
+    // The runner's Log drawer is the one history — no on-board log element
+    // anywhere (the `log` element kind itself survives for other games).
+    const noLogs = (els: ScreenElement[]): boolean => els.every((el) => {
+      if (el.kind === 'log') return false;
+      const kids = el.kind === 'group' ? el.children : el.children ?? [];
+      return kids.length === 0 || noLogs(kids);
+    });
+    expect(noLogs(def.screenLayout!.elements), 'desktop chronicle gone').toBe(true);
+    expect(noLogs(m.elements), 'mobile chronicle gone').toBe(true);
+    expect(findEl(def.screenLayout!.elements, 'dom_el_chronicle')).toBeNull();
+    // The status bar collapses to the safe-area-clear handle after idle.
+    expect(def.screenLayout!.statusBar).toBe('peek');
   });
 
   it('the compact seal keeps the six states and drops the keyboard hint', () => {

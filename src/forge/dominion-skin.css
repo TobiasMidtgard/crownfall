@@ -338,32 +338,20 @@
   text-decoration-color: var(--dgt-ash);
 }
 
-/* ---------- tabbed supply (group tabbed: true — the rn-tab* chrome) -------- */
+/* ---------- supply switcher (selector buttons — the DGT tab dress) --------- */
 
-/* The original .supply-tabs: a hairline base rule, engraved uppercase labels
-   (ash, bone when active) and the crimson tab-slider gliding underneath at
-   0.35s out-expo with the small-notch corners (--dgt-notch-sm, 6px). */
-.dominion-skin .rn-tabbar {
-  gap: 0;
-  background: transparent;
-  border-bottom: 1px solid var(--dgt-rule);
-}
-.dominion-skin .rn-tab {
+/* The mobile supply's three DESIGNED selector buttons (button role
+   'selector'; the old tabbed:true rn-tab* chrome is gone from the runner).
+   The original .supply-tabs treatment: engraved uppercase labels over a
+   hairline base rule — ash at rest, bone when active — and the ACTIVE
+   button wearing the crimson plate with the small-notch corners
+   (--dgt-notch-sm, 6px), the tab-slider's plate painted on the button
+   itself. The color !important outranks the seal's AT-only transparent
+   label rule below (selector buttons WEAR their labels). */
+.dominion-skin .rn-sl-btn.rn-sel {
   background: transparent;
   border: none;
-  border-radius: 0;
-  padding: 0.5rem 0.85rem;
-  font-family: var(--dgt-grotesk);
-  font-size: 0.66rem;
-  font-weight: 600;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--dgt-ash);
-  transition: color 0.25s var(--dgt-out-expo);
-}
-.dominion-skin .rn-tab.rn-tab-active { color: var(--dgt-bone); }
-.dominion-skin .rn-tabslider {
-  background: var(--dgt-crimson);
+  border-bottom: 1px solid var(--dgt-rule);
   border-radius: 0;
   clip-path: polygon(
     var(--dgt-notch-sm) 0,
@@ -373,12 +361,23 @@
     0 100%,
     0 var(--dgt-notch-sm)
   );
-  /* Cover both movement idioms — translate/width and left/transform. */
+  box-shadow: none;
+  font-family: var(--dgt-grotesk);
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dgt-ash) !important;
   transition:
-    translate 0.35s var(--dgt-out-expo),
-    width 0.35s var(--dgt-out-expo),
-    left 0.35s var(--dgt-out-expo),
-    transform 0.35s var(--dgt-out-expo);
+    color 0.25s var(--dgt-out-expo),
+    background-color 0.35s var(--dgt-out-expo),
+    border-color 0.35s var(--dgt-out-expo);
+}
+.dominion-skin .rn-sl-btn.rn-sel:hover { color: var(--dgt-bone) !important; }
+.dominion-skin .rn-sl-btn.rn-sel.rn-sel-on {
+  background: var(--dgt-crimson);
+  border-bottom-color: var(--dgt-crimson);
+  color: var(--dgt-bone) !important;
+  box-shadow: 0 0 14px oklch(0.5 0.2 22 / 0.35);
 }
 
 /* ---------- the phase seal & screen buttons (notched, crimson) ---------- */
@@ -398,7 +397,7 @@
   letter-spacing: 0.04em;
   transition: background 0.25s var(--dgt-out-expo), border-color 0.25s var(--dgt-out-expo);
 }
-.dominion-skin .rn-sl-btn:not(:disabled):not(.rn-sl-deco) {
+.dominion-skin .rn-sl-btn:not(:disabled):not(.rn-sl-deco):not(.rn-sel) {
   background: var(--dgt-crimson);
   border-color: var(--dgt-crimson-bright);
   color: var(--dgt-bone);
@@ -406,10 +405,10 @@
 }
 /* Hover deepens the seal rather than brightening it: bone on crimson-bright
    is 3.6:1, below the hall's 4.5:1 contrast floor (crownfall.css). */
-.dominion-skin .rn-sl-btn:not(:disabled):not(.rn-sl-deco):hover {
+.dominion-skin .rn-sl-btn:not(:disabled):not(.rn-sl-deco):not(.rn-sel):hover {
   background: var(--dgt-crimson-press);
 }
-.dominion-skin .rn-sl-btn:not(:disabled):not(.rn-sl-deco):active {
+.dominion-skin .rn-sl-btn:not(:disabled):not(.rn-sl-deco):not(.rn-sel):active {
   background: var(--dgt-crimson-deep);
 }
 .dominion-skin .rn-sl-btn.rn-sl-pass {
@@ -428,14 +427,14 @@
   border-color: transparent;
   color: var(--dgt-ash);
 }
-.dominion-skin .rn-root[data-active='foe'] .rn-sl-btn {
+.dominion-skin .rn-root[data-active='foe'] .rn-sl-btn:not(.rn-sel) {
   opacity: 1;
   background: var(--dgt-hall);
   border-color: transparent;
   color: var(--dgt-ash);
   box-shadow: inset 0 0 0 1px var(--dgt-rule-soft);
 }
-.dominion-skin .rn-root[data-active='over'] .rn-sl-btn {
+.dominion-skin .rn-root[data-active='over'] .rn-sl-btn:not(.rn-sel) {
   opacity: 1;
   background: var(--dgt-crimson);
   border-color: var(--dgt-crimson-bright);
@@ -448,8 +447,9 @@
    the key chip on desktop) on BOTH trees: the rebuilt mobile seal carries
    the same overlay children (minus the key hint, per the spec's ≤45rem
    seal), so the full-plate button's own label is for AT only everywhere
-   (!important outranks the per-state color rules above). */
-.dominion-skin .rn-sl-btn { color: transparent !important; }
+   (!important outranks the per-state color rules above). Selector buttons
+   are exempt — the supply switcher's labels are its whole face. */
+.dominion-skin .rn-sl-btn:not(.rn-sel) { color: transparent !important; }
 
 /* Overlay texts and shapes never eat the plate's clicks: the RUNNER inerts
    text/varText/shape wrappers itself (.rn-el-inert in runner.css) — the
@@ -553,41 +553,46 @@
   border-top: 1px solid var(--dgt-rule-soft);
 }
 
-/* ---------- chronicle ---------- */
+/* ---------- peek status bar (screenLayout.statusBar 'peek') ---------- */
 
-.dominion-skin .rn-sl-logsep {
-  letter-spacing: 0.14em;
-  font-weight: 600;
-  color: var(--dgt-ash);
-}
-.dominion-skin .rn-sl-logsep::after { background: var(--dgt-rule); }
-
-/* The chronicle's dock tab + close chip (the runner's collapsible — side
-   'right' rail on desktop, the 'bottom' sheet toggle on the phone): hall
-   plates with engraved labels, crimson when engaged — the original's
-   .chron-toggle treatment. */
-.dominion-skin .rn-collapse-tab {
+/* The chronicle elements are gone (the runner's Log drawer is the one
+   history), and the status bar collapses to a floating "Show game bar"
+   handle after ~2s idle. The handle inherits the old chronicle toggle's
+   dress: a hall ground plate, notched (--dgt-notch-sm), with an engraved
+   uppercase label and the grip re-toned to the hall's hairline rule —
+   crimson when engaged. Classes per the runner's wave-1C contract
+   (.rn-status-handle / .rn-status-grip / .rn-status-handle-label). */
+.dominion-skin .rn-status-handle {
   background: var(--dgt-hall);
-  border-color: var(--dgt-rule);
+  border: 1px solid var(--dgt-rule);
   border-radius: 0;
+  clip-path: polygon(
+    var(--dgt-notch-sm) 0,
+    100% 0,
+    100% calc(100% - var(--dgt-notch-sm)),
+    calc(100% - var(--dgt-notch-sm)) 100%,
+    0 100%,
+    0 var(--dgt-notch-sm)
+  );
   color: var(--dgt-ash);
+  font-family: var(--dgt-grotesk);
   font-size: 0.66rem;
+  font-weight: 600;
   letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
-.dominion-skin .rn-collapse-tab:hover {
+.dominion-skin .rn-status-handle:hover {
   color: var(--dgt-crimson-bright);
   border-color: var(--dgt-crimson);
 }
-.dominion-skin .rn-collapse-close {
-  background: var(--dgt-hall);
-  border-color: var(--dgt-rule);
-  border-radius: 0;
-  color: var(--dgt-ash);
+/* clip-path clips outlines — the focus ring moves inside, like the other
+   notched plates above (the runner keeps the :focus-visible escape that
+   holds the handle visible while it owns keyboard focus). */
+.dominion-skin .rn-status-handle:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--dgt-bone);
 }
-.dominion-skin .rn-collapse-close:hover {
-  color: var(--dgt-crimson-bright);
-  border-color: var(--dgt-crimson);
-}
+.dominion-skin .rn-status-grip { background: var(--dgt-rule); }
 
 /* ---------- sheets & the verdict (game over) ---------- */
 
@@ -660,11 +665,8 @@
   .dominion-skin .rn-refuse { animation: none; }
   .dominion-skin .rn-spile { transition: none; }
   .dominion-skin .rn-sl-btn { transition: none; }
-  /* The tab bar snaps: no gliding slider, no label cross-fade. */
-  .dominion-skin .rn-tab,
-  .dominion-skin .rn-tabslider {
-    transition: none;
-  }
+  /* The supply switcher snaps: no plate glide, no label cross-fade. */
+  .dominion-skin .rn-sl-btn.rn-sel { transition: none; }
 }
 
 /* The hall's own "Reduce animations" toggle (html.calm, Profile & settings)
@@ -688,7 +690,4 @@ html.calm .dominion-skin .rn-cardwrap.rn-glow {
 html.calm .dominion-skin .rn-refuse { animation: none; }
 html.calm .dominion-skin .rn-spile { transition: none; }
 html.calm .dominion-skin .rn-sl-btn { transition: none; }
-html.calm .dominion-skin .rn-tab,
-html.calm .dominion-skin .rn-tabslider {
-  transition: none;
-}
+html.calm .dominion-skin .rn-sl-btn.rn-sel { transition: none; }

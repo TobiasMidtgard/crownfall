@@ -571,6 +571,50 @@
   border: 1px solid var(--accent);
 }
 
+/* ---------- real-render preview layer (runner ScreenRenderer) ---------- */
+
+/* The runner's ScreenRenderer, mounted behind the editor overlay so the
+   preview draws the exact in-game components at the exact size. It fills the
+   whole .tt-screen (== the runner's stage area, so overlay boxes align with
+   the rendered elements) and never intercepts pointer events — the editor
+   overlay above owns all interaction. It sits at the back of .tt-screen (z 0);
+   the .tt-el hit boxes, ghosts and guides stack above it. The nested
+   .forge-root re-establishes Cardsmith's scoped tokens for the .rn-* subtree;
+   .dominion-skin (added by PreviewStage for the seeded def) dresses it. */
+/* Two classes (.forge-root.tt-preview-stage, specificity 0,2,0) so this beats
+   the .dominion-skin app-shell root rule (0,1,0), which sets height:100dvh /
+   display:flex / background on ANY .dominion-skin element — including this
+   nested wrapper. We must NOT inherit those: the wrapper fills .tt-screen
+   exactly so the ScreenRenderer measures the right area and the overlay boxes
+   align with the rendered elements. */
+.forge-root.tt-preview-stage {
+  position: absolute;
+  inset: 0;
+  height: auto;
+  display: block;
+  background: none;
+  z-index: 0;
+  pointer-events: none;
+  overflow: hidden;
+  border-radius: inherit;
+}
+/* The ScreenRenderer's stage area fills this box; its own .rn-screen letterboxes
+   inside exactly as the runner's computeStage does. */
+.tt-preview-stage .rn-screenarea { position: absolute; inset: 0; }
+
+/* Preview element: a transparent HIT BOX. The kind classes (tt-el-zone,
+   tt-el-group, tt-el-log) and inner previews normally paint a frame/background;
+   here they must not occlude the real render behind. Selection outline, resize
+   handle, ghosts, guides and the affordance chips still show. */
+.tt-el-pv,
+.tt-el-pv.tt-el-zone,
+.tt-el-pv.tt-el-group,
+.tt-el-pv.tt-el-log {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
 /* ---------- live preview (sample game state) ---------- */
 
 /* Toolbar toggle: lit while the preview resolves against the sample. */

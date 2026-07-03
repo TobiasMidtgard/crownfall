@@ -419,10 +419,21 @@ function Table({ def, session, snap, navigate, onPlayAgain, homeLabel }: {
     </div>
   );
 
+  // Screen-layout mode goes FULL-BLEED: the authored screen fills the whole
+  // table and the action bar floats as a bottom overlay (rn-table-screen)
+  // instead of reserving a grid row. Peek status already overlays (height-0
+  // slot), so a peek screen game gets the entire viewport; a pinned screen
+  // game keeps its reserved status row and the bar overlays just above it.
+  // Automatic-layout games (active === null) keep the classic 4-row grid.
+  const pinnedStatus = (def.screenLayout?.statusBar ?? 'pinned') !== 'peek';
+  const tableClass = active
+    ? `rn-table rn-table-screen${pinnedStatus ? ' rn-table-screen-pinned' : ''}`
+    : 'rn-table';
+
   return (
     <div className="rn-root" data-phase={phase?.id} data-active={activeAttr}>
       {tableHeading}
-      <div className="rn-table">
+      <div className={tableClass}>
         {active ? (
           <section className="rn-screenhost">
             <ScreenRenderer ctx={ctx} screen={active} buttonMove={screenButtonMove} onMove={doMove} />

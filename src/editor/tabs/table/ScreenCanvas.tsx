@@ -40,8 +40,9 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GameDef, GameState, Id, LayoutStyle, ScreenElement, ScreenLayout } from '../../../shared/types';
 import { exprToText } from '../../blocks/exprToText';
 import { formatVarValue, renderTextParts, varTextValue } from '../../../runner/layout';
-import { resolveElementAppearance } from '../../../runner/layoutGeometry';
+import { activeScreenVariant, resolveElementAppearance } from '../../../runner/layoutGeometry';
 import { SAMPLE_VIEWER_ID, buildSampleState } from './sampleState';
+import { PreviewStage } from './PreviewStage';
 import {
   ASPECT_VALUES, GROUP_MIN, MIN_H, MIN_W, PHONE_ASPECT, absToGroupRel, applyElementState,
   aspectPresetOf, boundingRect, deepestGroupAt, fanMarginPx, fitCount, groupRelToAbs,
@@ -205,6 +206,21 @@ export function ScreenCanvas({
 
   // The editing tree: the focused element's children, or the whole variant.
   const elements = focusEl ? focusEl.children ?? NO_ELEMENTS : fullElements;
+
+  // ----- real-render preview layer (the runner's ScreenRenderer) -------------
+  // With the live preview ON and NOT in focus mode, the runner's own
+  // ScreenRenderer paints behind the editor overlay (PreviewStage). The
+  // overlay's element bodies then render EMPTY so the true render shows
+  // through; only selection outlines, handles, ghosts and guides remain.
+  // Focus mode keeps the representative tt-* bodies (the ScreenRenderer draws
+  // the whole screen, not one element's magnified interior).
+  const previewMode = pvState !== null && !focusEl;
+  // The active variant tree for the ScreenRenderer, matching what the canvas
+  // edits (desktop vs mobile) — never ScreenRenderer's own media query.
+  const activeScreen = useMemo(
+    () => activeScreenVariant(layout, variant === 'mobile'),
+    [layout, variant],
+  );
 
   // Surface dims. Focused: the stage takes the element's real on-screen
   // aspect, and `unitW` rescales %-of-screen-width units (fontSize, card
@@ -709,9 +725,15 @@ export function ScreenCanvas({
     // Shapes/lines paint their chrome themselves (circle radius, line color).
     const ownChrome = el.kind === 'shape' || el.kind === 'line';
     const padPx = el.kind === 'zone' ? pctToPx(unitW, el.padding) : undefined;
+    // Real-render preview: this .tt-el is a transparent HIT BOX only — its body
+    // and chrome (background/border/padding from the kind class + inline style)
+    // are suppressed so the ScreenRenderer painting behind shows through. The
+    // ghost being dragged still shows its body so the drag reads clearly.
+    const asHitbox = previewMode && !ghost;
     const cls = [
       'tt-el',
       `tt-el-${el.kind}`,
+      asHitbox ? 'tt-el-pv' : '',
       isSel ? 'tt-el-selected' : '',
       hover ? 'tt-el-hover' : '',
       // Preview resolves ƒx visibility for real — no need to dim survivors.
@@ -724,15 +746,18 @@ export function ScreenCanvas({
         className={cls}
         style={{
           left: `${pos.x}%`, top: `${pos.y}%`, width: `${pos.w}%`, height: `${pos.h}%`,
-          ...(ownChrome ? {} : layoutStyleCss(style)),
-          ...(padPx !== undefined ? { padding: padPx } : {}),
+          // Hit-box mode: no inline chrome/padding — the real render is behind.
+          ...(asHitbox || ownChrome ? {} : layoutStyleCss(style)),
+          ...(!asHitbox && padPx !== undefined ? { padding: padPx } : {}),
           ...(ghost ? { zIndex: 1000 } : {}),
         }}
         onPointerDown={(e) => startDrag(e, el.id, 'move')}
         role="button"
         aria-label={`${el.name} — drag to move`}
       >
-        <ElementBody def={def} el={el} abs={abs} screenH={screenH} screenW={unitW} style={style} sample={pvState} />
+        {!asHitbox && (
+          <ElementBody def={def} el={el} abs={abs} screenH={screenH} screenW={unitW} style={style} sample={pvState} />
+        )}
         {el.children?.map((c) => renderElement(c, abs, false))}
         {pvState !== null && el.collapsible != null && isSel && !ghost && (
           <button
@@ -903,6 +928,9 @@ export function ScreenCanvas({
               ...(background && !focusEl ? { background } : {}),
             }}
           >
+            {previewMode && pvState !== null && (
+              <PreviewStage def={def} sample={pvState} screen={activeScreen} />
+            )}
             {backdrop}
             {elements.map((el) => renderElement(el, ROOT_RECT, false))}
             {ghosts}

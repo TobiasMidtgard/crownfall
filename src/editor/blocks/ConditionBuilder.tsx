@@ -21,7 +21,7 @@ import { removeAt, updateAt } from '../lib';
 import { ZoneRefFields } from './ExpressionEditor';
 import { exprToText, zoneRefToText } from './exprToText';
 import {
-  compile, emptyTree, parse,
+  commitTree, compile, emptyGroupReadsAs, emptyTree, parse,
   type Clause, type ConditionGroup, type ConditionRow, type GroupOp,
 } from './conditionModel';
 
@@ -35,10 +35,16 @@ export interface ConditionBuilderProps {
   allowNull?: boolean;
   /** Label for the null / empty state, e.g. "Always allowed". */
   nullLabel?: string;
+  /**
+   * When set, Done is blocked while the tree has no rows and this message
+   * shows inline — for slots where an empty condition is a trap (an empty
+   * end condition compiles to TRUE: the game would end immediately).
+   */
+  requireRowsMessage?: string;
 }
 
 export function ConditionBuilder({
-  def, value, onChange, bindings = [], allowNull = false, nullLabel,
+  def, value, onChange, bindings = [], allowNull = false, nullLabel, requireRowsMessage,
 }: ConditionBuilderProps) {
   const [open, setOpen] = useState(false);
   return (
@@ -57,6 +63,7 @@ export function ConditionBuilder({
           bindings={bindings}
           allowNull={allowNull}
           nullLabel={nullLabel}
+          requireRowsMessage={requireRowsMessage}
           onCancel={() => setOpen(false)}
           onSave={(e) => { setOpen(false); onChange(e); }}
         />
@@ -65,20 +72,27 @@ export function ConditionBuilder({
   );
 }
 
-export function ConditionBuilderModal({ def, value, bindings, allowNull, nullLabel, onSave, onCancel }: {
+export function ConditionBuilderModal({ def, value, bindings, allowNull, nullLabel, requireRowsMessage, onSave, onCancel }: {
   def: GameDef;
   value: Expr | null;
   bindings: string[];
   allowNull?: boolean;
   nullLabel?: string;
+  requireRowsMessage?: string;
   onSave: (expr: Expr | null) => void;
   onCancel: () => void;
 }) {
-  const [draft, setDraft] = useState<ConditionGroup>(() => (value ? parse(value) : emptyTree()));
+  const [draft, setDraftState] = useState<ConditionGroup>(() => (value ? parse(value) : emptyTree()));
+  // Done without edits keeps the ORIGINAL value verbatim: parse/compile
+  // canonicalizes, and canonicalizing a value the user never touched would
+  // rewrite stored data (e.g. flip a bool-false "never" to null "always").
+  const [dirty, setDirty] = useState(false);
+  const setDraft = (g: ConditionGroup) => { setDraftState(g); setDirty(true); };
+
+  const emptyBlocked = requireRowsMessage !== undefined && draft.rows.length === 0;
 
   const save = () => {
-    if (draft.rows.length === 0 && allowNull) onSave(null);
-    else onSave(compile(draft));
+    onSave(dirty ? commitTree(draft, allowNull === true) : value);
   };
 
   return (
@@ -93,14 +107,19 @@ export function ConditionBuilderModal({ def, value, bindings, allowNull, nullLab
               {nullLabel ?? 'Always'}
             </button>
           )}
-          <button type="button" className="btn btn-primary" onClick={save}>Done</button>
+          <button type="button" className="btn btn-primary" disabled={emptyBlocked} onClick={save}>Done</button>
         </>
       )}
     >
       <GroupEditor def={def} group={draft} onChange={setDraft} bindings={bindings} depth={0} />
       <p className="faint" style={{ marginTop: 12 }}>
-        = {draft.rows.length === 0 ? (nullLabel ?? 'always') : exprToText(def, compile(draft))}
+        = {draft.rows.length === 0
+          ? (emptyGroupReadsAs(draft.op) === 'never' ? 'never' : (nullLabel ?? 'always'))
+          : exprToText(def, compile(draft))}
       </p>
+      {emptyBlocked && (
+        <p style={{ marginTop: 8 }}><span className="chip warn">{requireRowsMessage}</span></p>
+      )}
     </Modal>
   );
 }
@@ -153,7 +172,9 @@ function GroupEditor({ def, group, onChange, bindings, depth, onRemove }: {
       </div>
 
       {group.rows.length === 0 && (
-        <p className="faint" style={{ margin: '4px 0 8px' }}>No conditions yet — this reads as “always”.</p>
+        <p className="faint" style={{ margin: '4px 0 8px' }}>
+          No conditions yet — this reads as “{emptyGroupReadsAs(group.op)}”.
+        </p>
       )}
 
       {group.rows.map((row, i) => {
@@ -248,15 +269,21 @@ function defaultCardSubject(bindings: string[]): string {
   return cardSubjects(bindings)[0] ?? '$card';
 }
 
-interface KindOption { kind: Clause['kind']; label: string }
+interface KindOption { kind: Clause['kind']; label: string; disabled?: boolean }
 
-/** Clause kinds this slot can offer (bindings-gated, def-list-gated). */
+/**
+ * Clause kinds this slot can offer (bindings-gated, def-list-gated). Type/tag
+ * clauses with an EMPTY vocabulary stay in the menu as disabled entries — the
+ * feature must be discoverable even before any types/tags exist.
+ */
 function availableKinds(def: GameDef, bindings: string[]): KindOption[] {
   const out: KindOption[] = [];
   const hasCard = cardSubjects(bindings).length > 0;
   if (hasCard) {
     if ((def.cardTypes ?? []).length > 0) out.push({ kind: 'isType', label: 'card is a type…' });
+    else out.push({ kind: 'isType', label: 'card is a type… (no types yet — define them in the Types tab)', disabled: true });
     if ((def.cardTags ?? []).length > 0) out.push({ kind: 'hasTag', label: 'card has tag…' });
+    else out.push({ kind: 'hasTag', label: 'card has tag… (no tags yet — define them in the Types tab)', disabled: true });
     out.push({ kind: 'fieldCompare', label: 'card field compares…' });
     out.push({ kind: 'nameOneOf', label: 'card name is one of…' });
     if ((def.filters ?? []).length > 0) out.push({ kind: 'matchesFilter', label: 'card matches a saved filter…' });
@@ -306,7 +333,7 @@ export function makeClause(def: GameDef, bindings: string[], kind: Clause['kind'
 }
 
 function makeDefaultClause(def: GameDef, bindings: string[]): Clause {
-  const kinds = availableKinds(def, bindings);
+  const kinds = availableKinds(def, bindings).filter((k) => !k.disabled);
   return makeClause(def, bindings, kinds[0]?.kind ?? 'turnCompare');
 }
 
@@ -391,7 +418,7 @@ function ClauseRow({ def, clause, onChange, onRemove, bindings, kinds }: {
         onChange={(e) => onChange({ ...makeClause(def, bindings, e.target.value as Clause['kind']), negate: clause.negate })}
       >
         {!kinds.some((k) => k.kind === clause.kind) && <option value={clause.kind}>{clause.kind}</option>}
-        {kinds.map((k) => <option key={k.kind} value={k.kind}>{k.label}</option>)}
+        {kinds.map((k) => <option key={k.kind} value={k.kind} disabled={k.disabled}>{k.label}</option>)}
       </select>
       <ClauseFields def={def} clause={clause} onChange={onChange} bindings={bindings} />
       <button type="button" className="btn btn-small btn-ghost" aria-label="Remove condition" onClick={onRemove}>✕</button>

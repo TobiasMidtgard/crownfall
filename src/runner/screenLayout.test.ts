@@ -22,10 +22,10 @@ import {
   vdef, zone,
 } from '../engine/testkit';
 import {
-  burnZoneKeys, buttonMoves, elementContentSig, logRows, noneTargetMoveByAction,
-  readSelection, renderDisplayValue, renderTextParts, selStorageKey, selectionVersion,
-  selectorContextFrom, selectorGateOpen, subscribeSelection, visibleButtonActionIds,
-  writeSelection, zoneInstKey,
+  applyExternalSelection, burnZoneKeys, buttonMoves, elementContentSig, logRows,
+  noneTargetMoveByAction, readSelection, renderDisplayValue, renderTextParts, selStorageKey,
+  selectionVersion, selectorContextFrom, selectorGateOpen, subscribeSelection,
+  visibleButtonActionIds, writeSelection, zoneInstKey,
 } from './layout';
 import { filterDisplayCards, resolveElementAppearance, resolveSeat } from './layoutGeometry';
 
@@ -643,6 +643,51 @@ describe('selector buttons (selection store + resolution + gating)', () => {
     // Switch to sb2: the panels swap which action is on screen.
     writeSelection(def.meta.id, 'vb_sw', 'sb2');
     expect(visibleButtonActionIds(def, state, els, 'p0')).toEqual(new Set(['endit']));
+  });
+
+  // Cross-tab sync: the 'storage' listener funnels into applyExternalSelection
+  // (node has no storage events — the seam is exercised directly).
+  describe('applyExternalSelection (cross-tab storage events)', () => {
+    it('mirrors another tab\'s write over a shadowing in-session value and notifies', () => {
+      writeSelection('gx', 'swX', 'btnLocal'); // this tab has written: memory shadows
+      let pings = 0;
+      const off = subscribeSelection(() => { pings += 1; });
+      const v0 = selectionVersion();
+      applyExternalSelection(selStorageKey('gx', 'swX'), 'btnRemote');
+      expect(readSelection('gx', 'swX')).toBe('btnRemote'); // shadow updated
+      expect(selectionVersion()).toBe(v0 + 1);
+      expect(pings).toBe(1);
+      off();
+    });
+
+    it('ignores non-selection keys and already-mirrored values', () => {
+      writeSelection('gy', 'swY', 'btnA');
+      let pings = 0;
+      const off = subscribeSelection(() => { pings += 1; });
+      const v0 = selectionVersion();
+      applyExternalSelection('cardsmith.games.v1', 'whatever'); // games store, not ours
+      applyExternalSelection('unrelated.key', 'x');
+      applyExternalSelection(selStorageKey('gy', 'swY'), 'btnA'); // no change
+      expect(selectionVersion()).toBe(v0);
+      expect(pings).toBe(0);
+      expect(readSelection('gy', 'swY')).toBe('btnA');
+      off();
+    });
+
+    it('a removed key drops the mirror; key null (clear) drops everything', () => {
+      writeSelection('gz', 'swZ', 'btnB');
+      applyExternalSelection(selStorageKey('gz', 'swZ'), null);
+      // Node env: no localStorage behind the mirror -> back to never-set.
+      expect(readSelection('gz', 'swZ')).toBeNull();
+
+      writeSelection('gz', 'swZ', 'btnC');
+      let pings = 0;
+      const off = subscribeSelection(() => { pings += 1; });
+      applyExternalSelection(null, null); // localStorage.clear() elsewhere
+      expect(readSelection('gz', 'swZ')).toBeNull();
+      expect(pings).toBe(1);
+      off();
+    });
   });
 });
 

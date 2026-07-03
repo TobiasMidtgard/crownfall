@@ -3,9 +3,11 @@
  *  1. Round-trip — parse(compile(t)) deep-equals t for every clause kind,
  *     negation, group op and nesting (canonical trees).
  *  2. Legacy parsing — and/or chains fold flat, not(or(…)) becomes a none
- *     group, name-equality or-chains merge into "name is one of", mirrored
- *     compares flip, unrepresentable exprs become advanced rows (exact expr
- *     preserved — no data loss).
+ *     group, not(<group>) becomes a none group over that group, name-equality
+ *     or-chains merge into "name is one of", mirrored compares flip,
+ *     unrepresentable exprs become advanced rows (exact expr preserved — no
+ *     data loss). Plus the empty-group semantics the builder UI leans on:
+ *     empty any = never (commits as FALSE, never collapses to null).
  *  3. The CURRENT Dominion def — every condition surface parses; the
  *     IS_TREASURE-style field compares and the basic-name chains land in
  *     clause rows, and everything that falls to an advanced row is one of the
@@ -15,7 +17,7 @@ import { describe, expect, it } from 'vitest';
 import type { Expr, GameDef, ScreenElement } from '../../shared/types';
 import { buildDominionDef } from '../../forge/dominionGame';
 import {
-  collectAdvanced, compile, parse,
+  collectAdvanced, commitTree, compile, emptyGroupReadsAs, parse,
   type Clause, type ConditionGroup, type ConditionRow,
 } from './conditionModel';
 
@@ -107,6 +109,48 @@ describe('round-trip: parse(compile(t)) equals t', () => {
       { kind: 'varCompare', varId: 'v_buys', target: null, op: '>', value: 0, negate: false },
     ]),
   ])));
+
+  // A none group whose ONLY row is a group compiles to not(<group>) — a shape
+  // nothing else emits, so it round-trips instead of degrading to a read-only
+  // advanced row ("NOT (card is an Action AND cost >= 5)" is builder-writable).
+  it('none group whose only row is a nested all group', () => roundTrip(group('none', [
+    all([
+      { kind: 'isType', card: '$card', typeId: 't_action', negate: false },
+      { kind: 'fieldCompare', card: '$card', fieldId: 'cost', op: '>=', value: 5, negate: false },
+    ]),
+  ])));
+
+  it('none group whose only row is a nested none group', () => roundTrip(group('none', [
+    group('none', [
+      { kind: 'nameOneOf', card: '$card', names: ['Curse'], negate: false },
+      { kind: 'isType', card: '$card', typeId: 't_victory', negate: false },
+    ]),
+  ])));
+
+  // Empty NESTED groups compile to bool literals (FALSE for any, TRUE for
+  // all/none), which parse reads back as empty groups — both directions hold.
+  it('empty nested any group inside a multi-row all parent', () => roundTrip(all([
+    { kind: 'turnCompare', op: '>=', value: 2, negate: false },
+    group('any', []),
+  ])));
+
+  it('empty nested all group inside a multi-row any parent', () => roundTrip(group('any', [
+    { kind: 'phaseIs', phaseId: 'ph_buy', negate: false },
+    all([]),
+  ])));
+
+  it('a none group over a single ANY group flattens to the flat none group', () => {
+    // not(or(…)) IS the flat none group's encoding, so none[any[a,b]] is
+    // non-canonical: it reopens as the semantically identical flat form.
+    const nested = group('none', [group('any', [
+      { kind: 'phaseIs', phaseId: 'ph_buy', negate: false },
+      { kind: 'turnCompare', op: '>', value: 1, negate: false },
+    ])]);
+    expect(parse(compile(nested))).toEqual(group('none', [
+      { kind: 'phaseIs', phaseId: 'ph_buy', negate: false },
+      { kind: 'turnCompare', op: '>', value: 1, negate: false },
+    ]));
+  });
 
   it('negated multi-name "name is one of" (the kingdom-filter shape)', () => roundTrip(all([
     { kind: 'nameOneOf', card: '$card', names: ['Copper', 'Silver', 'Gold', 'Estate', 'Duchy', 'Province', 'Curse'], negate: true },
@@ -230,20 +274,80 @@ describe('parsing legacy shapes', () => {
     });
   });
 
-  it('unrepresentable exprs fall to advanced rows, expr intact', () => {
-    // not(and(…)) has no group form in the vocabulary.
+  it('legacy not(and(…)) parses as a none group over an all group (editable)', () => {
     const na = notE(andE(nameIs('Copper'), nameIs('Silver')));
-    const t1 = parse(na);
-    expect(t1.rows).toEqual([{ kind: 'advanced', expr: na }]);
+    expect(parse(na)).toEqual(group('none', [all([
+      { kind: 'nameOneOf', card: '$card', names: ['Copper'], negate: false },
+      { kind: 'nameOneOf', card: '$card', names: ['Silver'], negate: false },
+    ])]));
+    // …and recompiles to the identical Expr.
+    expect(compile(parse(na))).toEqual(na);
+  });
+
+  it('bool literals in group position parse as empty nested groups', () => {
+    const x = cmp('>', { kind: 'getVar', varId: 'v', target: null }, num(0));
+    expect(parse(andE(x, { kind: 'bool', value: false }))).toEqual(all([
+      { kind: 'varCompare', varId: 'v', target: null, op: '>', value: 0, negate: false },
+      group('any', []),
+    ]));
+    expect(parse(orE(x, { kind: 'bool', value: true }))).toEqual(group('any', [
+      { kind: 'varCompare', varId: 'v', target: null, op: '>', value: 0, negate: false },
+      all([]),
+    ]));
+  });
+
+  it('unrepresentable exprs fall to advanced rows, expr intact', () => {
     // A compare between two dynamic values.
     const dyn = cmp('==', { kind: 'currentPlayer' }, bnd('$viewer'));
     expect(parse(dyn).rows).toEqual([{ kind: 'advanced', expr: dyn }]);
+    // not over an unrepresentable expr stays one advanced row (whole not).
+    const notDyn = notE(dyn);
+    expect(parse(notDyn).rows).toEqual([{ kind: 'advanced', expr: notDyn }]);
     // cardTypeIs over a non-binding card expr.
     const top: Expr = { kind: 'cardTypeIs', card: { kind: 'topCard', zone: { zoneId: 'z', owner: null } }, typeId: 't' };
     expect(parse(top).rows).toEqual([{ kind: 'advanced', expr: top }]);
     // Advanced rows re-compile to the exact original expr — zero data loss.
-    expect(compile(parse(na))).toBe(na);
     expect(compile(parse(dyn))).toBe(dyn);
+    expect(compile(parse(notDyn))).toBe(notDyn);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 2b. Empty-group semantics — what the builder's readback/save must agree on
+// ---------------------------------------------------------------------------
+
+describe('empty-group semantics (emptyGroupReadsAs + commitTree)', () => {
+  it('empty all/none groups read as "always"; an empty any group reads as "never"', () => {
+    expect(emptyGroupReadsAs('all')).toBe('always');
+    expect(emptyGroupReadsAs('none')).toBe('always');
+    expect(emptyGroupReadsAs('any')).toBe('never');
+  });
+
+  it('a stored bool-false ("never") survives open → Done even in an allow-null slot', () => {
+    const stored: Expr = { kind: 'bool', value: false };
+    const reopened = parse(stored); // the empty any group
+    expect(reopened).toEqual(group('any', []));
+    // Committing it must NOT collapse to null ("always") — that would
+    // silently invert a never-true condition to always-true.
+    expect(commitTree(reopened, true)).toEqual(stored);
+    expect(commitTree(reopened, false)).toEqual(stored);
+  });
+
+  it('an empty any group commits as FALSE in a non-null slot (honest "never")', () => {
+    expect(commitTree(group('any', []), false)).toEqual({ kind: 'bool', value: false });
+  });
+
+  it('empty all/none groups collapse to null only in allow-null slots', () => {
+    expect(commitTree(all([]), true)).toBeNull();
+    expect(commitTree(group('none', []), true)).toBeNull();
+    expect(commitTree(all([]), false)).toEqual({ kind: 'bool', value: true });
+    expect(commitTree(group('none', []), false)).toEqual({ kind: 'bool', value: true });
+  });
+
+  it('non-empty trees commit to their compiled expr regardless of allowNull', () => {
+    const t = all([{ kind: 'turnCompare', op: '>=', value: 2, negate: false }]);
+    expect(commitTree(t, true)).toEqual(compile(t));
+    expect(commitTree(t, false)).toEqual(compile(t));
   });
 });
 

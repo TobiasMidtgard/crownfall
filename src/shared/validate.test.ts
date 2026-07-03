@@ -131,6 +131,23 @@ describe('filter cycles', () => {
   });
 });
 
+describe('end conditions', () => {
+  it('flags a literal-true end condition as an error (the game would end at the deal)', () => {
+    const def = baseDef({
+      cards: [carded({ typeId: 'ty1', tags: ['tg1'] })],
+      endConditions: [{ id: 'ec1', name: 'Oops', condition: { kind: 'bool', value: true }, winner: { kind: 'draw' } }],
+    });
+    expect(errorsOf(def)).toContain(
+      'End condition "Oops": The condition is always true — the game would end immediately after setup. Pick a real condition.',
+    );
+  });
+
+  it('does not flag a literal-false end condition (never fires, but not a start-of-game trap)', () => {
+    // baseDef's default end condition is bool false.
+    expect(errorsOf(baseDef()).filter((e) => e.includes('always true'))).toEqual([]);
+  });
+});
+
 describe('unused vocabulary warnings', () => {
   it('warns for defined-but-unused types, tags and filters', () => {
     const def = baseDef({ filters: [filt('f1', { kind: 'bool', value: true })] });

@@ -322,23 +322,44 @@ function selectorElements(groupId: string): ScreenElement[] {
 }
 
 describe('selector groups (shown-set digit filtering + auto selector-flip)', () => {
-  it('computeKeyTargets indexes only the SHOWN set of a selector group', async () => {
+  it('computeKeyTargets: targets/badges follow the SHOWN set; present stays layout-wide', async () => {
     const { def, state } = await kbState();
     const els = selectorElements('sg1');
-    // No stored selection: the first button (Treasure) is the default.
+    // No stored selection: the first button (Treasure) is the default. The
+    // gated-out Kingdom panel contributes NO targets — but its modifier
+    // group is still present (the digit-swallow set is pre-gate: Alt+3
+    // aimed at the flipped-away panel must not reach the browser).
     const first = computeKeyTargets(def, state, els, 'p0', () => true);
     expect(first.present.has('shift')).toBe(true);
-    expect(first.present.has('alt')).toBe(false);
+    expect(first.present.has('alt')).toBe(true);
     expect(first.groups.get('alt')).toBeUndefined();
     expect(first.groups.get('shift')!.length).toBeGreaterThan(0);
 
-    // Select Kingdom: only the alt zone contributes now.
+    // Select Kingdom: only the alt zone contributes targets now, and shift
+    // stays in the swallow set the same way.
     writeSelection(def.meta.id, 'sg1', 'sg1_pb_sel');
     const flipped = computeKeyTargets(def, state, els, 'p0', () => true);
-    expect(flipped.present.has('shift')).toBe(false);
+    expect(flipped.present.has('shift')).toBe(true);
     expect(flipped.groups.get('shift')).toBeUndefined();
     expect(flipped.present.has('alt')).toBe(true);
     expect(flipped.groups.get('alt')!.length).toBeGreaterThan(0);
+  });
+
+  it('a gated-out group is a swallowed no-op: present without any target', async () => {
+    // The exact leak scenario: hold Ctrl, the panel gets flipped away (a
+    // manual tab click mid-hold), press Digit3. The keydown handler swallows
+    // any digit routed to a PRESENT modifier group, then finds no target —
+    // so present must say yes while groups says no.
+    const { def, state } = await kbState();
+    const els = selectorElements('sg6');
+    const group = els[0] as Extract<ScreenElement, { kind: 'group' }>;
+    // Rewire panel B's zone to ctrl for a distinct group name.
+    const pb = group.children[2] as Extract<ScreenElement, { kind: 'group' }>;
+    pb.children = [{ ...(pb.children[0] as Extract<ScreenElement, { kind: 'zone' }>), keyGroup: 'ctrl' }];
+    const idx = computeKeyTargets(def, state, els, 'p0', () => true); // Treasure shown
+    expect(idx.present.has('ctrl')).toBe(true); // swallow Ctrl+digit…
+    expect(idx.groups.get('ctrl')).toBeUndefined(); // …but activate nothing
+    expect([...idx.badges.values()].every((b) => b.group !== 'ctrl')).toBe(true);
   });
 
   it('selectorFlipsForGroup: selects the button whose shown set holds the modifier zone', async () => {

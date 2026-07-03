@@ -347,6 +347,9 @@ export function validateGameDef(def: GameDef): ValidationIssue[] {
 
   for (const ec of def.endConditions) {
     const where = `End condition "${ec.name}"`;
+    if (ec.condition.kind === 'bool' && ec.condition.value) {
+      err(where, 'The condition is always true — the game would end immediately after setup. Pick a real condition.');
+    }
     walkExpr(ec.condition, where);
     checkWinner(ec.winner, where);
     if (ec.winner.kind === 'player') walkExpr(ec.winner.player, where);

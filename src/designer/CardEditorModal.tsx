@@ -113,8 +113,10 @@ export function CardEditorModal({ def, cardId, onChange, onClose, onSwitchCard }
 
 /**
  * The card's type line: a TYPE single-select ("Untyped" allowed) and TAGS
- * multi-select chips, populated from the game's Types tab. Hidden entirely
- * while the game defines no types/tags (nothing to pick).
+ * multi-select chips, populated from the game's Types tab. While the game
+ * defines no types/tags there is nothing to pick, so a one-line hint points
+ * at the Types tab instead (plain text — this modal has no tab-switch
+ * callback to make it a live link).
  */
 function TypeLineFields({ def, card, onChange }: {
   def: GameDef;
@@ -124,7 +126,13 @@ function TypeLineFields({ def, card, onChange }: {
   const types = def.cardTypes ?? [];
   const tags = def.cardTags ?? [];
   const cardTags = card.tags ?? [];
-  if (types.length === 0 && tags.length === 0) return null;
+  if (types.length === 0 && tags.length === 0) {
+    return (
+      <p className="faint" style={{ margin: '4px 0' }}>
+        This game has no card types or tags yet — define them in the Types tab to give cards a type line.
+      </p>
+    );
+  }
 
   const toggleTag = (tagId: string) => {
     const next = cardTags.includes(tagId) ? cardTags.filter((t) => t !== tagId) : [...cardTags, tagId];

@@ -7,7 +7,10 @@
  * previous state: cards whose container changed AND whose old + new rects are
  * both known become "flights" — transient overlay clones that tween from the
  * old rect to the new one while the real destination card stays VEILED until
- * landing. Face changes simply render the NEW facing on the clone.
+ * landing. Face changes simply render the NEW facing on the clone. The rect
+ * baseline also refreshes on selector flips (client-only writes that mount/
+ * unmount showForSelector panels between state commits), so post-flip moves
+ * animate from real coordinates or appear in place — never from stale ones.
  *
  * The flight is the reference 3-keyframe arc (ease-out-expo): source rect →
  * midpoint raised by `arc`px at half spin with averaged scale → target rect
@@ -29,11 +32,11 @@
  * fade-in at the destination, the 'instant' speed setting skips clones
  * entirely (the hook is disabled), and the overlay never intercepts input.
  */
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { GameState, Id } from '../shared/types';
 import { isCardVisibleTo } from '../engine';
 import { CardView } from '../components/CardView';
-import { templateOf } from './layout';
+import { selectionVersion, subscribeSelection, templateOf } from './layout';
 import {
   asSpeed, BURN_CHAR_MS, BURN_FLIGHT, EASE_OUT_EXPO, motionForTag, scaleMs,
   type ResolvedMotion, type SpeedSetting,
@@ -173,6 +176,46 @@ function containerMap(state: GameState): Map<Id, string> {
 let flightSeq = 0;
 
 /**
+ * Pure flight diff (unit-tested in flip.test.ts): cards whose zone instance
+ * changed between the previous and next container maps become flights — but
+ * only when BOTH the previous and next rect are known. A card whose source
+ * element is no longer rendered (e.g. a selector flip hid its panel and the
+ * re-baseline dropped its rect) or whose destination isn't rendered simply
+ * appears in place — never a flight from coordinates some other panel now
+ * occupies. Capped at MAX_FLIGHTS per update.
+ */
+export function diffFlights(
+  state: GameState,
+  prev: ReadonlyMap<Id, string>,
+  containers: ReadonlyMap<Id, string>,
+  prevRects: ReadonlyMap<Id, Box>,
+  rects: ReadonlyMap<Id, Box>,
+  burnKeys?: ReadonlySet<string>,
+): Flight[] {
+  const started: Flight[] = [];
+  for (const [cardId, instKey] of containers) {
+    if (started.length >= MAX_FLIGHTS) break;
+    const was = prev.get(cardId);
+    if (was === undefined || was === instKey) continue;
+    const from = prevRects.get(cardId);
+    const to = rects.get(cardId);
+    if (!from || !to) continue;
+    flightSeq += 1;
+    started.push({
+      key: flightSeq,
+      cardId,
+      from,
+      to,
+      order: started.length,
+      burn: burnKeys?.has(instKey) ?? false,
+      // The state that moved the card carries its enter-zone tag.
+      tag: moveTagOf(state, cardId),
+    });
+  }
+  return started;
+}
+
+/**
  * Watches `state` for cards that changed zone instance and turns them into
  * flights. `enabled` false (hotseat curtain up — nothing is mounted — or the
  * instant speed setting) clears everything and re-baselines, so stale rects
@@ -189,6 +232,15 @@ export function useCardFlights(
   const prevContainers = useRef<Map<Id, string> | null>(null);
   const prevRects = useRef<Map<Id, Box>>(new Map());
 
+  // Selector flips mount/unmount panels WITHOUT a state commit, so the rect
+  // baseline must refresh on every selection write too: freshly shown cards
+  // get a `from` for their next move (else the first move after a flip
+  // teleports), and cards hidden by the flip drop out of the baseline so a
+  // later move appears in place instead of flying from coordinates another
+  // panel now occupies (the missing-rect skip in diffFlights). The re-run
+  // starts no flights — containers are unchanged without a state commit.
+  const selN = useSyncExternalStore(subscribeSelection, selectionVersion, selectionVersion);
+
   useLayoutEffect(() => {
     if (!enabled) {
       prevContainers.current = null;
@@ -199,28 +251,9 @@ export function useCardFlights(
     const containers = containerMap(state);
     const rects = registry.capture();
     const prev = prevContainers.current;
-    const started: Flight[] = [];
-    if (prev !== null) {
-      for (const [cardId, instKey] of containers) {
-        if (started.length >= MAX_FLIGHTS) break;
-        const was = prev.get(cardId);
-        if (was === undefined || was === instKey) continue;
-        const from = prevRects.current.get(cardId);
-        const to = rects.get(cardId);
-        if (!from || !to) continue;
-        flightSeq += 1;
-        started.push({
-          key: flightSeq,
-          cardId,
-          from,
-          to,
-          order: started.length,
-          burn: burnKeys?.has(instKey) ?? false,
-          // The state that moved the card carries its enter-zone tag.
-          tag: moveTagOf(state, cardId),
-        });
-      }
-    }
+    const started = prev !== null
+      ? diffFlights(state, prev, containers, prevRects.current, rects, burnKeys)
+      : [];
     prevContainers.current = containers;
     prevRects.current = rects;
     if (started.length > 0) {
@@ -230,7 +263,7 @@ export function useCardFlights(
         ...started,
       ]);
     }
-  }, [state, registry, enabled, burnKeys]);
+  }, [state, registry, enabled, burnKeys, selN]);
 
   const finish = (key: number) => setFlights((cur) => cur.filter((f) => f.key !== key));
   return [flights, finish];

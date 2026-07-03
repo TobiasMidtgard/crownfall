@@ -85,6 +85,11 @@ export function readSelection(defId: Id, groupId: string): string | null {
   }
 }
 
+function notifySelectionChanged(): void {
+  selVersionCounter += 1;
+  for (const cb of selListeners) cb();
+}
+
 /** Persist + broadcast a group's selected button (no-op when unchanged). */
 export function writeSelection(defId: Id, groupId: string, buttonId: Id): void {
   if (readSelection(defId, groupId) === buttonId) return;
@@ -92,8 +97,47 @@ export function writeSelection(defId: Id, groupId: string, buttonId: Id): void {
   try {
     localStorage.setItem(selStorageKey(defId, groupId), buttonId);
   } catch { /* storage unavailable — the in-session mirror carries it */ }
-  selVersionCounter += 1;
-  for (const cb of selListeners) cb();
+  notifySelectionChanged();
+}
+
+/** Prefix of every selStorageKey — the cross-tab 'storage' event filter. */
+const SEL_KEY_PREFIX = 'cardsmith.sel.';
+
+/**
+ * Apply a selection write made by ANOTHER tab (a 'storage' event payload):
+ * mirror it into the in-session map — memory-first reads would otherwise
+ * shadow the other tab's value forever once this tab has written — and bump
+ * the version + notify, so every consumer flips atomically on the event
+ * instead of drifting in on the next incidental re-render. Non-selection
+ * keys are ignored; key === null is localStorage.clear() (every stored
+ * selection is gone — drop the mirror and let defaults resolve). Exported
+ * for tests: node has no cross-tab storage events.
+ */
+export function applyExternalSelection(key: string | null, newValue: string | null): void {
+  if (key === null) {
+    selMemory.clear();
+    notifySelectionChanged();
+    return;
+  }
+  if (!key.startsWith(SEL_KEY_PREFIX)) return;
+  if (newValue === null) {
+    selMemory.delete(key);
+  } else {
+    if (selMemory.get(key) === newValue) return; // already mirrored: no-op
+    selMemory.set(key, newValue);
+  }
+  notifySelectionChanged();
+}
+
+// Another tab flipped a selector of the same def (the keys are shared):
+// sync deliberately rather than half-way — without this, a tab picks up the
+// other tab's writes only when some unrelated render re-reads localStorage,
+// and never at all once selMemory shadows the key. (Module-scope listener:
+// the games-store idiom, src/state/store.ts.)
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    applyExternalSelection(e.key, e.newValue);
+  });
 }
 
 /** The trimmed selector-group name of a selector button ('' = not one). */

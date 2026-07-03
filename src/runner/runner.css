@@ -290,12 +290,34 @@
 /* ---------- peek status bar (screenLayout.statusBar === 'peek') ---------- */
 
 /* Skin hooks: .rn-status-peek (the bar in peek mode), .rn-status-collapsed
-   (idle), .rn-status-handle / -off / .rn-status-grip /
+   (idle), .rn-status-handle / -off / -held / .rn-status-grip /
    .rn-status-handle-label (the floating reveal handle). The collapsed bar
    keeps height 0 instead of display:none so its buttons stay in the Tab
    order — focus landing inside re-expands it (TableScreen). */
+/* Peek mode is an OVERLAY, not a grid row: the slot pins row 3 at a
+   permanent 0 height (the felt owns the bar's old strip) and the bar
+   floats over the stage bottom from it. Collapsing/expanding therefore
+   never resizes the stage: mid-flight FLIP clones land where they were
+   aimed and the felt never reflows under a cursor mid-aim. z-index sits
+   above stage content but below the flight layer (30) — clones keep
+   passing over the bar exactly as they do over the pinned one. */
+.rn-status-peekslot {
+  grid-row: 3;
+  position: relative;
+  height: 0;
+  min-height: 0;
+  overflow: visible;
+  z-index: 29;
+}
 .rn-status-peek {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
   max-height: 140px;
+  /* With no bottom bar below, the overlay reaches the true viewport bottom:
+     keep the content clear of the phone home indicator. */
+  padding-bottom: calc(4px + var(--safe-bottom, 0px));
   transition: max-height 0.3s ease, padding 0.3s ease, border-top-width 0.3s ease;
 }
 .rn-status-collapsed {
@@ -331,6 +353,15 @@
 /* Expanded: the handle leaves, except while it holds keyboard focus — the
    focused element must never be display:none'd out from under the user. */
 .rn-status-handle-off:not(:focus-visible) { display: none; }
+/* …or an active pointer (a drag-up that just expanded the bar):
+   display:none would drop the pointer capture mid-gesture and spill the
+   rest of the swipe into whatever lies beneath. visibility keeps the node
+   alive (capture retained, events keep flowing) while hiding it; the class
+   drops on pointerup and display:none takes over. */
+.rn-status-handle-off.rn-status-handle-held {
+  display: flex;
+  visibility: hidden;
+}
 .rn-status-grip {
   width: 26px;
   height: 4px;

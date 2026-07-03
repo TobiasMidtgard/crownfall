@@ -12,8 +12,13 @@
  *
  * Round-trip property: parse(compile(t)) deep-equals t for every CANONICAL
  * tree. Canonical means:
- *   - nested groups have ≥ 2 rows (a 1-row group is indistinguishable from its
- *     row once compiled, so parse dissolves it);
+ *   - nested groups have ≥ 2 rows OR are empty (an empty group compiles to a
+ *     bool literal, which parse reads back as an empty group; a 1-row group is
+ *     indistinguishable from its row once compiled, so parse dissolves it) —
+ *     with one exception: a "none" group whose only row is an all/none GROUP
+ *     round-trips, because compile marks it as not(<group>) and nothing else
+ *     emits that shape. (none[any[…]] still flattens to the flat none group —
+ *     not(or(…)) IS the flat form's own encoding.);
  *   - at most one non-negated "name is one of" clause per card subject per
  *     any/none group (or-chained name equalities merge into one clause);
  *   - no field-compare clause of shape (name == "text") — that IS the 1-name
@@ -157,19 +162,49 @@ function compileClause(c: Clause): Expr {
 }
 
 // ---------------------------------------------------------------------------
+// Empty-group semantics (shared with the builder UI)
+// ---------------------------------------------------------------------------
+
+/**
+ * What an EMPTY group of this op means: "all of nothing" and "none of
+ * nothing" hold vacuously (always); "any of nothing" never holds. The
+ * builder's readback, empty-state hint and save logic must all agree with
+ * compile on this — compile emits TRUE for empty all/none and FALSE for
+ * empty any.
+ */
+export function emptyGroupReadsAs(op: GroupOp): 'always' | 'never' {
+  return op === 'any' ? 'never' : 'always';
+}
+
+/**
+ * The value the builder's Done button should store for an EDITED tree. In
+ * allow-null slots (null = "always") an empty group only collapses to null
+ * when it actually MEANS always — an empty "any" group means never and must
+ * stay a real FALSE expr, or a stored "never" condition would silently flip
+ * to "always". (An UNEDITED open + Done must not call this at all: the modal
+ * keeps the original value verbatim so parse/compile canonicalization never
+ * rewrites stored data behind the user's back.)
+ */
+export function commitTree(tree: ConditionGroup, allowNull: boolean): Expr | null {
+  if (allowNull && tree.rows.length === 0 && emptyGroupReadsAs(tree.op) === 'always') return null;
+  return compile(tree);
+}
+
+// ---------------------------------------------------------------------------
 // parse: Expr -> tree
 // ---------------------------------------------------------------------------
 
 export function parse(expr: Expr): ConditionGroup {
-  // A bare boolean literal reads as an empty group: true = "all of nothing"
-  // (always), false = "any of nothing" (never) — exactly what compile emits.
-  if (expr.kind === 'bool') return { kind: 'group', op: expr.value ? 'all' : 'any', rows: [] };
   const row = parseRow(expr);
   if (row.kind === 'group') return row;
   return { kind: 'group', op: 'all', rows: [row] };
 }
 
 export function parseRow(expr: Expr): ConditionRow {
+  // A bare boolean literal reads as an empty group: true = "all of nothing"
+  // (always), false = "any of nothing" (never) — exactly what compile emits
+  // for empty groups, so an empty NESTED group round-trips too.
+  if (expr.kind === 'bool') return { kind: 'group', op: expr.value ? 'all' : 'any', rows: [] };
   if (expr.kind === 'logic' && expr.op === 'and') {
     return { kind: 'group', op: 'all', rows: flattenLogic(expr, 'and').map(parseRow) };
   }
@@ -188,9 +223,13 @@ export function parseRow(expr: Expr): ConditionRow {
       if (only !== undefined && isClauseRow(only)) return { ...only, negate: !only.negate };
       return { kind: 'advanced', expr };
     }
-    // "not" wraps a single clause; not(and(…)) has no group form -> advanced.
     const row = parseRow(inner);
     if (isClauseRow(row)) return { ...row, negate: !row.negate };
+    // compileGroup('none', [group]) emits not(<that group>) verbatim — invert
+    // it exactly: the inner group becomes the sole row of a none group. This
+    // re-reads none[all[…]], none[none[…]] (and legacy not(and(…))) as
+    // editable groups instead of degrading them to read-only advanced rows.
+    if (row.kind === 'group') return { kind: 'group', op: 'none', rows: [row] };
     return { kind: 'advanced', expr };
   }
   return parseClause(expr) ?? { kind: 'advanced', expr };

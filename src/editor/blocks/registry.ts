@@ -354,12 +354,12 @@ const EXPR_ENTRIES: { [K in Expr['kind']]: ExprEntry } = {
   },
   cardTypeIs: {
     category: 'cards', label: 'Card is a type',
-    description: 'True when the card’s primary type matches (e.g. "is a Treasure"). Types live in the Types & tags panel.',
+    description: 'True when the card’s primary type matches (e.g. "is a Treasure"). Types live in the Types tab.',
     make: (def, bindings) => ({ kind: 'cardTypeIs', card: defaultCardExpr(def, bindings), typeId: def.cardTypes?.[0]?.id ?? '' }),
   },
   cardHasTag: {
     category: 'cards', label: 'Card has tag',
-    description: 'True when the card carries a tag (e.g. "has tag Attack"). Tags live in the Types & tags panel.',
+    description: 'True when the card carries a tag (e.g. "has tag Attack"). Tags live in the Types tab.',
     make: (def, bindings) => ({ kind: 'cardHasTag', card: defaultCardExpr(def, bindings), tagId: def.cardTags?.[0]?.id ?? '' }),
   },
   filterRef: {

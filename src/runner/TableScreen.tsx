@@ -31,7 +31,8 @@ import type { GameDef, GameState, Id, Move } from '../shared/types';
 import { PASS_ACTION_ID } from '../shared/types';
 import {
   actingSeat, bucketZones, burnZoneKeys, buttonMoves, formatVarValue, movesByCard,
-  movesByZoneInstance, noneTargetMoveByAction, pickViewer, visibleButtonActionIds, zoneInstKey,
+  movesByZoneInstance, noneTargetMoveByAction, pickViewer, selectionVersion,
+  subscribeSelection, visibleButtonActionIds, zoneInstKey,
 } from './layout';
 import {
   activeScreenVariant, nextSpeed, resolveMotion, speedFactor, type SpeedSetting,
@@ -157,9 +158,18 @@ function Table({ def, session, snap, navigate, onPlayAgain, homeLabel }: {
     [def, state, snap.moves],
   );
   // Screen mode: moves shown as enabled screen buttons leave the bottom bar.
+  // The visible-button set is selector-aware (showForSelector gates), so it
+  // must re-derive on every selection flip — a client-only write that never
+  // produces a new engine snapshot. Without this subscription the exclusion
+  // set goes stale and a move can vanish from BOTH the screen and the bar
+  // (flip away from the panel holding the only legal move: its button
+  // unmounts live while the cached set still excludes it from the bar).
+  const selN = useSyncExternalStore(subscribeSelection, selectionVersion, selectionVersion);
   const screenButtonIds = useMemo(
     () => (active ? visibleButtonActionIds(def, state, active.elements, viewerId) : undefined),
-    [def, state, active, viewerId],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selN: the
+    // selection store is read inside visibleButtonActionIds, not passed in.
+    [def, state, active, viewerId, selN],
   );
   const barMoves = useMemo(
     () => buttonMoves(def, snap.moves, screenButtonIds),
@@ -555,15 +565,21 @@ function Table({ def, session, snap, navigate, onPlayAgain, homeLabel }: {
 /**
  * The peek status bar (screenLayout.statusBar === 'peek'): the pinned bar's
  * content, collapsing to a floating "Show game bar" handle after
- * PEEK_IDLE_MS with no pointer/keyboard activity inside the bar. Expansion:
- * hover over the handle (mouse), click/tap, drag-up past
+ * PEEK_IDLE_MS with no pointer/keyboard activity inside the bar (or on the
+ * handle). Expansion: hover over the handle (mouse), click/tap, drag-up past
  * PEEK_DRAG_THRESHOLD_PX, or any focus entering the bar — none of which
- * moves focus. The collapsed bar stays in the DOM at height 0 (not
- * display:none) so Tab can still land inside it and trigger the focus
- * expansion; the focusWithin guard means collapsing never pulls focus out
- * from under the user. overlayOpen/finished pin the bar open (choice sheets
- * and the game-over chrome must stay visible). The collapse-decision math
- * lives in peekBar.ts.
+ * moves focus. The bar is an OVERLAY, not a grid row: it renders inside a
+ * permanently zero-height slot and floats over the stage bottom
+ * (runner.css .rn-status-peekslot), so collapsing/expanding never resizes
+ * the stage — mid-flight FLIP clones keep their captured geometry and the
+ * felt never reflows under a cursor mid-aim. The collapsed bar stays in the
+ * DOM at height 0 (not display:none) so Tab can still land inside it and
+ * trigger the focus expansion; the focusWithin guard means collapsing never
+ * pulls focus out from under the user. overlayOpen/finished pin the bar
+ * open (choice sheets and the game-over chrome must stay visible), and a
+ * pointer still down on the handle (handleHeld) holds the bar too — the
+ * drag-up that just opened it must not see it shut under the finger. The
+ * collapse-decision math lives in peekBar.ts.
  */
 function PeekStatusBar({ overlayOpen, finished, label, children }: {
   overlayOpen: boolean;
@@ -573,6 +589,10 @@ function PeekStatusBar({ overlayOpen, finished, label, children }: {
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [focusWithin, setFocusWithin] = useState(false);
+  // A pointer that went down on the handle and hasn't lifted: guards the
+  // idle clock AND keeps the handle rendered (visibility, not display) so
+  // its pointer capture survives the expansion mid-gesture.
+  const [handleHeld, setHandleHeld] = useState(false);
   const lastActivity = useRef(Date.now());
 
   const expand = useCallback(() => {
@@ -594,10 +614,10 @@ function PeekStatusBar({ overlayOpen, finished, label, children }: {
 
   useEffect(() => {
     if (collapsed) return;
-    const guards = { overlayOpen, finished, focusWithin };
+    const guards = { overlayOpen, finished, focusWithin, handleHeld };
     // Any state change that re-arms the timer (mount, expand, a guard
-    // clearing) grants a fresh idle window rather than inheriting a stale
-    // clock and collapsing instantly.
+    // clearing — incl. the handle pointer lifting) grants a fresh idle
+    // window rather than inheriting a stale clock and collapsing instantly.
     lastActivity.current = Date.now();
     let timer = 0;
     const arm = () => {
@@ -610,30 +630,39 @@ function PeekStatusBar({ overlayOpen, finished, label, children }: {
     };
     arm();
     return () => window.clearTimeout(timer);
-  }, [collapsed, overlayOpen, finished, focusWithin]);
+  }, [collapsed, overlayOpen, finished, focusWithin, handleHeld]);
 
   const dragStartY = useRef<number | null>(null);
+  const releaseHandle = useCallback(() => {
+    dragStartY.current = null;
+    setHandleHeld(false);
+  }, []);
 
   return (
     <>
-      <div
-        className={`rn-status rn-status-peek${collapsed ? ' rn-status-collapsed' : ''}`}
-        onPointerDown={noteActivity}
-        onPointerMove={noteActivity}
-        onKeyDown={noteActivity}
-        onFocus={() => {
-          setFocusWithin(true);
-          setCollapsed(false);
-        }}
-        onBlur={(e) => {
-          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocusWithin(false);
-        }}
-      >
-        {children}
+      {/* Zero-height grid slot: the bar overlays the felt bottom from here
+          instead of occupying a row, so its size never moves the stage. */}
+      <div className="rn-status-peekslot">
+        <div
+          className={`rn-status rn-status-peek${collapsed ? ' rn-status-collapsed' : ''}`}
+          onPointerDown={noteActivity}
+          onPointerMove={noteActivity}
+          onKeyDown={noteActivity}
+          onFocus={() => {
+            setFocusWithin(true);
+            setCollapsed(false);
+          }}
+          onBlur={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocusWithin(false);
+          }}
+        >
+          {children}
+        </div>
       </div>
       <button
         type="button"
-        className={`rn-status-handle${collapsed ? '' : ' rn-status-handle-off'}`}
+        className={`rn-status-handle${collapsed ? '' : ' rn-status-handle-off'}${
+          handleHeld ? ' rn-status-handle-held' : ''}`}
         aria-label="Show game bar"
         aria-expanded={!collapsed}
         onClick={expand}
@@ -642,21 +671,23 @@ function PeekStatusBar({ overlayOpen, finished, label, children }: {
           if (e.pointerType === 'mouse') expand();
         }}
         onPointerDown={(e) => {
+          noteActivity(); // handle interaction counts as bar activity
+          setHandleHeld(true);
           dragStartY.current = e.clientY;
           e.currentTarget.setPointerCapture(e.pointerId);
         }}
         onPointerMove={(e) => {
+          noteActivity();
           if (dragStartY.current !== null && dragUpExceeded(dragStartY.current, e.clientY)) {
             dragStartY.current = null;
             expand();
           }
         }}
-        onPointerUp={() => {
-          dragStartY.current = null;
-        }}
-        onPointerCancel={() => {
-          dragStartY.current = null;
-        }}
+        onPointerUp={releaseHandle}
+        onPointerCancel={releaseHandle}
+        // Fires after any release above (harmless repeat), and on the rare
+        // capture loss without a pointerup — never leave the guard stuck.
+        onLostPointerCapture={releaseHandle}
       >
         <span className="rn-status-grip" aria-hidden="true" />
         <span className="rn-status-handle-label">{label}</span>

@@ -389,7 +389,7 @@ function ExprFields({ def, draft, setDraft, bindings }: {
             label="Type"
             value={draft.typeId}
             options={def.cardTypes ?? []}
-            emptyHint="No card types yet — add some in the Types & tags panel."
+            emptyHint="No card types yet — add some in the Types tab."
             onChange={(typeId) => setDraft({ ...draft, typeId })}
           />
         </>
@@ -410,7 +410,7 @@ function ExprFields({ def, draft, setDraft, bindings }: {
             label="Tag"
             value={draft.tagId}
             options={def.cardTags ?? []}
-            emptyHint="No tags yet — add some in the Types & tags panel."
+            emptyHint="No tags yet — add some in the Types tab."
             onChange={(tagId) => setDraft({ ...draft, tagId })}
           />
         </>

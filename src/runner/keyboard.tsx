@@ -67,7 +67,14 @@ export interface KeyTargetIndex {
   groups: ReadonlyMap<KeyboardGroup, readonly KeyTarget[]>;
   /** By face card id (first group to claim a face wins). */
   badges: ReadonlyMap<Id, KeyBadge>;
-  /** Modifier groups that exist in the layout (spotlightable). */
+  /**
+   * Modifier groups that exist in the layout (spotlightable, and the
+   * digit-SWALLOW set): every display-visible keyGroup zone counts,
+   * INCLUDING zones behind a closed selector gate — a routed digit belongs
+   * to the layout even while its panel is flipped away (it must be
+   * swallowed, not leak to the browser). Only `groups`/`badges` are gated
+   * to the shown set.
+   */
   present: ReadonlySet<ModifierGroup>;
 }
 
@@ -128,10 +135,13 @@ export function groupForDigit(live: HeldModifiers, held: HeldModifiers): Keyboar
  * the activation target; stack-layout zones contribute the top card; other
  * layouts contribute each legal card. Items beyond the tenth per group are
  * unaddressable (dropped). Invisible elements (their `visible` expression,
- * viewer-bound) contribute nothing, and neither does anything hidden by a
- * selector gate (showForSelector, resolved from the persisted selection
- * store) — gated-out elements are not mounted, so their zones must not take
- * digits or spotlight.
+ * viewer-bound) contribute nothing. Elements hidden by a selector gate
+ * (showForSelector, resolved from the persisted selection store) are not
+ * mounted, so their zones contribute no TARGETS or badges — but they still
+ * register their modifier group in `present`: the swallow decision is
+ * layout-wide (a Ctrl+digit aimed at a flipped-away panel must be
+ * swallowed, not switch the browser tab; with no shown target it is a
+ * swallowed no-op).
  */
 export function computeKeyTargets(
   def: GameDef,
@@ -181,20 +191,23 @@ export function computeKeyTargets(
     raw.set(group, list);
   };
 
-  const walk = (els: readonly ScreenElement[]) => {
+  const walk = (els: readonly ScreenElement[], shown: boolean) => {
     for (const el of els) {
       if (!isDisplayVisible(def, state, el.visible ?? null, viewerId)) continue;
       // Only the SHOWN set is rendered — digits resolve against it alone
       // (selectorFlipsForGroup selects a button before its zone is used).
-      if (!selectorGateOpen(selCtx, el)) continue;
+      // Gated-out subtrees are still WALKED for `present`: their keyGroup
+      // zones own the modifier's digits layout-wide (swallow), they just
+      // contribute no targets/badges while hidden.
+      const open = shown && selectorGateOpen(selCtx, el);
       if (el.kind === 'zone' && el.keyGroup !== undefined) {
         if (el.keyGroup !== 'plain') present.add(el.keyGroup);
-        collect(el, el.keyGroup);
+        if (open) collect(el, el.keyGroup);
       }
-      if (el.children !== undefined && el.children.length > 0) walk(el.children);
+      if (el.children !== undefined && el.children.length > 0) walk(el.children, open);
     }
   };
-  walk(elements);
+  walk(elements, true);
 
   const groups = new Map<KeyboardGroup, KeyTarget[]>();
   const badges = new Map<Id, KeyBadge>();

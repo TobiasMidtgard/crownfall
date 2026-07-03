@@ -192,6 +192,7 @@ export function RulesTab({ def, onChange }: { def: GameDef; onChange: (def: Game
               value={ec.condition}
               onChange={(condition) => condition && updateEnd(i, { ...ec, condition })}
               bindings={[]}
+              requireRowsMessage="Pick a condition — an empty one would end the game immediately."
             />
           </label>
           <WinnerSpecFields

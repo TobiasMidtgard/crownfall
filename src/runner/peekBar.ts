@@ -3,9 +3,11 @@
  * (screenLayout.statusBar === 'peek'), extracted from TableScreen so the
  * collapse rules are unit-testable without a DOM. The bar may collapse only
  * after PEEK_IDLE_MS of no pointer/keyboard activity within it, and never
- * while a sheet/choice/dialog is open, the game is finished, or focus is
+ * while a sheet/choice/dialog is open, the game is finished, focus is
  * inside the bar (collapsing then would hide an active surface or steal
- * focus).
+ * focus), or a pointer that went down on the reveal handle is still down
+ * (mid drag-up, or a thumb resting after one — collapsing would shut the
+ * bar under the finger that just opened it).
  */
 
 export const PEEK_IDLE_MS = 2000;
@@ -18,10 +20,14 @@ export interface PeekGuards {
   finished: boolean;
   /** Focus is inside the bar — collapsing would steal it. */
   focusWithin: boolean;
+  /** A pointer that went down on the reveal handle is still down — the user
+   *  is mid-gesture (drag-up, or a thumb resting on it while reading the
+   *  expanded bar); the idle clock must not fire under their finger. */
+  handleHeld: boolean;
 }
 
 function armed(g: PeekGuards): boolean {
-  return !g.overlayOpen && !g.finished && !g.focusWithin;
+  return !g.overlayOpen && !g.finished && !g.focusWithin && !g.handleHeld;
 }
 
 /** The "may collapse now" predicate: every guard clear AND idle long enough. */

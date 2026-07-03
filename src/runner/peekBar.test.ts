@@ -10,7 +10,9 @@ import {
   peekHandleLabel, type PeekGuards,
 } from './peekBar';
 
-const clear: PeekGuards = { overlayOpen: false, finished: false, focusWithin: false };
+const clear: PeekGuards = {
+  overlayOpen: false, finished: false, focusWithin: false, handleHeld: false,
+};
 
 describe('mayCollapse', () => {
   it('collapses once idle reaches the threshold with all guards clear', () => {
@@ -29,6 +31,13 @@ describe('mayCollapse', () => {
   it('never collapses while focus is inside the bar', () => {
     expect(mayCollapse({ ...clear, focusWithin: true }, 0, PEEK_IDLE_MS * 10)).toBe(false);
   });
+
+  it('never collapses while a pointer is still down on the reveal handle', () => {
+    // The drag-up that just expanded the bar: however long the thumb rests,
+    // the bar must not shut under it — only after release may the clock run.
+    expect(mayCollapse({ ...clear, handleHeld: true }, 0, PEEK_IDLE_MS * 10)).toBe(false);
+    expect(mayCollapse({ ...clear, handleHeld: false }, 0, PEEK_IDLE_MS)).toBe(true);
+  });
 });
 
 describe('collapseDelay', () => {
@@ -45,6 +54,7 @@ describe('collapseDelay', () => {
       { ...clear, overlayOpen: true },
       { ...clear, finished: true },
       { ...clear, focusWithin: true },
+      { ...clear, handleHeld: true },
     ];
     for (const g of raised) expect(collapseDelay(g, 0, PEEK_IDLE_MS * 10)).toBeNull();
   });

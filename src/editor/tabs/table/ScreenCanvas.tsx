@@ -40,6 +40,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GameDef, GameState, Id, LayoutStyle, ScreenElement, ScreenLayout } from '../../../shared/types';
 import { exprToText } from '../../blocks/exprToText';
 import { formatVarValue, renderTextParts, varTextValue } from '../../../runner/layout';
+import { elementCollapsed } from '../../../runner/keyboard';
 import { activeScreenVariant, resolveElementAppearance } from '../../../runner/layoutGeometry';
 import { SAMPLE_VIEWER_ID, buildSampleState } from './sampleState';
 import { PreviewStage } from './PreviewStage';
@@ -685,7 +686,12 @@ export function ScreenCanvas({
     const isSel = selSet.has(el.id);
     // Live preview: a collapsible renders as its collapsed DOCK TAB (like the
     // runner) until expanded-for-editing while selected (canvas-local state).
-    if (pvState !== null && !ghost && el.collapsible != null && !pvExpanded.has(el.id)) {
+    // Only draw the tab when the panel is ACTUALLY collapsed in the real render
+    // (same resolution the runner uses) — a default-expanded panel is drawn by
+    // the mounted ScreenRenderer as a full panel, so the editor must keep its
+    // full-rect hit box there (not a mispositioned edge tab over empty felt).
+    if (pvState !== null && !ghost && el.collapsible != null && !pvExpanded.has(el.id)
+      && elementCollapsed(def.meta.id, el)) {
       const spec = el.collapsible;
       const vertical = spec.side === 'left' || spec.side === 'right';
       const center = vertical ? pos.y + pos.h / 2 : pos.x + pos.w / 2;

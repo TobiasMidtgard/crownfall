@@ -1091,6 +1091,90 @@ export function previewShownMap(
 }
 
 /**
+ * Ids currently HIDDEN by a closed selector gate — the element's own
+ * `showForSelector` gate, or any ancestor's — resolved exactly like
+ * previewShownMap (editor `sel` override, else the persisted store, else the
+ * group's first button). No sample state: this is pure selector logic, so it
+ * holds whether the live preview is on or off.
+ *
+ * Drop-to-join uses it to REFUSE re-nesting a dragged element into a panel that
+ * isn't on screen. The Dominion supply stacks its Treasury/Victory/Kingdom
+ * panels at one rect; without this, dropping a pile inside the visible panel
+ * resolves (on a depth+area tie) to a HIDDEN sibling panel, and the pile —
+ * keeping its own `showForSelector` under a differently-gated parent — can then
+ * never satisfy both gates and vanishes. You can only drop into what you see.
+ */
+export function selectorHiddenIds(
+  def: GameDef,
+  fullElements: ScreenElement[],
+  sel: readonly Id[],
+): Set<Id> {
+  const groupByButton = new Map<Id, string>();
+  for (const b of selectorButtons(fullElements)) groupByButton.set(b.id, b.group);
+  const override = new Map<string, Id>();
+  for (const id of sel) {
+    const group = groupByButton.get(id);
+    if (group !== undefined && !override.has(group)) override.set(group, id);
+  }
+  const selCtx = selectorContextFrom(
+    fullElements,
+    (group) => override.get(group) ?? readSelection(def.meta.id, group),
+  );
+  // Index the WHOLE tree, not a focused subtree: the ancestor-gate walk below
+  // must reach gates ABOVE the drag's editing scope (in focus mode the canvas
+  // indexes only the focused element's children, which would hide those gates).
+  const index = indexElements(fullElements);
+  const ownClosed = new Set<Id>();
+  for (const [id, info] of index) {
+    if (!selectorGateOpen(selCtx, info.el)) ownClosed.add(id);
+  }
+  const hidden = new Set<Id>();
+  for (const id of index.keys()) {
+    let cur: Id | null = id;
+    while (cur !== null) {
+      if (ownClosed.has(cur)) { hidden.add(id); break; }
+      cur = index.get(cur)?.parentId ?? null;
+    }
+  }
+  return hidden;
+}
+
+/** True when `r`'s center lies within `box` (drop-parent containment test). */
+export function centerInside(r: PlainRect, box: PlainRect): boolean {
+  const cx = r.x + r.w / 2;
+  const cy = r.y + r.h / 2;
+  return cx >= box.x && cx <= box.x + box.w && cy >= box.y && cy <= box.y + box.h;
+}
+
+/**
+ * The drop parent for a single moved element on release:
+ *   - `undefined` — keep the current parent (a plain move; no re-nest).
+ *   - `null`      — the screen root (the element was dragged clear of its group).
+ *   - an `Id`     — join that (visible) group.
+ * A drop onto the element's own parent is a plain move. A null hover (no VISIBLE
+ * group under the pointer) leaves to the root ONLY if the element was actually
+ * dragged out of its parent's box; a null over the parent's own area — e.g. a
+ * hidden stacked sibling panel filling that space — keeps the parent, so the
+ * element never silently jumps to the root.
+ */
+export function resolveDropParent(opts: {
+  reparentable: boolean;
+  hoverGroupId: Id | null;
+  origParentId: Id | null;
+  primaryRect: PlainRect | undefined;
+  origParentAbs: PlainRect | undefined;
+}): Id | null | undefined {
+  const { reparentable, hoverGroupId, origParentId, primaryRect, origParentAbs } = opts;
+  if (!reparentable) return undefined;
+  if (hoverGroupId === origParentId) return undefined;
+  if (hoverGroupId === null) {
+    if (primaryRect && origParentAbs && centerInside(primaryRect, origParentAbs)) return undefined;
+    return null;
+  }
+  return hoverGroupId;
+}
+
+/**
  * The REAL contents a zone element shows in the sample state: the resolved
  * zone instance's cards (viewer-relative seat, cardFilter display slice) and
  * — where the element groups by identity — its piles. Null when the runner

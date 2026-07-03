@@ -21,9 +21,10 @@ import {
   moveElementState, newCustomDeckAt, newElementState, newLineElement, newLogElement,
   newPhaseTrackElement, newShapeElement, patchMobileVariant, patchMotion, pathToEl,
   placeRelativeEl, previewShownMap, pruneNested, removeElementState, removeEls,
-  reorderSibling, reparentEl, selectorButtonOptions, setTextDynamic, siblingsOf, snapStep,
+  reorderSibling, reparentEl, resolveDropParent, selectorButtonOptions, selectorHiddenIds, setTextDynamic,
+  siblingsOf, snapStep,
   templateFieldOptions, ungroupEl, updateEl, updateElementState, validFocusPath,
-  variantElements, withVariantElements, writeSelection,
+  variantElements, withDescendants, withVariantElements, writeSelection,
 } from './screenModel';
 
 // ---------------------------------------------------------------------------
@@ -1003,5 +1004,107 @@ describe('selectorButtonOptions / previewShownMap', () => {
     const tree = previewTree(true); // pB visible:false
     const map = previewShownMap(def, h.state(), indexElements(tree), tree, 'p0', ['bB']);
     expect(map.get('pB')).toBe(false); // gate open, visibility closed
+  });
+
+  // selectorHiddenIds: the drop/snap-target gate. No sample state — pure
+  // selector logic, so it holds preview on or off.
+  it('selectorHiddenIds: default hides the non-active panel; editor override flips it', () => {
+    const def = newGameDef('hid');
+    const tree = previewTree(false);
+    const hidden = selectorHiddenIds(def, tree, []); // bA active (first button)
+    expect(hidden.has('pB')).toBe(true);
+    expect(hidden.has('pA')).toBe(false);
+    expect(hidden.has('always')).toBe(false);
+    expect(hidden.has('bA')).toBe(false); // the buttons themselves always paint
+    const flipped = selectorHiddenIds(def, tree, ['bB']);
+    expect(flipped.has('pA')).toBe(true);
+    expect(flipped.has('pB')).toBe(false);
+  });
+
+  it('selectorHiddenIds: a closed panel drags its whole subtree into the hidden set', () => {
+    const def = newGameDef('hid-sub');
+    const tree: ScreenElement[] = [
+      { kind: 'group', id: 'bar', name: 'Bar', rect, children: [selBtn('bA', 'A', 'sw'), selBtn('bB', 'B', 'sw')] },
+      { kind: 'group', id: 'pA', name: 'pA', rect, showForSelector: 'bA', children: [el('zA')] },
+      {
+        kind: 'group', id: 'pB', name: 'pB', rect, showForSelector: 'bB',
+        children: [{ kind: 'group', id: 'gB', name: 'gB', rect, children: [el('zB')] }],
+      },
+    ];
+    const hidden = selectorHiddenIds(def, tree, []); // bA active → pB closed
+    expect([...hidden].sort()).toEqual(['gB', 'pB', 'zB']); // gate own + ancestor
+    expect(hidden.has('zA')).toBe(false); // pA open, so its child shows
+  });
+
+  it('drop-target gating: a drag in the visible panel never resolves to a stacked hidden one', () => {
+    const def = newGameDef('stack');
+    // pHidden (showFor bA) and pShown (showFor bB) share ONE rect — the stacked
+    // Dominion supply pattern. pHidden is FIRST, so a naive depth+area tie-break
+    // wrongly grabs it; the hidden-gate exclusion sends the drop to what's shown.
+    const box = { x: 0, y: 20, w: 100, h: 60 };
+    const child = { x: 10, y: 30, w: 20, h: 20 };
+    const tree: ScreenElement[] = [
+      {
+        kind: 'group', id: 'bar', name: 'Bar', rect: { x: 0, y: 0, w: 100, h: 15 },
+        children: [selBtn('bA', 'A', 'sw'), selBtn('bB', 'B', 'sw')],
+      },
+      { kind: 'group', id: 'pHidden', name: 'pHidden', rect: box, showForSelector: 'bA', children: [{ ...el('zHidden'), rect: child }] },
+      { kind: 'group', id: 'pShown', name: 'pShown', rect: box, showForSelector: 'bB', children: [{ ...el('zShown'), rect: child }] },
+    ];
+    const idx = indexElements(tree);
+    const hidden = selectorHiddenIds(def, tree, ['bB']); // activate pShown
+    expect(hidden.has('pHidden')).toBe(true);
+    const exclude = new Set([...withDescendants(idx, ['zShown']), ...hidden]);
+    expect(deepestGroupAt(idx, 50, 50, exclude)).toBe('pShown');
+    // Guard against regression: without the gate exclusion the tie picks pHidden.
+    const naive = withDescendants(idx, ['zShown']);
+    expect(deepestGroupAt(idx, 50, 50, naive)).toBe('pHidden');
+  });
+
+  it('selectorHiddenIds resolves gates over the FULL tree even from a focused scope', () => {
+    // Finding-1 guard: the ancestor gate lives ABOVE where a focus-mode canvas
+    // would index. selectorHiddenIds builds its own full-tree index, so the
+    // closed ancestor is still detected regardless of the editor's focus scope.
+    const def = newGameDef('focus-gate');
+    const tree: ScreenElement[] = [
+      { kind: 'group', id: 'bar', name: 'Bar', rect, children: [selBtn('bA', 'A', 'sw'), selBtn('bB', 'B', 'sw')] },
+      {
+        kind: 'group', id: 'pB', name: 'pB', rect, showForSelector: 'bB', // closed while bA active
+        children: [{ kind: 'group', id: 'inner', name: 'inner', rect, children: [el('leaf')] }],
+      },
+    ];
+    const hidden = selectorHiddenIds(def, tree, []); // bA active → pB closed
+    expect(hidden.has('inner')).toBe(true);
+    expect(hidden.has('leaf')).toBe(true);
+  });
+});
+
+describe('resolveDropParent (drop-to-join guard)', () => {
+  const box = { x: 0, y: 0, w: 100, h: 100 };
+  const inside = { x: 40, y: 40, w: 10, h: 10 };
+  const outside = { x: 200, y: 200, w: 10, h: 10 };
+
+  it('non-reparentable drags never re-nest (multi-select / resize)', () => {
+    expect(resolveDropParent({ reparentable: false, hoverGroupId: 'g', origParentId: null, primaryRect: inside, origParentAbs: box })).toBeUndefined();
+  });
+
+  it('a drop onto the element’s own parent is a plain move', () => {
+    expect(resolveDropParent({ reparentable: true, hoverGroupId: 'p', origParentId: 'p', primaryRect: inside, origParentAbs: box })).toBeUndefined();
+  });
+
+  it('a drop into a DIFFERENT visible group joins it', () => {
+    expect(resolveDropParent({ reparentable: true, hoverGroupId: 'other', origParentId: 'p', primaryRect: inside, origParentAbs: box })).toBe('other');
+  });
+
+  it('a null hover while still inside the parent box keeps the parent (no jump to root)', () => {
+    expect(resolveDropParent({ reparentable: true, hoverGroupId: null, origParentId: 'p', primaryRect: inside, origParentAbs: box })).toBeUndefined();
+  });
+
+  it('a null hover dragged CLEAR of the parent leaves to the screen root', () => {
+    expect(resolveDropParent({ reparentable: true, hoverGroupId: null, origParentId: 'p', primaryRect: outside, origParentAbs: box })).toBeNull();
+  });
+
+  it('a null hover for a root-level element stays at root', () => {
+    expect(resolveDropParent({ reparentable: true, hoverGroupId: null, origParentId: null, primaryRect: inside, origParentAbs: undefined })).toBeUndefined();
   });
 });

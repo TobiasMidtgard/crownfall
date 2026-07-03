@@ -48,7 +48,8 @@ import {
   ASPECT_VALUES, GROUP_MIN, MIN_H, MIN_W, PHONE_ASPECT, absToGroupRel, applyElementState,
   aspectPresetOf, boundingRect, deepestGroupAt, fanMarginPx, fitCount, groupRelToAbs,
   indexElements, layoutStyleCss, pathToEl, pctToPx, previewShownMap, pruneNested,
-  variantElements, withDescendants, zonePreview, zoneSampleCount,
+  resolveDropParent, selectorHiddenIds, variantElements, withDescendants, zonePreview,
+  zoneSampleCount,
   type AspectPreset, type PlainRect, type VariantKey, type ZonePreview,
 } from './screenModel';
 
@@ -261,6 +262,13 @@ export function ScreenCanvas({
 
   const index = useMemo(() => indexElements(elements), [elements]);
   const selSet = useMemo(() => new Set(sel), [sel]);
+  // Elements hidden by a closed selector gate: never drop targets and never
+  // snap targets. Keeps a drag inside the selector panel the user can actually
+  // see, instead of silently re-nesting into a stacked, hidden sibling panel.
+  const selectorHidden = useMemo(
+    () => selectorHiddenIds(def, fullElements, sel),
+    [def, fullElements, sel],
+  );
 
   // Runner-parity visibility per element (null = preview off): dangling
   // refs / unresolvable seats / falsy `visible` / closed showForSelector
@@ -421,7 +429,10 @@ export function ScreenCanvas({
       originY: r.top,
       origs,
       bbox: boundingRect(origs.map((o) => o.abs)),
-      exclude: withDescendants(index, origs.map((o) => o.id)),
+      exclude: new Set([
+        ...withDescendants(index, origs.map((o) => o.id)),
+        ...selectorHidden,
+      ]),
       reparentable: mode === 'move' && origs.length === 1,
       origParentId: info.parentId,
       tapCollapse,
@@ -552,11 +563,21 @@ export function ScreenCanvas({
     dragRef.current = null;
     const l = liveRef.current;
     if (d && d.moved && l) {
+      // Reparent only when the drop lands in a DIFFERENT visible group; dropping
+      // onto its own parent (or a null hover still over the parent's box) is a
+      // plain move, never a re-append that reorders siblings or a jump to root.
+      const targetGroupId = resolveDropParent({
+        reparentable: d.reparentable,
+        hoverGroupId: l.hoverGroupId,
+        origParentId: d.origParentId,
+        primaryRect: l.rects[d.primary],
+        origParentAbs: d.origParentId !== null ? index.get(d.origParentId)?.abs : undefined,
+      });
       onCommitDrag({
         rects: d.ids
           .filter((id) => l.rects[id] !== undefined)
           .map((id) => ({ id, abs: l.rects[id] })),
-        targetGroupId: d.reparentable ? l.hoverGroupId : undefined,
+        targetGroupId,
       });
       lastTapRef.current = null;
     } else if (d && !d.moved) {

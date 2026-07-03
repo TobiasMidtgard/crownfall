@@ -42,7 +42,7 @@ import { exprToText } from '../../blocks/exprToText';
 import { formatVarValue, renderTextParts, varTextValue } from '../../../runner/layout';
 import { elementCollapsed } from '../../../runner/keyboard';
 import { activeScreenVariant, resolveElementAppearance } from '../../../runner/layoutGeometry';
-import { SAMPLE_VIEWER_ID, buildSampleState } from './sampleState';
+import { SAMPLE_VIEWER_ID, buildSampleState, sampleSignature } from './sampleState';
 import { PreviewStage } from './PreviewStage';
 import {
   ASPECT_VALUES, GROUP_MIN, MIN_H, MIN_W, PHONE_ASPECT, absToGroupRel, applyElementState,
@@ -74,17 +74,22 @@ let previewSessionDefault = true;
  * def identity inside buildSampleState, so redraws are free.
  */
 function useSampleState(def: GameDef): GameState | null | undefined {
-  const [snap, setSnap] = useState<{ def: GameDef; state: GameState | null } | null>(null);
+  const [snap, setSnap] = useState<{ sig: string; state: GameState | null } | null>(null);
+  const sig = useMemo(() => sampleSignature(def), [def]);
   useEffect(() => {
     let alive = true;
     void buildSampleState(def).then((state) => {
-      if (alive) setSnap({ def, state });
+      if (alive) setSnap({ sig, state });
     });
     return () => {
       alive = false;
     };
-  }, [def]);
-  return snap !== null && snap.def === def ? snap.state : undefined;
+  }, [def, sig]);
+  // Keep the LAST resolved sample visible while a rebuild is pending — never
+  // blank to the grey tt-* fallback mid-drop. `undefined` only before the very
+  // first sample resolves; a screen-layout-only edit keeps the same signature,
+  // so the cached sample resolves to the same object and nothing flickers.
+  return snap === null ? undefined : snap.state;
 }
 
 /** Alignment-guide snap distance, % of the screen. */
@@ -215,7 +220,7 @@ export function ScreenCanvas({
   // through; only selection outlines, handles, ghosts and guides remain.
   // Focus mode keeps the representative tt-* bodies (the ScreenRenderer draws
   // the whole screen, not one element's magnified interior).
-  const previewMode = pvState !== null && !focusEl;
+  const previewMode = pvState !== null;
   // The active variant tree for the ScreenRenderer, matching what the canvas
   // edits (desktop vs mobile) — never ScreenRenderer's own media query.
   const activeScreen = useMemo(
@@ -228,8 +233,9 @@ export function ScreenCanvas({
   // scale, padding) so previews keep their true relative size, magnified.
   let screenH = pageH;
   let unitW = SCREEN_W;
+  let focusAbs: PlainRect | null = null;
   if (focusEl) {
-    const focusAbs = indexElements(fullElements).get(focusEl.id)?.abs;
+    focusAbs = indexElements(fullElements).get(focusEl.id)?.abs ?? null;
     if (focusAbs) {
       const pxW = Math.max(1, (focusAbs.w / 100) * SCREEN_W);
       const pxH = Math.max(1, (focusAbs.h / 100) * pageH);
@@ -237,6 +243,20 @@ export function ScreenCanvas({
       unitW = SCREEN_W * (100 / Math.max(0.01, focusAbs.w));
     }
   }
+  // Focus mode + live preview: the real ScreenRenderer paints the WHOLE screen,
+  // sized so the focused element's sub-rect exactly fills the focus frame (the
+  // .tt-screen is the element). unitW is the full screen's width in this space;
+  // fullH its height; the negative offsets slide the element's corner to the
+  // frame origin. The child overlay boxes (% of the frame) then land on the
+  // real children, so the detailed view shows the exact in-game components.
+  const focusPvFull = focusEl && focusAbs
+    ? {
+        w: unitW,
+        h: (screenH * 100) / Math.max(0.01, focusAbs.h),
+        left: -(focusAbs.x / 100) * unitW,
+        top: -(focusAbs.y / 100) * ((screenH * 100) / Math.max(0.01, focusAbs.h)),
+      }
+    : null;
   const scrollPage = !focusEl && isMobile && layout.mobile?.scroll === true && screenH > frameH + 1;
 
   const index = useMemo(() => indexElements(elements), [elements]);
@@ -822,8 +842,10 @@ export function ScreenCanvas({
           : 'Game screen — fills the player’s screen (16:9 preview)';
 
   // Focused element backdrop: its own chrome at full surface size, inert
-  // (pointer-events: none) so empty-felt pan/click-clear keep working.
-  const backdrop = focusEl ? (() => {
+  // (pointer-events: none) so empty-felt pan/click-clear keep working. With the
+  // live preview on, the zoomed real ScreenRenderer draws it instead — this is
+  // only the fallback when the preview is off / the sample failed.
+  const backdrop = focusEl && !previewMode ? (() => {
     const previewed = statePreview && statePreview.id === focusEl.id
       ? applyElementState(focusEl, statePreview.stateId)
       : pvState !== null
@@ -935,7 +957,23 @@ export function ScreenCanvas({
             }}
           >
             {previewMode && pvState !== null && (
-              <PreviewStage def={def} sample={pvState} screen={activeScreen} />
+              focusPvFull ? (
+                // Focus mode: the real render is the whole screen, sized + offset
+                // so the focused element fills the frame, clipped to it.
+                <div className="tt-preview-focusclip" aria-hidden="true">
+                  <div
+                    className="tt-preview-focuswrap"
+                    style={{
+                      width: focusPvFull.w, height: focusPvFull.h,
+                      left: focusPvFull.left, top: focusPvFull.top,
+                    }}
+                  >
+                    <PreviewStage def={def} sample={pvState} screen={activeScreen} />
+                  </div>
+                </div>
+              ) : (
+                <PreviewStage def={def} sample={pvState} screen={activeScreen} />
+              )
             )}
             {backdrop}
             {elements.map((el) => renderElement(el, ROOT_RECT, false))}

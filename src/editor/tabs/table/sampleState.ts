@@ -8,9 +8,12 @@
  *   - Deterministic: fixed seats + fixed seed, so the same def always yields
  *     the same snapshot (engine player ids are p0/p1 — the preview's viewer
  *     is SAMPLE_VIEWER_ID).
- *   - Memoized by def IDENTITY (WeakMap). The editor deep-clones the draft
- *     on every change, so a new def object — and only a new def object —
- *     naturally rebuilds the sample.
+ *   - Memoized by a SIGNATURE over only the parts the sample run depends on
+ *     (everything except the screen layout). The editor deep-clones the whole
+ *     draft on every change, so dragging or restyling a screen element would
+ *     otherwise mint a new def object and needlessly re-run the engine — and
+ *     blank the preview to the grey fallback for a frame. Excluding the screen
+ *     layout means presentation edits reuse the cached sample instantly.
  *   - Any failure yields null (preview disabled with a notice): a throwing
  *     createEngine/start, a script error reported during deck spawn / setup /
  *     first-phase entry, or a setup that requests an interactive choice
@@ -26,18 +29,37 @@ export const SAMPLE_VIEWER_ID = 'p0';
 /** Fixed sample-run seed: previews are reproducible across sessions. */
 export const SAMPLE_SEED = 7;
 
-const cache = new WeakMap<GameDef, Promise<GameState | null>>();
+const cache = new Map<string, Promise<GameState | null>>();
+/** Bound the cache — each meaningful edit mints a new signature. */
+const CACHE_LIMIT = 6;
+
+/**
+ * A stable key over only the parts the sample RUN depends on. `screenLayout`
+ * and the deprecated `tableLayout` are pure presentation — excluding them means
+ * a rect drag / restyle reuses the cached sample rather than re-running the
+ * engine. Computed only when the def changes (a drop / a real edit), never per
+ * drag frame (the drag itself mutates canvas-local state, not the def).
+ */
+export function sampleSignature(def: GameDef): string {
+  const { screenLayout: _s, tableLayout: _t, ...game } = def;
+  return JSON.stringify(game);
+}
 
 /**
  * The def's sample snapshot (null = the setup failed; preview unavailable).
- * Same def object in = the same promise — and therefore the SAME snapshot
- * object — out.
+ * Same game-signature in = the same promise (the SAME snapshot object) out, so
+ * screen-layout-only changes never rebuild.
  */
 export function buildSampleState(def: GameDef): Promise<GameState | null> {
-  let p = cache.get(def);
-  if (!p) {
+  const sig = sampleSignature(def);
+  let p = cache.get(sig);
+  if (p === undefined) {
     p = runSample(def);
-    cache.set(def, p);
+    cache.set(sig, p);
+    if (cache.size > CACHE_LIMIT) {
+      const oldest = cache.keys().next().value; // Map keeps insertion order
+      if (oldest !== undefined) cache.delete(oldest);
+    }
   }
   return p;
 }

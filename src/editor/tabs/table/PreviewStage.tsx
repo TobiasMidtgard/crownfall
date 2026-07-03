@@ -29,6 +29,7 @@
 import { useMemo, useRef } from 'react';
 import type { GameDef, GameState } from '../../../shared/types';
 import { ScreenRenderer } from '../../../runner/ScreenRenderer';
+import { actingSeat } from '../../../runner/layout';
 import { CardRectRegistry } from '../../../runner/flip';
 import type { TableCtx } from '../../../runner/ZoneViews';
 import type { ActiveScreen, PileMemoryEntry } from '../../../runner/layoutGeometry';
@@ -84,14 +85,24 @@ export function PreviewStage({ def, sample, screen }: {
   );
 
   const skinned = def.meta.id === DOMINION_GAME_ID;
+  // The runner's root carries data-phase / data-active so skin CSS can scope
+  // phase- and turn-conditional styling (the seal's crimson plate, the
+  // buy-phase gold glow, the foe/over faces). ScreenRenderer alone doesn't
+  // render that root, so the preview must mirror it or the seal looks wrong.
+  const phaseId = def.phases[sample.phaseIdx]?.id;
+  const activeAttr = sample.result !== null
+    ? 'over'
+    : actingSeat(sample)?.id === SAMPLE_VIEWER_ID ? 'you' : 'foe';
   return (
     <div className={`tt-preview-stage forge-root${skinned ? ' dominion-skin' : ''}`} aria-hidden="true">
-      <ScreenRenderer
-        ctx={ctx}
-        screen={screen}
-        buttonMove={EMPTY_BUTTON_MOVE}
-        onMove={noop}
-      />
+      <div className="rn-root tt-preview-root" data-phase={phaseId} data-active={activeAttr}>
+        <ScreenRenderer
+          ctx={ctx}
+          screen={screen}
+          buttonMove={EMPTY_BUTTON_MOVE}
+          onMove={noop}
+        />
+      </div>
     </div>
   );
 }

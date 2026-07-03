@@ -598,9 +598,18 @@
   overflow: hidden;
   border-radius: inherit;
 }
-/* The ScreenRenderer's stage area fills this box; its own .rn-screen letterboxes
+/* The injected .rn-root (carries data-phase / data-active for the skin's
+   phase- and turn-conditional rules) fills the stage; the ScreenRenderer's
+   absolute .rn-screenarea then sizes against it and .rn-screen letterboxes
    inside exactly as the runner's computeStage does. */
+.tt-preview-stage > .tt-preview-root { position: absolute; inset: 0; }
 .tt-preview-stage .rn-screenarea { position: absolute; inset: 0; }
+
+/* Focus mode: the real render is the WHOLE screen, oversized and offset so the
+   focused element fills the frame; this clip crops the overflow to the frame
+   (the .tt-screen box). The overlay handles are siblings above it, uncropped. */
+.tt-preview-focusclip { position: absolute; inset: 0; overflow: hidden; z-index: 0; pointer-events: none; }
+.tt-preview-focuswrap { position: absolute; }
 
 /* Preview element: a transparent HIT BOX. The kind classes (tt-el-zone,
    tt-el-group, tt-el-log) and inner previews normally paint a frame/background;

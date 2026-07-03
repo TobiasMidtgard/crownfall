@@ -30,7 +30,7 @@ describe('buildSampleState', () => {
     expect(state!.players.every((p) => !p.isAI)).toBe(true);
   });
 
-  it('memoizes by def identity — the same def object yields the SAME snapshot', async () => {
+  it('memoizes by game signature — the same def yields the SAME snapshot', async () => {
     const def = newGameDef('Sample memo');
     const a = await buildSampleState(def);
     const b = await buildSampleState(def);
@@ -38,13 +38,24 @@ describe('buildSampleState', () => {
     expect(b).toBe(a);
   });
 
-  it('is deterministic — equal defs (distinct objects) yield equal snapshots', async () => {
+  it('caches by game content, not object identity — equal defs share the snapshot', async () => {
     const def = buildDominionDef();
     const a = await buildSampleState(structuredClone(def));
     const b = await buildSampleState(structuredClone(def));
     expect(a).not.toBeNull();
-    expect(b).not.toBe(a); // distinct def objects run separately…
-    expect(JSON.stringify(b)).toBe(JSON.stringify(a)); // …to the same state
+    expect(b).toBe(a); // distinct objects, equal game content → the cached run
+  });
+
+  it('a screen-layout-only change reuses the sample (no needless rebuild)', async () => {
+    // The fix that stops the preview greying out on a rect drag: the screen
+    // layout is excluded from the signature, so changing it must not rebuild.
+    const def = buildDominionDef();
+    const a = await buildSampleState(def);
+    const moved = structuredClone(def);
+    moved.screenLayout!.background = '#123456';
+    (moved.screenLayout!.elements[0] as { rect: { x: number } }).rect.x += 5;
+    const b = await buildSampleState(moved);
+    expect(b).toBe(a);
   });
 
   it('yields null when the setup reports a script error', async () => {

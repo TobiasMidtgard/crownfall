@@ -287,7 +287,9 @@ export function ScreenCanvas({
   // see, instead of silently re-nesting into a stacked, hidden sibling panel.
   const selectorHidden = useMemo(
     () => selectorHiddenIds(def, fullElements, sel),
-    [def, fullElements, sel],
+    // selVersion: the hidden set reads the selector store, so recompute when a
+    // context-bar tab switches it (else drag drop/snap targets go stale).
+    [def, fullElements, sel, selVersion],
   );
 
   // Runner-parity visibility per element (null = preview off): dangling
@@ -1248,7 +1250,10 @@ export function ScreenCanvas({
             </label>
           )}
           {selectorGroups.map(({ group, buttons }) => {
-            const active = readSelection(def.meta.id, group) ?? buttons[0]?.id;
+            // Match previewShownMap's precedence: an editor-selected button of
+            // this group wins, else the persisted store, else the first tab.
+            const selForGroup = buttons.find((b) => sel.includes(b.id))?.id;
+            const active = selForGroup ?? readSelection(def.meta.id, group) ?? buttons[0]?.id;
             return (
               <div key={group} className="tt-seg tt-seg-small" role="group" aria-label={`${group} tab`}>
                 {buttons.map((b) => (

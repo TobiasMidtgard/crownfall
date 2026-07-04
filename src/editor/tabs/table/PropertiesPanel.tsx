@@ -32,6 +32,7 @@ import { ExpressionEditor } from '../../blocks/ExpressionEditor';
 import { AnnouncePartsChip } from '../../blocks/slots';
 import { Modal } from '../../common/Modal';
 import { removeAt, updateAt } from '../../lib';
+import { ColorPicker } from './ColorPicker';
 import {
   GROUP_MIN, MIN_H, MIN_W, MOTION_DEFAULTS, PHONE_ASPECT, addElementState, deckCardCount,
   findEl, makeActionDef, makeVariableDef, moveElementState, newCustomDeckAt, newElementState,
@@ -1275,24 +1276,27 @@ function StyleSection({ style, onChange }: {
   );
 }
 
-/** Color swatch + free-text (so gradients and css colors work too). */
+/** Rich colour picker swatch + free-text (so gradients / css vars work too). */
 function ColorRow({ label, value, placeholder, onChange }: {
   label: string;
   value: string | undefined;
   placeholder: string;
   onChange: (v: string | undefined) => void;
 }) {
+  const [open, setOpen] = useState(false);
   return (
     <label className="field">
       <span>{label}</span>
       <div className="tt-color-row">
-        <input
-          type="color"
-          className="tt-color"
+        <button
+          type="button"
+          className="tt-color tt-cp-checker"
           aria-label={`${label} picker`}
-          value={/^#[0-9a-fA-F]{6}$/.test(value ?? '') ? value! : '#1d3b2f'}
-          onChange={(e) => onChange(e.target.value)}
-        />
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+        >
+          <span style={{ background: value || 'transparent' }} />
+        </button>
         <input
           type="text"
           className="input"
@@ -1301,6 +1305,13 @@ function ColorRow({ label, value, placeholder, onChange }: {
           value={value ?? ''}
           onChange={(e) => onChange(e.target.value || undefined)}
         />
+        {open && (
+          <ColorPicker
+            value={value}
+            onChange={(css) => onChange(css || undefined)}
+            onClose={() => setOpen(false)}
+          />
+        )}
       </div>
     </label>
   );

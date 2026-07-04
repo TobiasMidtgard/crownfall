@@ -67,9 +67,6 @@ const MAX_ZOOM = 2;
 const ZOOM_STEP = 1.25;
 const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
 
-/** Preview-toggle memory for THIS SESSION only (per the spec — never stored). */
-let previewSessionDefault = true;
-
 /**
  * The def's sample snapshot for the live preview: undefined while (briefly)
  * building, null when the setup failed (preview unavailable). Memoized per
@@ -175,15 +172,12 @@ export function ScreenCanvas({
   const [view, setView] = useState<ViewState>({ x: 12, y: 12, z: 0.5 });
 
   // ----- live preview (headless sample game) ---------------------------------
+  // The canvas ALWAYS renders the real game (one WYSIWYG view = the game screen);
+  // the schematic tt-* bodies are only a fallback when the sample can't build.
   const sample = useSampleState(def);
-  const [preview, setPreview] = useState(previewSessionDefault);
-  const togglePreview = () => setPreview((p) => {
-    previewSessionDefault = !p;
-    return !p;
-  });
   // Collapsibles temporarily expanded FOR EDITING despite preview (canvas-local).
   const [pvExpanded, setPvExpanded] = useState<ReadonlySet<Id>>(new Set());
-  const pvState = preview && sample != null ? sample : null;
+  const pvState = sample ?? null;
 
   const isMobile = variant === 'mobile';
   const preset = aspectPresetOf(layout);
@@ -1161,22 +1155,8 @@ export function ScreenCanvas({
             ✕ Exit focus
           </button>
         )}
-        <button
-          type="button"
-          className={pvState !== null ? 'btn btn-small tt-pv-btn tt-pv-live' : 'btn btn-small tt-pv-btn'}
-          aria-pressed={preview}
-          disabled={sample === null}
-          title={sample === null
-            ? 'Preview unavailable — the setup fails to run'
-            : preview
-              ? 'Live preview: visibility, states and counts resolve against a sample game. Click for the design view (everything paints).'
-              : 'Design view: everything paints. Click to preview the live sample game.'}
-          onClick={togglePreview}
-        >
-          {pvState !== null ? '◉ Preview' : '○ Preview'}
-        </button>
         {sample === null && (
-          <span className="tt-pv-chip" role="status">preview unavailable — setup errors</span>
+          <span className="tt-pv-chip" role="status">setup fails to run — showing the design outline</span>
         )}
         <button
           type="button"
@@ -1204,12 +1184,12 @@ export function ScreenCanvas({
         </button>
         <button
           type="button"
-          className="btn btn-small"
+          className={fullscreen ? 'btn btn-small tt-fs-btn tt-fs-on' : 'btn btn-small tt-fs-btn'}
           aria-label={fullscreen ? 'Exit full screen' : 'Edit full screen'}
-          title={fullscreen ? 'Exit full screen (Esc)' : 'Full screen'}
+          title={fullscreen ? 'Exit full screen (Esc)' : 'Fill the window with the editor'}
           onClick={onToggleFullscreen}
         >
-          {fullscreen ? '✕' : '⛶'}
+          {fullscreen ? '✕ Exit full screen' : '⛶ Full screen'}
         </button>
       </div>
     </div>

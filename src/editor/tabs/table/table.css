@@ -1201,6 +1201,9 @@
 
 .tt-check-row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
 
+.tt-fs-btn { margin-left: auto; }
+.tt-fs-btn.tt-fs-on { background: var(--accent); color: #fff; }
+
 /* saved-component palette items */
 .tt-comp-item { display: flex; gap: 4px; align-items: stretch; margin-bottom: 6px; }
 .tt-comp-insert { flex: 1; margin-bottom: 0; }

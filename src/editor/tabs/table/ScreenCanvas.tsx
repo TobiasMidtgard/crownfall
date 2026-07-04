@@ -387,6 +387,20 @@ export function ScreenCanvas({
   };
   // Live rotation while the knob is dragged (committed to the def on release).
   const [liveRotate, setLiveRotate] = useState<{ id: Id; deg: number } | null>(null);
+  // Inline text edit: double-clicking a text/button element edits its content
+  // on the canvas. `draft` is the working value; committed on Enter/blur.
+  const [editing, setEditing] = useState<{ id: Id; draft: string } | null>(null);
+  const commitEdit = () => {
+    setEditing((cur) => {
+      if (cur) {
+        onPatchEl(cur.id, (el) =>
+          el.kind === 'text' ? { ...el, text: cur.draft }
+            : el.kind === 'button' ? { ...el, label: cur.draft }
+              : el);
+      }
+      return null;
+    });
+  };
 
   /**
    * Drag the rotation knob: spin the element about its centre. The centre in
@@ -629,8 +643,17 @@ export function ScreenCanvas({
       const last = lastTapRef.current;
       if (d.mode === 'move' && last && last.id === d.primary && now - last.t < DOUBLE_TAP_MS) {
         lastTapRef.current = null;
-        if (d.pointerType === 'touch') zoomToFitEl(d.primary);
-        else focusElement(d.primary);
+        const primEl = index.get(d.primary)?.el;
+        const inlineEditable = primEl !== undefined
+          && ((primEl.kind === 'text' && primEl.parts === undefined) || primEl.kind === 'button');
+        if (d.pointerType !== 'touch' && inlineEditable) {
+          // Double-click a text/button (mouse): edit its content in place.
+          setEditing({ id: d.primary, draft: primEl.kind === 'text' ? primEl.text : (primEl as { label: string }).label });
+        } else if (d.pointerType === 'touch') {
+          zoomToFitEl(d.primary);
+        } else {
+          focusElement(d.primary);
+        }
       } else {
         lastTapRef.current = { id: d.primary, t: now };
       }
@@ -890,6 +913,21 @@ export function ScreenCanvas({
             onPointerDown={(e) => startRotate(e, el.id, abs)}
             title="Drag to rotate (Shift = 15°)"
             aria-label={`Rotate ${el.name}`}
+          />
+        )}
+        {editing?.id === el.id && !ghost && (
+          <textarea
+            className="tt-inline-edit"
+            autoFocus
+            value={editing.draft}
+            aria-label={`Edit ${el.name} text`}
+            onChange={(e) => setEditing({ id: el.id, draft: e.target.value })}
+            onBlur={commitEdit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); commitEdit(); }
+              else if (e.key === 'Escape') { e.preventDefault(); setEditing(null); }
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
           />
         )}
       </div>

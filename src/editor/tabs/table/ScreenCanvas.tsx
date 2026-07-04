@@ -392,7 +392,9 @@ export function ScreenCanvas({
   const [editing, setEditing] = useState<{ id: Id; draft: string } | null>(null);
   const commitEdit = () => {
     setEditing((cur) => {
-      if (cur) {
+      // Only patch an element that still exists (deleted/reparented-away mid-edit
+      // otherwise silently no-ops); the effect below also drops a stale target.
+      if (cur && index.get(cur.id) !== undefined) {
         onPatchEl(cur.id, (el) =>
           el.kind === 'text' ? { ...el, text: cur.draft }
             : el.kind === 'button' ? { ...el, label: cur.draft }
@@ -401,6 +403,12 @@ export function ScreenCanvas({
       return null;
     });
   };
+  // Drop the inline editor when its element leaves the current tree — a delete,
+  // an undo, or exiting focus mode (all change `index`) — so it never lingers
+  // over the wrong element or commits to a vanished id.
+  useEffect(() => {
+    setEditing((cur) => (cur && index.get(cur.id) !== undefined ? cur : null));
+  }, [index]);
 
   /**
    * Drag the rotation knob: spin the element about its centre. The centre in
@@ -644,7 +652,10 @@ export function ScreenCanvas({
       if (d.mode === 'move' && last && last.id === d.primary && now - last.t < DOUBLE_TAP_MS) {
         lastTapRef.current = null;
         const primEl = index.get(d.primary)?.el;
+        // Plain text / button leaves inline-edit their content; ones WITH child
+        // overlays keep double-click = focus (so you can edit those children).
         const inlineEditable = primEl !== undefined
+          && (primEl.children?.length ?? 0) === 0
           && ((primEl.kind === 'text' && primEl.parts === undefined) || primEl.kind === 'button');
         if (d.pointerType !== 'touch' && inlineEditable) {
           // Double-click a text/button (mouse): edit its content in place.
@@ -921,6 +932,7 @@ export function ScreenCanvas({
             autoFocus
             value={editing.draft}
             aria-label={`Edit ${el.name} text`}
+            style={rotDeg ? { transform: `rotate(${-rotDeg}deg)` } : undefined}
             onChange={(e) => setEditing({ id: el.id, draft: e.target.value })}
             onBlur={commitEdit}
             onKeyDown={(e) => {

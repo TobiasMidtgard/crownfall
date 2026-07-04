@@ -804,6 +804,17 @@ describe('generalized tree walks (every element is a potential container)', () =
     expect(deepestGroupAt(index, 80, 80, new Set())).toBeNull(); // over the button only
   });
 
+  it('deepestGroupAt hit-tests a rotated group in its own frame', () => {
+    // A wide-thin group (40×10 at y 45-55, centre 50,50) rotated 90° becomes
+    // tall-thin. (50,35) is OUTSIDE the axis-aligned box (y<45) but INSIDE the
+    // rotated silhouette; the −rotation point map recovers it.
+    const t: ScreenElement[] = [{ kind: 'group', id: 'g', name: 'g', rect: rect(30, 45, 40, 10), rotation: 90, children: [] }];
+    const index = indexElements(t);
+    expect(deepestGroupAt(index, 50, 35, new Set())).toBe('g');
+    // A point far outside the rotated silhouette still misses.
+    expect(deepestGroupAt(index, 5, 5, new Set())).toBeNull();
+  });
+
   it('groupSiblings wraps two button children in-place; ungroup frees them back', () => {
     const t = [btn('seal', rect(0, 0, 100, 100), [el('a', rect(10, 10, 10, 10)), el('b', rect(30, 30, 20, 20))])];
     const grouped = groupSiblings(t, ['a', 'b'])!;
@@ -835,6 +846,26 @@ describe('generalized tree walks (every element is a potential container)', () =
       expect(id.startsWith('el_')).toBe(true);
     }
     expect(flattenAll(cloned).map((e) => e.name)).toEqual(flattenAll(t).map((e) => e.name));
+  });
+
+  it('cloneElementsWithNewIds remaps showForSelector to the cloned selector id', () => {
+    const t: ScreenElement[] = [{
+      kind: 'group', id: 'sw', name: 'sw', rect: rect(0, 0, 100, 100), children: [
+        { kind: 'button', id: 'bA', name: 'A', rect: rect(0, 0, 20, 10), actionId: null, label: 'A', role: 'selector', selectorGroup: 'g' },
+        { kind: 'group', id: 'pA', name: 'pA', rect: rect(0, 20, 100, 80), showForSelector: 'bA', children: [] },
+      ],
+    }];
+    const cloned = cloneElementsWithNewIds(t);
+    const clonedButton = cloned[0].children!.find((c) => c.kind === 'button')!;
+    const clonedPanel = cloned[0].children!.find((c) => c.kind === 'group')!;
+    // The panel now points at the CLONED button, not the original 'bA'.
+    expect(clonedPanel.showForSelector).toBe(clonedButton.id);
+    expect(clonedPanel.showForSelector).not.toBe('bA');
+  });
+
+  it('cloneElementsWithNewIds leaves an OUTSIDE showForSelector reference alone', () => {
+    const t: ScreenElement[] = [{ kind: 'group', id: 'p', name: 'p', rect: rect(0, 0, 50, 50), showForSelector: 'external_btn', children: [] }];
+    expect(cloneElementsWithNewIds(t)[0].showForSelector).toBe('external_btn');
   });
 });
 

@@ -220,7 +220,19 @@ export function deepestGroupAt(
   for (const [id, info] of index) {
     if (info.el.kind !== 'group' || exclude.has(id)) continue;
     const r = info.abs;
-    if (x < r.x || y < r.y || x > r.x + r.w || y > r.y + r.h) continue;
+    // A rotated group's abs box is axis-aligned but it paints rotated, so map the
+    // pointer back into the group's own frame (rotate by -rotation about its
+    // centre) before the containment test. (Own rotation only — nested rotated
+    // ancestors stay a rare edge.)
+    let px = x, py = y;
+    if (info.el.rotation) {
+      const cx = r.x + r.w / 2, cy = r.y + r.h / 2;
+      const a = (-info.el.rotation * Math.PI) / 180;
+      const dx = x - cx, dy = y - cy;
+      px = cx + dx * Math.cos(a) - dy * Math.sin(a);
+      py = cy + dx * Math.sin(a) + dy * Math.cos(a);
+    }
+    if (px < r.x || py < r.y || px > r.x + r.w || py > r.y + r.h) continue;
     const area = r.w * r.h;
     if (!best || info.depth > best.depth || (info.depth === best.depth && area < best.area)) {
       best = { id, depth: info.depth, area };
@@ -527,20 +539,35 @@ export function withVariantElements(
  * trees, and editor selection is id-based.
  */
 export function cloneElementsWithNewIds(elements: ScreenElement[]): ScreenElement[] {
-  return elements.map((el) => {
-    const cloned: ScreenElement = {
-      ...el,
-      id: uid('el'),
-      rect: { ...el.rect },
-      ...(el.states
-        ? { states: el.states.map((s) => ({ ...s, id: uid('st'), ...(s.rect ? { rect: { ...s.rect } } : {}) })) }
-        : {}),
-    };
-    if (cloned.children) {
-      return { ...cloned, children: cloneElementsWithNewIds(cloned.children) };
-    }
-    return cloned;
-  });
+  const idMap = new Map<Id, Id>();
+  // Pass 1: fresh ids for every element (and state), recording old -> new.
+  const clone = (els: ScreenElement[]): ScreenElement[] =>
+    els.map((el) => {
+      const newId = uid('el');
+      idMap.set(el.id, newId);
+      const cloned: ScreenElement = {
+        ...el,
+        id: newId,
+        rect: { ...el.rect },
+        ...(el.states
+          ? { states: el.states.map((s) => ({ ...s, id: uid('st'), ...(s.rect ? { rect: { ...s.rect } } : {}) })) }
+          : {}),
+      };
+      return cloned.children ? { ...cloned, children: clone(cloned.children) } : cloned;
+    });
+  // Pass 2: rewrite intra-subtree element references (showForSelector -> the new
+  // selector-button id) so a cloned switcher keeps driving its cloned panels. A
+  // reference OUTSIDE the cloned set is left alone (still points at a live id).
+  const remap = (els: ScreenElement[]): ScreenElement[] =>
+    els.map((el) => {
+      let next = el;
+      if (el.showForSelector !== undefined && idMap.has(el.showForSelector)) {
+        next = { ...next, showForSelector: idMap.get(el.showForSelector)! };
+      }
+      if (next.children) next = { ...next, children: remap(next.children) };
+      return next;
+    });
+  return remap(clone(elements));
 }
 
 /**

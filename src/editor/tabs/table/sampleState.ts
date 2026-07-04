@@ -64,6 +64,37 @@ export function buildSampleState(def: GameDef): Promise<GameState | null> {
   return p;
 }
 
+/** Whose turn / which phase the canvas previews (a design-time view). */
+export interface PreviewContext {
+  active: 'you' | 'foe' | 'over';
+  /** Phase to preview (null = the sample's own phase). */
+  phaseIdx: number | null;
+}
+
+export const DEFAULT_PREVIEW_CONTEXT: PreviewContext = { active: 'you', phaseIdx: null };
+
+/**
+ * A design-time VIEW of the sample under a chosen context — whose turn it is
+ * (you / opponent / game over) and which phase. A SHALLOW override: card and
+ * zone contents don't change, but seat 'current', the data-active dress, and
+ * turn/phase/over-conditional element states all resolve for that context, so
+ * an author can design each board state. Not a real engine advance.
+ */
+export function deriveContextState(
+  sample: GameState | null | undefined,
+  ctx: PreviewContext,
+): GameState | null {
+  if (sample == null) return null;
+  const phaseIdx = ctx.phaseIdx ?? sample.phaseIdx;
+  if (ctx.active === 'over') {
+    return { ...sample, phaseIdx, result: { winners: [SAMPLE_VIEWER_ID], text: 'Sample result' } };
+  }
+  const viewerIdx = Math.max(0, sample.players.findIndex((p) => p.id === SAMPLE_VIEWER_ID));
+  const oppIdx = sample.players.findIndex((p) => p.id !== SAMPLE_VIEWER_ID);
+  const currentPlayerIdx = ctx.active === 'foe' && oppIdx >= 0 ? oppIdx : viewerIdx;
+  return { ...sample, phaseIdx, currentPlayerIdx, result: null };
+}
+
 async function runSample(def: GameDef): Promise<GameState | null> {
   let failed = false;
   try {

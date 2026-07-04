@@ -1204,6 +1204,25 @@
 .tt-fs-btn { margin-left: auto; }
 .tt-fs-btn.tt-fs-on { background: var(--accent); color: #fff; }
 
+/* preview-context bar: whose turn / phase / which selector tab to design for */
+.tt-context-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 4px 0;
+}
+.tt-ctx-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-dim, var(--text));
+}
+.tt-ctx-field { display: flex; align-items: center; gap: 6px; }
+.tt-ctx-field > span { font-size: 0.8rem; color: var(--text-dim, var(--text)); }
+.tt-ctx-field .select { width: auto; min-width: 90px; }
+
 /* saved-component palette items */
 .tt-comp-item { display: flex; gap: 4px; align-items: stretch; margin-bottom: 6px; }
 .tt-comp-insert { flex: 1; margin-bottom: 0; }

@@ -10,7 +10,7 @@ import { describe, expect, it } from 'vitest';
 import type { GameState, ScreenElement } from '../../../shared/types';
 import { newGameDef } from '../../../shared/defaults';
 import { buildDominionDef } from '../../../forge/dominionGame';
-import { SAMPLE_VIEWER_ID, buildSampleState } from './sampleState';
+import { DEFAULT_PREVIEW_CONTEXT, SAMPLE_VIEWER_ID, buildSampleState, deriveContextState } from './sampleState';
 import { previewElementVisible, zonePreview } from './screenModel';
 
 type ZoneEl = Extract<ScreenElement, { kind: 'zone' }>;
@@ -62,6 +62,32 @@ describe('buildSampleState', () => {
     const def = newGameDef('Broken setup');
     def.setup = [{ kind: 'shuffle', zone: { zoneId: 'zone_nope', owner: null } }];
     expect(await buildSampleState(def)).toBeNull();
+  });
+});
+
+describe('deriveContextState (preview context)', () => {
+  it('you = viewer acting, no result; foe = opponent acting; over = a result', async () => {
+    const sample = (await buildSampleState(buildDominionDef()))!;
+    expect(sample.players[sample.currentPlayerIdx].id).toBe(SAMPLE_VIEWER_ID);
+
+    const you = deriveContextState(sample, DEFAULT_PREVIEW_CONTEXT)!;
+    expect(you.players[you.currentPlayerIdx].id).toBe(SAMPLE_VIEWER_ID);
+    expect(you.result).toBeNull();
+
+    const foe = deriveContextState(sample, { active: 'foe', phaseIdx: null })!;
+    expect(foe.players[foe.currentPlayerIdx].id).not.toBe(SAMPLE_VIEWER_ID);
+    expect(foe.result).toBeNull();
+
+    const over = deriveContextState(sample, { active: 'over', phaseIdx: null })!;
+    expect(over.result).not.toBeNull();
+    expect(over.result!.winners).toContain(SAMPLE_VIEWER_ID);
+  });
+
+  it('overrides the phase and passes null through', async () => {
+    const sample = (await buildSampleState(buildDominionDef()))!;
+    expect(deriveContextState(sample, { active: 'you', phaseIdx: 1 })!.phaseIdx).toBe(1);
+    expect(deriveContextState(sample, { active: 'you', phaseIdx: null })!.phaseIdx).toBe(sample.phaseIdx);
+    expect(deriveContextState(null, DEFAULT_PREVIEW_CONTEXT)).toBeNull();
   });
 });
 

@@ -36,20 +36,26 @@
  * show-everything behavior. `showForSelector` is NOT resolved here yet: the
  * wave-3 selector work composes its gating into the same visibility path.
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { GameDef, GameState, Id, LayoutStyle, ScreenElement, ScreenLayout } from '../../../shared/types';
 import { exprToText } from '../../blocks/exprToText';
-import { formatVarValue, renderTextParts, varTextValue } from '../../../runner/layout';
+import {
+  formatVarValue, readSelection, renderTextParts, selectionVersion, subscribeSelection,
+  varTextValue, writeSelection,
+} from '../../../runner/layout';
 import { elementCollapsed } from '../../../runner/keyboard';
 import { activeScreenVariant, resolveElementAppearance } from '../../../runner/layoutGeometry';
-import { SAMPLE_VIEWER_ID, buildSampleState, sampleSignature } from './sampleState';
+import {
+  DEFAULT_PREVIEW_CONTEXT, SAMPLE_VIEWER_ID, buildSampleState, deriveContextState,
+  sampleSignature, type PreviewContext,
+} from './sampleState';
 import { PreviewStage } from './PreviewStage';
 import {
   ASPECT_VALUES, GROUP_MIN, MIN_H, MIN_W, PHONE_ASPECT, absToGroupRel, applyElementState,
   aspectPresetOf, boundingRect, deepestGroupAt, fanMarginPx, fitCount, groupRelToAbs,
   indexElements, layoutStyleCss, pathToEl, pctToPx, previewShownMap, pruneNested,
-  resolveDropParent, selectorHiddenIds, variantElements, withDescendants, zonePreview,
-  zoneSampleCount,
+  resolveDropParent, selectorButtonOptions, selectorHiddenIds, variantElements, withDescendants,
+  zonePreview, zoneSampleCount,
   type AspectPreset, type PlainRect, type VariantKey, type ZonePreview,
 } from './screenModel';
 import { shapeBorderRadius, shapeClipPath } from '../../../runner/layoutGeometry';
@@ -177,7 +183,13 @@ export function ScreenCanvas({
   const sample = useSampleState(def);
   // Collapsibles temporarily expanded FOR EDITING despite preview (canvas-local).
   const [pvExpanded, setPvExpanded] = useState<ReadonlySet<Id>>(new Set());
-  const pvState = sample ?? null;
+  // Which board STATE the canvas previews (whose turn, which phase) — a design-
+  // time context so authors can see/design each state (see deriveContextState).
+  const [previewCtx, setPreviewCtx] = useState<PreviewContext>(DEFAULT_PREVIEW_CONTEXT);
+  const pvState = useMemo(() => deriveContextState(sample, previewCtx), [sample, previewCtx]);
+  // The context bar's tab buttons switch the shared selector store; re-render so
+  // the overlay's shown-set tracks the same active tab as the real render.
+  const selVersion = useSyncExternalStore(subscribeSelection, selectionVersion, selectionVersion);
 
   const isMobile = variant === 'mobile';
   const preset = aspectPresetOf(layout);
@@ -192,6 +204,17 @@ export function ScreenCanvas({
   const background = isMobile ? layout.mobile?.background : layout.background;
 
   const fullElements = variantElements(layout, variant);
+  // Selector groups (Treasury/Victory/Kingdom …) surfaced in the context bar so
+  // authors can flip the previewed tab without hunting for it on the canvas.
+  const selectorGroups = useMemo(() => {
+    const byGroup = new Map<string, { id: Id; label: string }[]>();
+    for (const o of selectorButtonOptions(fullElements)) {
+      const list = byGroup.get(o.group) ?? [];
+      list.push({ id: o.id, label: o.label });
+      byGroup.set(o.group, list);
+    }
+    return [...byGroup.entries()].map(([group, buttons]) => ({ group, buttons }));
+  }, [fullElements]);
 
   // ----- focus mode: resolve the path; the surface becomes the focused element ---
   const focusTrail: ScreenElement[] = [];
@@ -276,7 +299,8 @@ export function ScreenCanvas({
   const pvVisibleMap = useMemo(() => {
     if (pvState === null) return null;
     return previewShownMap(def, pvState, index, fullElements, SAMPLE_VIEWER_ID, sel);
-  }, [pvState, index, def, fullElements, sel]);
+    // selVersion: recompute when a context-bar tab switches the selector store.
+  }, [pvState, index, def, fullElements, sel, selVersion]);
 
   /**
    * The preview actually paints this element: it and every ancestor pass
@@ -1192,6 +1216,56 @@ export function ScreenCanvas({
           {fullscreen ? '✕ Exit full screen' : '⛶ Full screen'}
         </button>
       </div>
+
+      {pvState !== null && (
+        <div className="tt-context-bar" role="group" aria-label="Preview context — design each board state">
+          <span className="tt-ctx-label">Previewing</span>
+          <div className="tt-seg tt-seg-small" role="group" aria-label="Whose turn">
+            {(['you', 'foe', 'over'] as const).map((a) => (
+              <button
+                key={a}
+                type="button"
+                className={previewCtx.active === a ? 'tt-active' : ''}
+                onClick={() => setPreviewCtx((c) => ({ ...c, active: a }))}
+              >
+                {a === 'you' ? 'Your turn' : a === 'foe' ? "Opponent's turn" : 'Game over'}
+              </button>
+            ))}
+          </div>
+          {def.phases.length > 1 && (
+            <label className="tt-ctx-field">
+              <span>Phase</span>
+              <select
+                className="select"
+                value={previewCtx.phaseIdx ?? ''}
+                onChange={(e) => setPreviewCtx((c) => ({
+                  ...c, phaseIdx: e.target.value === '' ? null : Number(e.target.value),
+                }))}
+              >
+                <option value="">Current</option>
+                {def.phases.map((p, i) => <option key={p.id} value={i}>{p.name}</option>)}
+              </select>
+            </label>
+          )}
+          {selectorGroups.map(({ group, buttons }) => {
+            const active = readSelection(def.meta.id, group) ?? buttons[0]?.id;
+            return (
+              <div key={group} className="tt-seg tt-seg-small" role="group" aria-label={`${group} tab`}>
+                {buttons.map((b) => (
+                  <button
+                    key={b.id}
+                    type="button"
+                    className={active === b.id ? 'tt-active' : ''}
+                    onClick={() => writeSelection(def.meta.id, group, b.id)}
+                  >
+                    {b.label}
+                  </button>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

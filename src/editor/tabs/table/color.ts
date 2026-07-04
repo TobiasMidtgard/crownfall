@@ -12,7 +12,9 @@ export interface RGBA { r: number; g: number; b: number; a: number; }
 export interface HSVA { h: number; s: number; v: number; a: number; }
 
 const clamp = (n: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, n));
-const to255 = (n: number) => clamp(Math.round(n), 0, 255);
+// Any non-finite channel (a NaN hue from a zero-size scrub, corrupt state, …)
+// collapses to 0 so we never emit '#ff00NaN' and break an element's styling.
+const to255 = (n: number) => (Number.isFinite(n) ? clamp(Math.round(n), 0, 255) : 0);
 const hex2 = (n: number) => to255(n).toString(16).padStart(2, '0');
 
 /**
@@ -87,6 +89,9 @@ export function rgbToHsv(r: number, g: number, b: number): { h: number; s: numbe
 }
 
 export function hsvToRgb(h: number, s: number, v: number): { r: number; g: number; b: number } {
+  if (!Number.isFinite(h)) h = 0;
+  if (!Number.isFinite(s)) s = 0;
+  if (!Number.isFinite(v)) v = 0;
   const c = v * s;
   const hh = (((h % 360) + 360) % 360) / 60;
   const x = c * (1 - Math.abs((hh % 2) - 1));

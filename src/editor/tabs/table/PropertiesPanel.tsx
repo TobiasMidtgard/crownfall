@@ -1403,7 +1403,7 @@ function FillEditor({ value, onChange }: {
     <div className="tt-fill">
       <div className="tt-seg" role="tablist" aria-label="Fill type">
         <button type="button" className={`tt-seg-btn${!isGradient ? ' on' : ''}`}
-          onClick={() => { if (isGradient) onChange(grad!.stops[0]?.color || undefined); }}>Solid</button>
+          onClick={() => { if (isGradient) onChange(grad!.stops.map((s) => s.color).find(Boolean) || '#c8102e'); }}>Solid</button>
         <button type="button" className={`tt-seg-btn${isGradient ? ' on' : ''}`}
           onClick={() => { if (!isGradient) onChange(gradientToCss(defaultGradient(value))); }}>Gradient</button>
       </div>
@@ -1478,7 +1478,7 @@ function RadiusControl({ radius, radii, onChange }: {
             onChange={(v) => { const next = [...radii] as [number, number, number, number]; next[i] = v; onChange(undefined, next); }} />
         ))}
       </div>
-      <button type="button" className="btn" onClick={() => onChange(radii[0], undefined)}>Link corners</button>
+      <button type="button" className="btn" onClick={() => onChange(Math.max(...radii), undefined)}>Link corners</button>
     </div>
   );
 }

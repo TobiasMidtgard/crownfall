@@ -52,6 +52,7 @@ import {
   zoneSampleCount,
   type AspectPreset, type PlainRect, type VariantKey, type ZonePreview,
 } from './screenModel';
+import { shapeBorderRadius, shapeClipPath } from '../../../runner/layoutGeometry';
 
 /** Logical stage width in px at zoom 1. Rects are % of the screen. */
 export const SCREEN_W = 1000;
@@ -1396,10 +1397,11 @@ function ButtonBody({ el, screenW }: { el: ButtonEl; screenW: number }) {
   );
 }
 
-/** Circle/rect/diamond/pill with the authored style and a centered label. */
+/** Any shape kind with the authored style and a centered label. */
 function ShapeBody({ el, style, screenW }: { el: ShapeEl; style: LayoutStyle | undefined; screenW: number }) {
   const css = layoutStyleCss(style);
-  const radius = el.shape === 'circle' ? '50%' : el.shape === 'pill' ? '999px' : css.borderRadius;
+  const radius = shapeBorderRadius(el.shape, style) ?? css.borderRadius;
+  const clip = shapeClipPath(el.shape);
   return (
     <span className="tt-el-body tt-shape-body">
       <span
@@ -1407,9 +1409,7 @@ function ShapeBody({ el, style, screenW }: { el: ShapeEl; style: LayoutStyle | u
         style={{
           ...css,
           ...(radius !== undefined ? { borderRadius: radius } : {}),
-          ...(el.shape === 'diamond'
-            ? { clipPath: 'polygon(50% 0, 100% 50%, 50% 100%, 0 50%)' }
-            : {}),
+          ...(clip !== null ? { clipPath: clip } : {}),
         }}
       >
         {el.label && (

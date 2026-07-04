@@ -63,6 +63,12 @@ describe('HSV round-trips', () => {
     expect(hsvaToCss({ h: 0, s: 1, v: 1, a: 0.5 })).toBe('rgba(255, 0, 0, 0.5)');
   });
 
+  it('never emits NaN channels (a NaN hue collapses to hue 0)', () => {
+    expect(hsvToRgb(NaN, 1, 1)).toEqual({ r: 255, g: 0, b: 0 }); // hue 0 = red
+    expect(hsvaToCss({ h: NaN, s: 1, v: 1, a: 1 })).toBe('#ff0000');
+    expect(rgbaToCss({ r: NaN, g: 10, b: NaN, a: 1 })).toBe('#000a00'); // NaN channels -> 0
+  });
+
   it('cssToHsva returns null for unparseable colours', () => {
     expect(cssToHsva('var(--accent)')).toBeNull();
     const hsva = cssToHsva('#ff0000');

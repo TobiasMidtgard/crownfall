@@ -44,6 +44,7 @@ function useScrub(onMove: (fx: number, fy: number) => void) {
     const el = ref.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return; // not laid out — avoid NaN
     const at = (cx: number, cy: number) =>
       onMove(clamp01((cx - rect.left) / rect.width), clamp01((cy - rect.top) / rect.height));
     at(e.clientX, e.clientY);

@@ -358,18 +358,12 @@ function ElementView({ ctx, el, selCtx, screenW, buttonMove, onMove, root }: {
   }
 
   // Zone chrome is drawn by ZoneBlock itself (frame + padding around cards);
-  // shapes and lines paint their own geometry instead of the wrapper box.
-  const ownChrome = el.kind === 'zone' || el.kind === 'shape' || el.kind === 'line';
+  // shapes and lines paint their own geometry; BUTTONS carry their fill/border/
+  // shape on the <button> itself (inline) so an authored Fill beats the skin's
+  // plate CSS instead of hiding behind an opaque button background.
+  const ownChrome = el.kind === 'zone' || el.kind === 'shape' || el.kind === 'line'
+    || el.kind === 'button';
   const frame = ownChrome ? undefined : (layoutStyleCss(app.style) as React.CSSProperties);
-  // Custom button silhouette: clip the whole frame (fill + label) to the shape,
-  // or round it for the radius shapes. The Fill (style.background) becomes the
-  // button plate. 'rect' keeps the authored radius (nothing to override).
-  if (frame && el.kind === 'button' && el.shape && el.shape !== 'rect') {
-    const clip = shapeClipPath(el.shape);
-    if (clip) frame.clipPath = clip;
-    const r = shapeBorderRadius(el.shape, app.style);
-    if (r !== undefined) frame.borderRadius = r;
-  }
   let body = (
     <ElementBody
       ctx={ctx}
@@ -511,8 +505,8 @@ function VarTextView({ ctx, el, screenW }: {
         fontSize: Math.max(9, (screenW * el.fontSize) / 100),
         textAlign: el.align,
         color: el.color,
-        fontWeight: el.bold ? 800 : 600,
         ...textStyleCss(el),
+        fontWeight: el.fontWeight ?? (el.bold ? 800 : 600),
       }}
     >
       {el.label !== undefined && el.label !== '' && (
@@ -630,8 +624,8 @@ function ElementBody({ ctx, el, selCtx, style, screenW, buttonMove, onMove }: {
             fontSize: Math.max(9, (screenW * el.fontSize) / 100),
             textAlign: el.align,
             color: el.color,
-            fontWeight: el.bold ? 800 : 600,
             ...textStyleCss(el),
+            fontWeight: el.fontWeight ?? (el.bold ? 800 : 600),
           }}
         >
           {text}
@@ -649,7 +643,22 @@ function ElementBody({ ctx, el, selCtx, style, screenW, buttonMove, onMove }: {
       const fontSize = el.fontSize !== undefined
         ? Math.max(9, (screenW * el.fontSize) / 100)
         : undefined;
-      const btnStyle = { fontSize, ...textStyleCss(el) };
+      // The button paints its OWN chrome inline: authored fill/border/radius/
+      // shadow (layoutStyleCss) + custom silhouette (shape) + typography. Inline
+      // wins over the .rn-sl-btn class and any skin plate, so a Fill shows.
+      const shapeCss: React.CSSProperties = {};
+      if (el.shape && el.shape !== 'rect') {
+        const clip = shapeClipPath(el.shape);
+        if (clip) shapeCss.clipPath = clip;
+        const r = shapeBorderRadius(el.shape, style);
+        if (r !== undefined) shapeCss.borderRadius = r;
+      }
+      const btnStyle = {
+        fontSize,
+        ...(layoutStyleCss(style) as React.CSSProperties),
+        ...shapeCss,
+        ...textStyleCss(el),
+      };
       if (el.role === 'selector') {
         // Selector buttons NEVER perform a game action (actionId is ignored):
         // clicking writes the group's client-side selection; the active one

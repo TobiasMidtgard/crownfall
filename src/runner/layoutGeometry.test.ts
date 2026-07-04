@@ -117,6 +117,26 @@ describe('layoutStyleCss', () => {
   it('borderWidth 0 removes the border explicitly', () => {
     expect(layoutStyleCss({ borderWidth: 0 }).border).toBe('none');
   });
+
+  it('per-corner radii override the uniform radius', () => {
+    expect(layoutStyleCss({ borderRadius: 8, borderRadii: [10, 0, 10, 0] }).borderRadius)
+      .toBe('10px 0px 10px 0px');
+    expect(layoutStyleCss({ borderRadius: 8 }).borderRadius).toBe('8px');
+  });
+
+  it('emits opacity and box-shadow (drop + inset)', () => {
+    expect(layoutStyleCss({ opacity: 0.5 }).opacity).toBe(0.5);
+    expect(layoutStyleCss({ shadows: [{ x: 0, y: 4, blur: 12, spread: 2, color: '#000' }] }).boxShadow)
+      .toBe('0px 4px 12px 2px #000');
+    expect(layoutStyleCss({ shadows: [
+      { x: 0, y: 2, blur: 6, color: 'rgba(0,0,0,0.5)' },
+      { x: 0, y: 0, blur: 4, color: '#fff', inset: true },
+    ] }).boxShadow).toBe('0px 2px 6px 0px rgba(0,0,0,0.5), inset 0px 0px 4px 0px #fff');
+  });
+
+  it('an empty shadows array emits no box-shadow', () => {
+    expect(layoutStyleCss({ shadows: [] }).boxShadow).toBeUndefined();
+  });
 });
 
 describe('grid template math', () => {

@@ -187,13 +187,22 @@ export interface FrameCss {
   background?: string;
   border?: string;
   borderRadius?: string;
+  opacity?: number;
+  boxShadow?: string;
+}
+
+/** One ShadowSpec -> a CSS box-shadow layer. */
+export function shadowCss(sh: { x: number; y: number; blur: number; spread?: number; color: string; inset?: boolean }): string {
+  const inset = sh.inset ? 'inset ' : '';
+  return `${inset}${sh.x}px ${sh.y}px ${sh.blur}px ${sh.spread ?? 0}px ${sh.color}`;
 }
 
 /**
  * Authored LayoutStyle -> inline CSS. Only authored properties are emitted,
  * so defaults (the runner's dashed zone chrome, the editor's item chrome)
  * survive untouched until the author overrides them. borderWidth 0 emits
- * 'none' so authors can explicitly remove default chrome.
+ * 'none' so authors can explicitly remove default chrome. Per-corner radius
+ * overrides the uniform one; opacity and box-shadows pass straight through.
  */
 export function layoutStyleCss(style: LayoutStyle | undefined): FrameCss {
   const css: FrameCss = {};
@@ -207,7 +216,15 @@ export function layoutStyleCss(style: LayoutStyle | undefined): FrameCss {
       ? 'none'
       : `${width}px ${style.borderStyle ?? 'solid'} ${style.borderColor ?? 'rgba(255,255,255,0.35)'}`;
   }
-  if (style.borderRadius !== undefined) css.borderRadius = `${style.borderRadius}px`;
+  if (style.borderRadii !== undefined) {
+    css.borderRadius = style.borderRadii.map((r) => `${r}px`).join(' ');
+  } else if (style.borderRadius !== undefined) {
+    css.borderRadius = `${style.borderRadius}px`;
+  }
+  if (style.opacity !== undefined) css.opacity = style.opacity;
+  if (style.shadows !== undefined && style.shadows.length > 0) {
+    css.boxShadow = style.shadows.map(shadowCss).join(', ');
+  }
   return css;
 }
 

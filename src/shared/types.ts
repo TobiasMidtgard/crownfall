@@ -65,7 +65,22 @@ export interface CardStateSpec {
   badgeVars: Id[];
 }
 
-/** Visual chrome shared by zones and groups on the table. */
+/** One box-shadow layer (drop shadow, or an inner glow when inset). */
+export interface ShadowSpec {
+  /** Offset in px. */
+  x: number;
+  y: number;
+  /** Blur radius in px. */
+  blur: number;
+  /** Spread in px (grows/shrinks the shadow). */
+  spread?: number;
+  /** CSS colour. */
+  color: string;
+  /** Inner shadow instead of a drop shadow. */
+  inset?: boolean;
+}
+
+/** Visual chrome shared by every screen element (zones, groups, buttons, …). */
 export interface LayoutStyle {
   /** CSS color/gradient. Absent = transparent. */
   background?: string;
@@ -73,8 +88,15 @@ export interface LayoutStyle {
   /** Border width in px (rendered at any board size; 0 = none). */
   borderWidth?: number;
   borderStyle?: 'solid' | 'dashed' | 'dotted';
-  /** Corner radius in px. */
+  /** Uniform corner radius in px. */
   borderRadius?: number;
+  /** Per-corner radius [top-left, top-right, bottom-right, bottom-left] in px;
+   *  overrides borderRadius when present. */
+  borderRadii?: [number, number, number, number];
+  /** Element opacity 0-1 (1 = opaque; absent = opaque). */
+  opacity?: number;
+  /** Box shadows, painted front-to-back (CSS order). */
+  shadows?: ShadowSpec[];
 }
 
 /** Rect in % (0-100) of its container (the board, a group, or a seat strip). */

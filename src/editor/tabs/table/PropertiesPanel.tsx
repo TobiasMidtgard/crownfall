@@ -23,7 +23,7 @@
 import { useEffect, useState } from 'react';
 import type {
   ActionDef, DeckDef, ElementState, GameDef, Id, LayoutStyle, MotionSpec, RevealAnim,
-  ScreenElement, ScreenLayout, SeatRef, VariableDef, ZoneDef,
+  ScreenElement, ScreenLayout, SeatRef, ShadowSpec, VariableDef, ZoneDef,
 } from '../../../shared/types';
 import { PASS_ACTION_ID } from '../../../shared/types';
 import { BlockScriptEditor } from '../../blocks/BlockScriptEditor';
@@ -33,6 +33,7 @@ import { AnnouncePartsChip } from '../../blocks/slots';
 import { Modal } from '../../common/Modal';
 import { removeAt, updateAt } from '../../lib';
 import { ColorPicker } from './ColorPicker';
+import { defaultGradient, gradientToCss, parseGradient, type Gradient } from './gradient';
 import {
   GROUP_MIN, MIN_H, MIN_W, MOTION_DEFAULTS, PHONE_ASPECT, addElementState, deckCardCount,
   findEl, makeActionDef, makeVariableDef, moveElementState, newCustomDeckAt, newElementState,
@@ -1248,31 +1249,182 @@ function StyleSection({ style, onChange }: {
   return (
     <section className="tt-prop-section">
       <h4>Style</h4>
-      <ColorRow label="Background" value={s.background} placeholder="Transparent" onChange={(background) => set({ background })} />
+      <FillEditor value={s.background} onChange={(background) => set({ background })} />
       <ColorRow label="Border color" value={s.borderColor} placeholder="Default" onChange={(borderColor) => set({ borderColor })} />
       <div className="tt-grid">
         <Stepper
           label="Border px"
           value={s.borderWidth ?? (s.borderColor || s.borderStyle ? 1 : 0)}
           min={0}
-          max={8}
+          max={16}
           onChange={(borderWidth) => set({ borderWidth })}
         />
-        <Stepper label="Radius px" value={s.borderRadius ?? 0} min={0} max={48} onChange={(borderRadius) => set({ borderRadius })} />
+        <label className="field">
+          <span>Border style</span>
+          <select
+            className="select"
+            value={s.borderStyle ?? 'solid'}
+            onChange={(e) => set({ borderStyle: e.target.value as LayoutStyle['borderStyle'] })}
+          >
+            <option value="solid">Solid</option>
+            <option value="dashed">Dashed</option>
+            <option value="dotted">Dotted</option>
+          </select>
+        </label>
       </div>
-      <label className="field">
-        <span>Border style</span>
-        <select
-          className="select"
-          value={s.borderStyle ?? 'solid'}
-          onChange={(e) => set({ borderStyle: e.target.value as LayoutStyle['borderStyle'] })}
-        >
-          <option value="solid">Solid</option>
-          <option value="dashed">Dashed</option>
-          <option value="dotted">Dotted</option>
-        </select>
-      </label>
+      <RadiusControl
+        radius={s.borderRadius}
+        radii={s.borderRadii}
+        onChange={(borderRadius, borderRadii) => set({ borderRadius, borderRadii })}
+      />
+      <OpacityRow value={s.opacity} onChange={(opacity) => set({ opacity })} />
+      <ShadowEditor shadows={s.shadows} onChange={(shadows) => set({ shadows })} />
     </section>
+  );
+}
+
+/** Fill = a solid colour OR a gradient (linear/radial), written to `background`. */
+function FillEditor({ value, onChange }: {
+  value: string | undefined;
+  onChange: (v: string | undefined) => void;
+}) {
+  const grad = parseGradient(value);
+  const isGradient = grad !== null;
+  return (
+    <div className="tt-fill">
+      <div className="tt-seg" role="tablist" aria-label="Fill type">
+        <button type="button" className={`tt-seg-btn${!isGradient ? ' on' : ''}`}
+          onClick={() => { if (isGradient) onChange(grad!.stops[0]?.color || undefined); }}>Solid</button>
+        <button type="button" className={`tt-seg-btn${isGradient ? ' on' : ''}`}
+          onClick={() => { if (!isGradient) onChange(gradientToCss(defaultGradient(value))); }}>Gradient</button>
+      </div>
+      {isGradient
+        ? <GradientFields grad={grad!} onChange={(g) => onChange(gradientToCss(g))} />
+        : <ColorRow label="Fill" value={value} placeholder="Transparent" onChange={onChange} />}
+    </div>
+  );
+}
+
+function GradientFields({ grad, onChange }: { grad: Gradient; onChange: (g: Gradient) => void }) {
+  const setStop = (i: number, patch: Partial<Gradient['stops'][number]>) =>
+    onChange({ ...grad, stops: grad.stops.map((st, j) => (j === i ? { ...st, ...patch } : st)) });
+  return (
+    <div className="tt-grad">
+      <div className="tt-grad-preview" style={{ background: gradientToCss(grad) }} />
+      <div className="tt-seg">
+        <button type="button" className={`tt-seg-btn${grad.kind === 'linear' ? ' on' : ''}`}
+          onClick={() => onChange({ ...grad, kind: 'linear' })}>Linear</button>
+        <button type="button" className={`tt-seg-btn${grad.kind === 'radial' ? ' on' : ''}`}
+          onClick={() => onChange({ ...grad, kind: 'radial' })}>Radial</button>
+      </div>
+      {grad.kind === 'linear' && (
+        <label className="field">
+          <span>Angle {Math.round(grad.angle)}°</span>
+          <input type="range" min={0} max={360} value={Math.round(grad.angle)}
+            onChange={(e) => onChange({ ...grad, angle: Number(e.target.value) })} />
+        </label>
+      )}
+      {grad.stops.map((st, i) => (
+        <div className="tt-grad-stop" key={i}>
+          <ColorRow label={`Stop ${i + 1}`} value={st.color} placeholder="#fff"
+            onChange={(c) => setStop(i, { color: c || '#ffffff' })} />
+          <div className="tt-grad-stop-row">
+            <Stepper label="Position %" value={Math.round(st.pos)} min={0} max={100}
+              onChange={(pos) => setStop(i, { pos })} />
+            {grad.stops.length > 2 && (
+              <button type="button" className="btn tt-grad-del" aria-label={`Remove stop ${i + 1}`}
+                onClick={() => onChange({ ...grad, stops: grad.stops.filter((_, j) => j !== i) })}>✕</button>
+            )}
+          </div>
+        </div>
+      ))}
+      <button type="button" className="btn"
+        onClick={() => onChange({ ...grad, stops: [...grad.stops, { color: '#ffffff', pos: 100 }] })}>+ Stop</button>
+    </div>
+  );
+}
+
+/** Uniform corner radius, expandable to independent per-corner control. */
+function RadiusControl({ radius, radii, onChange }: {
+  radius: number | undefined;
+  radii: [number, number, number, number] | undefined;
+  onChange: (radius: number | undefined, radii: [number, number, number, number] | undefined) => void;
+}) {
+  if (radii === undefined) {
+    const uniform = radius ?? 0;
+    return (
+      <div className="tt-grid">
+        <Stepper label="Radius px" value={uniform} min={0} max={80} onChange={(r) => onChange(r, undefined)} />
+        <button type="button" className="btn tt-radius-split"
+          onClick={() => onChange(undefined, [uniform, uniform, uniform, uniform])}>⌜⌝ Per-corner</button>
+      </div>
+    );
+  }
+  const labels = ['Top-left', 'Top-right', 'Bottom-right', 'Bottom-left'];
+  return (
+    <div className="tt-radius-corners">
+      <div className="tt-grid">
+        {radii.map((r, i) => (
+          <Stepper key={i} label={labels[i]} value={r} min={0} max={80}
+            onChange={(v) => { const next = [...radii] as [number, number, number, number]; next[i] = v; onChange(undefined, next); }} />
+        ))}
+      </div>
+      <button type="button" className="btn" onClick={() => onChange(radii[0], undefined)}>Link corners</button>
+    </div>
+  );
+}
+
+/** Element opacity 0-100% (100% clears the property). */
+function OpacityRow({ value, onChange }: {
+  value: number | undefined;
+  onChange: (v: number | undefined) => void;
+}) {
+  const pct = Math.round((value ?? 1) * 100);
+  return (
+    <label className="field">
+      <span>Opacity {pct}%</span>
+      <input type="range" min={0} max={100} value={pct}
+        onChange={(e) => { const v = Number(e.target.value) / 100; onChange(v >= 1 ? undefined : v); }} />
+    </label>
+  );
+}
+
+/** Add / edit / remove box shadows (drop shadows, or inner glows when inset). */
+function ShadowEditor({ shadows, onChange }: {
+  shadows: ShadowSpec[] | undefined;
+  onChange: (s: ShadowSpec[] | undefined) => void;
+}) {
+  const list = shadows ?? [];
+  const setSh = (i: number, patch: Partial<ShadowSpec>) =>
+    onChange(list.map((sh, j) => (j === i ? { ...sh, ...patch } : sh)));
+  const remove = (i: number) => { const next = list.filter((_, j) => j !== i); onChange(next.length ? next : undefined); };
+  return (
+    <div className="tt-shadows">
+      <div className="tt-prop-subhead">
+        <span>Shadows</span>
+        <button type="button" className="btn"
+          onClick={() => onChange([...list, { x: 0, y: 4, blur: 12, spread: 0, color: 'rgba(0,0,0,0.45)', inset: false }])}>+ Add</button>
+      </div>
+      {list.map((sh, i) => (
+        <div className="tt-shadow" key={i}>
+          <div className="tt-grid">
+            <Stepper label="X" value={sh.x} min={-80} max={80} onChange={(x) => setSh(i, { x })} />
+            <Stepper label="Y" value={sh.y} min={-80} max={80} onChange={(y) => setSh(i, { y })} />
+            <Stepper label="Blur" value={sh.blur} min={0} max={160} onChange={(blur) => setSh(i, { blur })} />
+            <Stepper label="Spread" value={sh.spread ?? 0} min={-80} max={80} onChange={(spread) => setSh(i, { spread })} />
+          </div>
+          <ColorRow label="Colour" value={sh.color} placeholder="rgba(0,0,0,0.45)"
+            onChange={(c) => setSh(i, { color: c || 'rgba(0,0,0,0.45)' })} />
+          <div className="tt-shadow-foot">
+            <label className="tt-check tt-shadow-inset">
+              <input type="checkbox" checked={!!sh.inset} onChange={(e) => setSh(i, { inset: e.target.checked })} />
+              <span>Inset</span>
+            </label>
+            <button type="button" className="btn tt-shadow-del" onClick={() => remove(i)}>Remove</button>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
 

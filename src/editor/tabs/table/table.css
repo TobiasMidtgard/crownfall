@@ -1046,6 +1046,70 @@
 .tt-cp-swatch > span { display: block; width: 100%; height: 100%; }
 .tt-cp-swatch:hover { outline: 2px solid var(--accent); outline-offset: 1px; }
 
+/* ---------- fill / gradient / shadow style controls ---------- */
+.tt-fill { display: flex; flex-direction: column; gap: 8px; }
+.tt-seg {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+}
+.tt-seg-btn {
+  flex: 1;
+  padding: 6px 8px;
+  border-radius: 5px;
+  border: none;
+  background: transparent;
+  color: var(--text-dim, var(--text));
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.tt-seg-btn.on { background: var(--accent); color: #fff; }
+
+.tt-grad { display: flex; flex-direction: column; gap: 8px; }
+.tt-grad-preview {
+  height: 30px;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.3);
+}
+.tt-grad-stop {
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tt-grad-stop-row { display: flex; gap: 8px; align-items: flex-end; }
+.tt-grad-stop-row > .tt-step { flex: 1; }
+.tt-grad-del, .tt-shadow-del { flex-shrink: 0; }
+
+.tt-shadows { display: flex; flex-direction: column; gap: 8px; }
+.tt-prop-subhead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-dim, var(--text));
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tt-shadow {
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tt-shadow-foot { display: flex; align-items: center; justify-content: space-between; }
+.tt-shadow-inset { margin: 0; }
+.tt-radius-corners { display: flex; flex-direction: column; gap: 8px; }
+
 /* multi-select: align/distribute */
 .tt-align-grid {
   display: grid;

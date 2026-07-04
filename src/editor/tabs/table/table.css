@@ -771,6 +771,46 @@
   box-shadow: var(--shadow-1);
 }
 
+/* rotation knob: floats above the element's top edge, on a short stem */
+.tt-rotate-handle {
+  position: absolute;
+  left: 50%;
+  top: calc(-30px * var(--tt-hit, 1));
+  width: calc(40px * var(--tt-hit, 1));
+  height: calc(40px * var(--tt-hit, 1));
+  transform: translateX(-50%);
+  touch-action: none;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+}
+.tt-rotate-handle::before {
+  content: '';
+  position: absolute;
+  top: calc(50% + 7px * var(--tt-hit, 1));
+  height: calc(50% - 7px * var(--tt-hit, 1));
+  width: 2px;
+  background: var(--accent);
+}
+.tt-rotate-handle::after {
+  content: '↻';
+  width: calc(20px * var(--tt-hit, 1));
+  height: calc(20px * var(--tt-hit, 1));
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid #fff;
+  box-shadow: var(--shadow-1);
+  color: #fff;
+  font-size: calc(12px * var(--tt-hit, 1));
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tt-rotate-handle:active { cursor: grabbing; }
+
 /* ---------- element palette ---------- */
 
 .tt-tray { display: flex; flex-direction: column; gap: 4px; }

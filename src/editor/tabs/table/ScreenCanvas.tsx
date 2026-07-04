@@ -153,6 +153,8 @@ export interface ScreenCanvasProps {
   onSelect: (ids: Id[]) => void;
   onToggleSelect: (id: Id) => void;
   onCommitDrag: (commit: DragCommit) => void;
+  /** Patch one element in place (rotation handle, direct-manipulation edits). */
+  onPatchEl: (id: Id, fn: (el: ScreenElement) => ScreenElement) => void;
   onAspect: (preset: AspectPreset) => void;
   fullscreen: boolean;
   onToggleFullscreen: () => void;
@@ -166,7 +168,7 @@ export interface ScreenCanvasProps {
 
 export function ScreenCanvas({
   def, layout, variant, mobileExists, onVariant, sel, onSelect, onToggleSelect, onCommitDrag,
-  onAspect, fullscreen, onToggleFullscreen, statePreview = null, focusPath, onFocusPath,
+  onPatchEl, onAspect, fullscreen, onToggleFullscreen, statePreview = null, focusPath, onFocusPath,
 }: ScreenCanvasProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const screenRef = useRef<HTMLDivElement>(null);
@@ -382,6 +384,46 @@ export function ScreenCanvas({
   const setLive = (v: LiveState | null) => {
     liveRef.current = v;
     setLiveState(v);
+  };
+  // Live rotation while the knob is dragged (committed to the def on release).
+  const [liveRotate, setLiveRotate] = useState<{ id: Id; deg: number } | null>(null);
+
+  /**
+   * Drag the rotation knob: spin the element about its centre. The centre in
+   * client space is rotation-invariant, so we read it once; each move sets the
+   * angle from centre→pointer (knob at the element's top = 0°). Shift snaps 15°.
+   */
+  const startRotate = (e: React.PointerEvent, id: Id, abs: PlainRect) => {
+    if (spaceRef.current || dragRef.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const r = screenRef.current?.getBoundingClientRect();
+    if (!r || r.width === 0) return;
+    const cx = r.left + ((abs.x + abs.w / 2) / 100) * r.width;
+    const cy = r.top + ((abs.y + abs.h / 2) / 100) * r.height;
+    const pointerId = e.pointerId;
+    const at = (px: number, py: number, shift: boolean) => {
+      let deg = (Math.atan2(py - cy, px - cx) * 180) / Math.PI + 90;
+      deg = ((Math.round(deg) % 360) + 360) % 360;
+      if (shift) deg = Math.round(deg / 15) * 15;
+      setLiveRotate({ id, deg });
+    };
+    at(e.clientX, e.clientY, e.shiftKey);
+    const onMove = (ev: PointerEvent) => { if (ev.pointerId === pointerId) at(ev.clientX, ev.clientY, ev.shiftKey); };
+    const onUp = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      setLiveRotate((cur) => {
+        const deg = cur?.id === id ? cur.deg : null;
+        if (deg !== null) onPatchEl(id, (c) => ({ ...c, rotation: deg === 0 ? undefined : deg }));
+        return null;
+      });
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
   };
 
   /**
@@ -788,12 +830,14 @@ export function ScreenCanvas({
       conditional && pvState === null ? 'tt-fx-dim' : '',
       ghost ? 'tt-el-drag' : '',
     ].filter(Boolean).join(' ');
+    const rotDeg = liveRotate?.id === el.id ? liveRotate.deg : el.rotation;
     return (
       <div
         key={el.id}
         className={cls}
         style={{
           left: `${pos.x}%`, top: `${pos.y}%`, width: `${pos.w}%`, height: `${pos.h}%`,
+          ...(rotDeg ? { transform: `rotate(${rotDeg}deg)` } : {}),
           // Hit-box mode: no inline chrome/padding — the real render is behind.
           ...(asHitbox || ownChrome ? {} : layoutStyleCss(style)),
           ...(!asHitbox && padPx !== undefined ? { padding: padPx } : {}),
@@ -838,6 +882,14 @@ export function ScreenCanvas({
             className="tt-handle"
             onPointerDown={(e) => startDrag(e, el.id, 'resize')}
             aria-label={`Resize ${el.name}`}
+          />
+        )}
+        {isSel && sel.length === 1 && !ghost && (
+          <div
+            className="tt-rotate-handle"
+            onPointerDown={(e) => startRotate(e, el.id, abs)}
+            title="Drag to rotate (Shift = 15°)"
+            aria-label={`Rotate ${el.name}`}
           />
         )}
       </div>

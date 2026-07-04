@@ -177,7 +177,7 @@ export function ScreenRenderer({ ctx, screen, buttonMove, onMove }: {
  * `rn-rv-<anim>` animation (incl. on first appearance); leaving keeps the
  * node briefly with `rn-rv-<anim>-out` before removal. 'none' is instant.
  */
-function Reveal({ show, anim, rect, frame, dim, inert, children }: {
+function Reveal({ show, anim, rect, frame, dim, inert, rotate, children }: {
   show: boolean;
   anim: ScreenElement['reveal'];
   rect: { x: number; y: number; w: number; h: number };
@@ -187,6 +187,8 @@ function Reveal({ show, anim, rect, frame, dim, inert, children }: {
   /** Decorative kind (text/varText/shape): the wrapper never eats pointer
    *  events, so overlay labels can't shadow a button underneath. */
   inert?: boolean;
+  /** Rotation in degrees about the element's centre. */
+  rotate?: number;
   children: React.ReactNode;
 }) {
   const [present, setPresent] = useState(show);
@@ -216,6 +218,10 @@ function Reveal({ show, anim, rect, frame, dim, inert, children }: {
   const animClass = anim !== undefined && anim !== 'none'
     ? ` rn-rv-${anim}${closing ? '-out' : ''}`
     : '';
+  // Rotation composes with any transform the frame already carries (a
+  // collapsible slide-in), spinning about the element's own centre.
+  const spin = rotate !== undefined && rotate !== 0 ? `rotate(${rotate}deg)` : null;
+  const transform = [frame?.transform, spin].filter(Boolean).join(' ') || undefined;
   return (
     <div
       className={`rn-el${animClass}${dim === true ? ' rn-kb-dim' : ''}${inert === true ? ' rn-el-inert' : ''}`}
@@ -225,6 +231,7 @@ function Reveal({ show, anim, rect, frame, dim, inert, children }: {
         width: `${rect.w}%`,
         height: `${rect.h}%`,
         ...frame,
+        ...(transform ? { transform } : {}),
       }}
     >
       {children}
@@ -422,6 +429,7 @@ function ElementView({ ctx, el, selCtx, screenW, buttonMove, onMove, root }: {
         frame={spec ? { ...frame, zIndex: 30 } : frame}
         dim={dim}
         inert={inert}
+        rotate={el.rotation}
       >
         {changeAnim === 'breathe'
           ? (

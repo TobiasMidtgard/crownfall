@@ -337,7 +337,7 @@ function MultiProps({ sel, canGroup, onGroup, onAlign, onDistribute, onRemove }:
 
 function ElementProps(props: PropertiesPanelProps & { el: ScreenElement }) {
   const { def, el, onPatchEl, onRemove, onUngroup, onChangeDef, onFocus } = props;
-  const patchBase = (p: Partial<Pick<ScreenElement, 'name' | 'rect' | 'style' | 'visible' | 'reveal' | 'onChangeAnim'>>) =>
+  const patchBase = (p: Partial<Pick<ScreenElement, 'name' | 'rect' | 'style' | 'rotation' | 'visible' | 'reveal' | 'onChangeAnim'>>) =>
     onPatchEl(el.id, (c) => ({ ...c, ...p } as ScreenElement));
   const rect = el.rect;
   const patchRect = (p: Partial<typeof rect>) => patchBase({ rect: { ...rect, ...p } });
@@ -382,6 +382,9 @@ function ElementProps(props: PropertiesPanelProps & { el: ScreenElement }) {
           <Stepper label="Y" value={rect.y} min={0} max={Math.max(0, 100 - rect.h)} onChange={(y) => patchRect({ y })} />
           <Stepper label="Width" value={rect.w} min={minW} max={Math.max(minW, 100 - rect.x)} onChange={(w) => patchRect({ w })} />
           <Stepper label="Height" value={rect.h} min={minH} max={Math.max(minH, 100 - rect.y)} onChange={(h) => patchRect({ h })} />
+        </div>
+        <div className="tt-grid">
+          <Stepper label="Rotation °" value={el.rotation ?? 0} min={0} max={359} onChange={(rotation) => patchBase({ rotation: rotation === 0 ? undefined : rotation })} />
         </div>
       </section>
 

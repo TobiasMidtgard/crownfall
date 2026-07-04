@@ -434,6 +434,7 @@ function Workspace({ def, layout, onChange }: {
       onSelect={setSel}
       onToggleSelect={toggleSelect}
       onCommitDrag={commitDrag}
+      onPatchEl={patchEl}
       onAspect={(preset: AspectPreset) => setLayout({ ...layout, aspect: ASPECT_VALUES[preset] })}
       fullscreen={fullscreen}
       onToggleFullscreen={() => setFullscreen((f) => !f)}

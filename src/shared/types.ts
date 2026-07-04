@@ -202,6 +202,8 @@ export interface ScreenElementBase {
   name: string;
   rect: { x: number; y: number; w: number; h: number };
   style?: LayoutStyle;
+  /** Rotation in degrees about the element's centre (absent/0 = upright). */
+  rotation?: number;
   /**
    * Display expression: the element renders only while this is truthy.
    * Evaluated read-only against the public GameState with `$viewer` bound

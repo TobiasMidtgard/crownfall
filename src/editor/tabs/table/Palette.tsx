@@ -12,6 +12,7 @@
  */
 import { useState } from 'react';
 import type { GameDef, ScreenElement, SeatRef, ZoneDef, ZoneLayout, ZoneVisibility } from '../../../shared/types';
+import type { SavedComponent } from './components';
 import { Modal } from '../../common/Modal';
 import {
   PANEL_SWITCHER_MAX, PANEL_SWITCHER_MIN, SCREEN_PRESETS, panelName, panelSwitcherPreset,
@@ -29,9 +30,16 @@ export interface PaletteProps {
   onCreateZone: (zone: ZoneDef, el: ScreenElement) => void;
   /** FOCUS MODE: name of the focused element — inserts land in its children. */
   focusName?: string | null;
+  /** The author's saved reusable components (per-device library). */
+  components?: SavedComponent[];
+  onInsertComponent?: (comp: SavedComponent) => void;
+  onDeleteComponent?: (id: string) => void;
 }
 
-export function Palette({ def, onInsert, onCreateZone, focusName = null }: PaletteProps) {
+export function Palette({
+  def, onInsert, onCreateZone, focusName = null,
+  components = [], onInsertComponent, onDeleteComponent,
+}: PaletteProps) {
   const [zoneModal, setZoneModal] = useState(false);
   const [presetModal, setPresetModal] = useState<string | null>(null);
   const hasVars = def.variables.some((v) => v.scope !== 'perCard');
@@ -90,6 +98,36 @@ export function Palette({ def, onInsert, onCreateZone, focusName = null }: Palet
           </button>
         ))}
       </section>
+      {components.length > 0 && onInsertComponent && (
+        <>
+          <h3 className="tt-rail-title">Saved components</h3>
+          <section className="tt-tray-section">
+            {components.map((c) => (
+              <div key={c.id} className="tt-comp-item">
+                <button
+                  type="button"
+                  className="btn tt-tray-item tt-comp-insert"
+                  onClick={() => onInsertComponent(c)}
+                  title={`Drop a copy of “${c.name}”`}
+                >
+                  ⬡ {c.name}
+                </button>
+                {onDeleteComponent && (
+                  <button
+                    type="button"
+                    className="btn tt-comp-del"
+                    aria-label={`Delete component ${c.name}`}
+                    title="Delete from library"
+                    onClick={() => onDeleteComponent(c.id)}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            ))}
+          </section>
+        </>
+      )}
       <p className="faint tt-tray-empty">
         {focusName
           ? `Focus mode: new elements drop ON TOP of “${focusName}”, centered in its box.`

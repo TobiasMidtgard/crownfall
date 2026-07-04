@@ -1201,6 +1201,11 @@
 
 .tt-check-row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
 
+/* saved-component palette items */
+.tt-comp-item { display: flex; gap: 4px; align-items: stretch; margin-bottom: 6px; }
+.tt-comp-insert { flex: 1; margin-bottom: 0; }
+.tt-comp-del { flex-shrink: 0; width: 34px; padding: 0; }
+
 /* multi-select: align/distribute */
 .tt-align-grid {
   display: grid;

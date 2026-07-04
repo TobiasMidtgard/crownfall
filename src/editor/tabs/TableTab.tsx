@@ -30,7 +30,11 @@ import { LayersPanel } from './table/LayersPanel';
 import { PropertiesPanel } from './table/PropertiesPanel';
 import { Palette } from './table/Palette';
 import {
-  ASPECT_VALUES, alignElements, buildStarterLayout, createMobileVariant, deleteMobileVariant,
+  addComponent, loadComponents, persistComponents, removeComponent, type SavedComponent,
+} from './table/components';
+import {
+  ASPECT_VALUES, alignElements, buildStarterLayout, cloneElementsWithNewIds, createMobileVariant,
+  deleteMobileVariant,
   distributeElements, elChildren, findEl, groupSiblings, indexElements,
   insertIntoFocusedChildren, pathToEl, placeRelativeEl, pruneNested, removeEls, reorderSibling,
   reparentEl, setAbsRect, siblingsOf, ungroupEl, updateEl, validFocusPath, variantElements,
@@ -283,6 +287,17 @@ function Workspace({ def, layout, onChange }: {
     setDrawer(null);
   };
 
+  // ----- reusable component library (per-device) ----------------------------
+  const [components, setComponents] = useState<SavedComponent[]>(() => loadComponents());
+  const persistLibrary = (next: SavedComponent[]) => { setComponents(next); persistComponents(next); };
+  const saveComponent = (el: ScreenElement, name: string) => {
+    // Store a fresh-id clone so the saved copy never shares ids with the live tree.
+    const stored = cloneElementsWithNewIds([el])[0];
+    persistLibrary(addComponent(components, `c_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`, name, stored));
+  };
+  const insertComponent = (comp: SavedComponent) => insertElement(cloneElementsWithNewIds([comp.el])[0]);
+  const deleteComponent = (id: string) => persistLibrary(removeComponent(components, id));
+
   const createZone = (zone: GameDef['zones'][number], el: ScreenElement) => {
     const nextEls = focusEl
       ? insertIntoFocusedChildren(elements, focusEl.id, el)
@@ -383,7 +398,15 @@ function Workspace({ def, layout, onChange }: {
   // ----- panels (shared between rails and mobile drawers) -----
 
   const palettePanel = (
-    <Palette def={def} onInsert={insertElement} onCreateZone={createZone} focusName={focusEl?.name ?? null} />
+    <Palette
+      def={def}
+      onInsert={insertElement}
+      onCreateZone={createZone}
+      focusName={focusEl?.name ?? null}
+      components={components}
+      onInsertComponent={insertComponent}
+      onDeleteComponent={deleteComponent}
+    />
   );
 
   // While focused, Layers scopes to the focused element's subtree — its own
@@ -415,6 +438,7 @@ function Workspace({ def, layout, onChange }: {
       onAlign={(op: AlignOp) => setScopeEls(alignElements(scopeEls, sel, op))}
       onDistribute={(axis) => setScopeEls(distributeElements(scopeEls, sel, axis))}
       onFocus={focusElement}
+      onSaveComponent={saveComponent}
       onSetLayout={setLayout}
       onDeleteMobile={() => setConfirmDeleteMobile(true)}
       statePreviewId={sel.length === 1 && statePreview?.id === sel[0] ? statePreview.stateId : null}

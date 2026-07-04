@@ -77,6 +77,8 @@ export interface PropertiesPanelProps {
   onDistribute: (axis: 'h' | 'v') => void;
   /** ⛶ Focus the element on the canvas (edit the elements on top of it). */
   onFocus: (id: Id) => void;
+  /** Save the element (with its subtree + styling) to the reusable library. */
+  onSaveComponent: (el: ScreenElement, name: string) => void;
   /** Layout-level patches (backgrounds, motion, mobile settings). */
   onSetLayout: (layout: ScreenLayout) => void;
   /** Asks the workspace to confirm-delete the mobile layout. */
@@ -336,7 +338,7 @@ function MultiProps({ sel, canGroup, onGroup, onAlign, onDistribute, onRemove }:
 // ---------------------------------------------------------------------------
 
 function ElementProps(props: PropertiesPanelProps & { el: ScreenElement }) {
-  const { def, el, onPatchEl, onRemove, onUngroup, onChangeDef, onFocus } = props;
+  const { def, el, onPatchEl, onRemove, onUngroup, onChangeDef, onFocus, onSaveComponent } = props;
   const patchBase = (p: Partial<Pick<ScreenElement, 'name' | 'rect' | 'style' | 'rotation' | 'visible' | 'reveal' | 'onChangeAnim'>>) =>
     onPatchEl(el.id, (c) => ({ ...c, ...p } as ScreenElement));
   const rect = el.rect;
@@ -357,6 +359,17 @@ function ElementProps(props: PropertiesPanelProps & { el: ScreenElement }) {
           onClick={() => onFocus(el.id)}
         >
           ⛶ Focus
+        </button>
+        <button
+          type="button"
+          className="btn btn-small"
+          title="Save this element (with its styling and children) to your reusable component library"
+          onClick={() => {
+            const name = window.prompt('Save component as…', el.name);
+            if (name !== null) onSaveComponent(el, name);
+          }}
+        >
+          ⬡ Save
         </button>
         {childCount > 0 && el.kind !== 'group' && (
           <span className="chip" title="Elements drawn on top of this one — ⛶ Focus to edit them">

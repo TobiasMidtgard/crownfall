@@ -65,6 +65,13 @@ export interface CardStateSpec {
   badgeVars: Id[];
 }
 
+/**
+ * Shape of a shape element or a custom button. Radius shapes (rect/rounded/
+ * pill/circle) round via border-radius; polygon shapes (diamond/hexagon/star)
+ * clip to a polygon. 'rect' + a style radius covers arbitrary rounded rects.
+ */
+export type ShapeKind = 'rect' | 'rounded' | 'pill' | 'circle' | 'diamond' | 'hexagon' | 'star';
+
 /** One box-shadow layer (drop shadow, or an inner glow when inset). */
 export interface ShadowSpec {
   /** Offset in px. */
@@ -302,6 +309,8 @@ export type ScreenElement =
       actionId: Id | null;
       label: string;
       fontSize?: number;
+      /** Custom silhouette (clips fill + label). Absent = a rounded rect. */
+      shape?: ShapeKind;
       /**
        * 'selector' buttons switch CLIENT-side view state instead of performing
        * a game action (actionId is ignored): buttons sharing a selectorGroup
@@ -317,7 +326,7 @@ export type ScreenElement =
   /** A styled shape; states drive its fill/border (indicators, slots, markers). */
   | (ScreenElementBase & {
       kind: 'shape';
-      shape: 'circle' | 'rect' | 'diamond' | 'pill';
+      shape: ShapeKind;
       /** Optional centered label (e.g. a phase name). */
       label?: string;
       /** % of screen width. */

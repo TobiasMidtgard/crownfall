@@ -12,7 +12,8 @@ import {
   fanTransform, fitCount, gridSpec, gridTemplate, groupPiles, groupPilesRemembered,
   groupRelToAbs, layoutStyleCss, lineColor, lineEndpoints, MOTION_DEFAULTS, motionForTag,
   nextSpeed, pctToPx, rectContains, resolveMotion, resolveSeat, scaleMs, seatOffset,
-  shapeBorderRadius, speedFactor, topLegalCard, type PileMemoryEntry,
+  SHAPE_KINDS, shapeBorderRadius, shapeClipPath, shapePolygon, speedFactor, topLegalCard,
+  type PileMemoryEntry,
 } from './layoutGeometry';
 
 const parent = { x: 20, y: 10, w: 50, h: 40 };
@@ -173,9 +174,10 @@ describe('grid template math', () => {
 });
 
 describe('shape & line geometry', () => {
-  it('circles and pills round themselves regardless of the authored style', () => {
+  it('radius shapes round themselves regardless of the authored style', () => {
     expect(shapeBorderRadius('circle', { borderRadius: 4 })).toBe('50%');
-    expect(shapeBorderRadius('pill', undefined)).toBe('999px');
+    expect(shapeBorderRadius('pill', undefined)).toBe('9999px');
+    expect(shapeBorderRadius('rounded', undefined)).toBe('16px');
   });
 
   it('plain rects keep the authored radius (or none)', () => {
@@ -184,8 +186,25 @@ describe('shape & line geometry', () => {
     expect(shapeBorderRadius('rect', undefined)).toBeUndefined();
   });
 
-  it('diamonds draw their own SVG geometry (no CSS radius)', () => {
-    expect(shapeBorderRadius('diamond', { borderRadius: 12 })).toBeUndefined();
+  it('polygon shapes draw their own geometry (no CSS radius, real clip-path)', () => {
+    for (const s of ['diamond', 'hexagon', 'star'] as const) {
+      expect(shapeBorderRadius(s, { borderRadius: 12 })).toBeUndefined();
+      expect(shapePolygon(s)).not.toBeNull();
+      expect(shapeClipPath(s)).toMatch(/^polygon\(/);
+    }
+    // Diamond clip is the four cardinal points.
+    expect(shapeClipPath('diamond')).toBe('polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)');
+  });
+
+  it('radius shapes have no polygon / clip-path', () => {
+    for (const s of ['rect', 'rounded', 'pill', 'circle'] as const) {
+      expect(shapePolygon(s)).toBeNull();
+      expect(shapeClipPath(s)).toBeNull();
+    }
+  });
+
+  it('SHAPE_KINDS lists all seven silhouettes', () => {
+    expect(SHAPE_KINDS).toEqual(['rect', 'rounded', 'pill', 'circle', 'diamond', 'hexagon', 'star']);
   });
 
   it('line endpoints: h/v cross the middle, down = TL→BR, up = BL→TR', () => {

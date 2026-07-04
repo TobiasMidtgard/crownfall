@@ -1110,6 +1110,33 @@
 .tt-shadow-inset { margin: 0; }
 .tt-radius-corners { display: flex; flex-direction: column; gap: 8px; }
 
+/* ---------- shape picker ---------- */
+.tt-shape-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+.tt-shape-swatch {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--bg-raised);
+  cursor: pointer;
+}
+.tt-shape-swatch > span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--text-dim, #9aa);
+}
+.tt-shape-swatch.on { border-color: var(--accent); }
+.tt-shape-swatch.on > span { background: var(--accent); }
+.tt-shape-swatch:hover { border-color: var(--accent); }
+
 /* multi-select: align/distribute */
 .tt-align-grid {
   display: grid;

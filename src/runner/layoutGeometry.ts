@@ -16,6 +16,7 @@
  */
 import type {
   Expr, GameDef, GameState, Id, LayoutStyle, MotionSpec, ScreenElement, ScreenLayout, SeatRef,
+  ShapeKind,
 } from '../shared/types';
 import { isDisplayVisible } from '../engine';
 
@@ -138,20 +139,52 @@ export function resolveElementAppearance(
 // Shape & line geometry
 // ---------------------------------------------------------------------------
 
+/** Polygon shapes drawn by clipping / SVG (0-100 viewBox vertices). */
+const SHAPE_POLYGONS: Partial<Record<ShapeKind, string>> = {
+  diamond: '50,0 100,50 50,100 0,50',
+  hexagon: '25,0 75,0 100,50 75,100 25,100 0,50',
+  star: '50,2 61,38 98,38 68,60 79,96 50,74 21,96 32,60 2,38 39,38',
+};
+
+export const SHAPE_KINDS: ShapeKind[] = [
+  'rect', 'rounded', 'pill', 'circle', 'diamond', 'hexagon', 'star',
+];
+
+/** SVG polygon `points` for polygon shapes (diamond/hexagon/star); else null. */
+export function shapePolygon(shape: ShapeKind): string | null {
+  return SHAPE_POLYGONS[shape] ?? null;
+}
+
+/** A CSS clip-path polygon(...) for polygon shapes; null for radius shapes. */
+export function shapeClipPath(shape: ShapeKind): string | null {
+  const pts = SHAPE_POLYGONS[shape];
+  if (!pts) return null;
+  const poly = pts.split(' ').map((p) => {
+    const [x, y] = p.split(',');
+    return `${x}% ${y}%`;
+  }).join(', ');
+  return `polygon(${poly})`;
+}
+
 /**
- * Corner rounding for a shape element: circles and pills round themselves;
- * plain rects keep the authored style radius. Diamonds draw their own SVG
- * geometry (no CSS radius).
+ * Corner rounding for a radius shape: circles/pills round themselves, rounded
+ * takes a soft preset, plain rects keep the authored style radius. Polygon
+ * shapes (diamond/hexagon/star) draw their own geometry — no CSS radius.
  */
 export function shapeBorderRadius(
-  shape: 'circle' | 'rect' | 'diamond' | 'pill',
+  shape: ShapeKind,
   style: LayoutStyle | undefined,
 ): string | undefined {
   switch (shape) {
     case 'circle': return '50%';
-    case 'pill': return '999px';
-    case 'diamond': return undefined;
+    case 'pill': return '9999px';
+    case 'rounded': return '16px';
+    case 'diamond':
+    case 'hexagon':
+    case 'star':
+      return undefined;
     case 'rect':
+    default:
       return style?.borderRadius !== undefined ? `${style.borderRadius}px` : undefined;
   }
 }

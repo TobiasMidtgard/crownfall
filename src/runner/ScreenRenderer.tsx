@@ -62,7 +62,8 @@ import {
 } from './layout';
 import {
   filterDisplayCards, layoutStyleCss, lineColor, lineEndpoints, pctToPx,
-  resolveElementAppearance, resolveSeat, shapeBorderRadius, computeStage,
+  resolveElementAppearance, resolveSeat, shapeBorderRadius, shapeClipPath, shapePolygon,
+  computeStage,
   type ActiveScreen,
 } from './layoutGeometry';
 import { ZoneBlock, type TableCtx } from './ZoneViews';
@@ -360,6 +361,15 @@ function ElementView({ ctx, el, selCtx, screenW, buttonMove, onMove, root }: {
   // shapes and lines paint their own geometry instead of the wrapper box.
   const ownChrome = el.kind === 'zone' || el.kind === 'shape' || el.kind === 'line';
   const frame = ownChrome ? undefined : (layoutStyleCss(app.style) as React.CSSProperties);
+  // Custom button silhouette: clip the whole frame (fill + label) to the shape,
+  // or round it for the radius shapes. The Fill (style.background) becomes the
+  // button plate. 'rect' keeps the authored radius (nothing to override).
+  if (frame && el.kind === 'button' && el.shape && el.shape !== 'rect') {
+    const clip = shapeClipPath(el.shape);
+    if (clip) frame.clipPath = clip;
+    const r = shapeBorderRadius(el.shape, app.style);
+    if (r !== undefined) frame.borderRadius = r;
+  }
   let body = (
     <ElementBody
       ctx={ctx}
@@ -691,8 +701,9 @@ function ElementBody({ ctx, el, selCtx, style, screenW, buttonMove, onMove }: {
           </span>
         )
         : null;
-      if (el.shape === 'diamond') {
-        // A polygon stretched by viewBox keeps the diamond axis-aligned in
+      const polygon = shapePolygon(el.shape);
+      if (polygon !== null) {
+        // A polygon stretched by viewBox keeps the shape axis-aligned in
         // non-square rects; non-scaling-stroke keeps the border width in px.
         const hasBorder = style?.borderWidth !== undefined || style?.borderColor !== undefined
           || style?.borderStyle !== undefined;
@@ -700,10 +711,10 @@ function ElementBody({ ctx, el, selCtx, style, screenW, buttonMove, onMove }: {
         const dash = style?.borderStyle === 'dashed' ? '6 4'
           : style?.borderStyle === 'dotted' ? '1.5 3' : undefined;
         return (
-          <div className="rn-sl-shape rn-sl-diamond">
+          <div className={`rn-sl-shape rn-sl-${el.shape}`} style={{ opacity: style?.opacity }}>
             <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
               <polygon
-                points="50,0 100,50 50,100 0,50"
+                points={polygon}
                 vectorEffect="non-scaling-stroke"
                 strokeWidth={strokeW}
                 strokeDasharray={dash}

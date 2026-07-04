@@ -23,8 +23,9 @@
 import { useEffect, useState } from 'react';
 import type {
   ActionDef, DeckDef, ElementState, GameDef, Id, LayoutStyle, MotionSpec, RevealAnim,
-  ScreenElement, ScreenLayout, SeatRef, ShadowSpec, VariableDef, ZoneDef,
+  ScreenElement, ScreenLayout, SeatRef, ShadowSpec, ShapeKind, VariableDef, ZoneDef,
 } from '../../../shared/types';
+import { SHAPE_KINDS, shapeBorderRadius, shapeClipPath } from '../../../runner/layoutGeometry';
 import { PASS_ACTION_ID } from '../../../shared/types';
 import { BlockScriptEditor } from '../../blocks/BlockScriptEditor';
 import { ConditionBuilder } from '../../blocks/ConditionBuilder';
@@ -1080,6 +1081,14 @@ function ButtonSection(props: PropertiesPanelProps & { el: ButtonEl }) {
       <div className="tt-grid">
         <Stepper label="Font size" value={el.fontSize ?? 1.8} min={0.5} max={8} step={0.1} onChange={(fontSize) => patch({ fontSize })} />
       </div>
+      <ShapePicker
+        value={el.shape ?? 'rect'}
+        onChange={(shape) => patch({ shape: shape === 'rect' ? undefined : shape })}
+      />
+      <p className="faint tt-prop-hint">
+        The shape clips the button's Fill (set it in Style below) and label — build pills,
+        circles, diamonds, hexagons and stars.
+      </p>
       {!isSelector && (
         <p className="faint tt-prop-hint">
           Buttons disable themselves while the move isn't legal. The automatic action bar
@@ -1138,6 +1147,39 @@ function ActionScriptModal({ def, action, onClose, onChangeDef }: {
 // Shape / line
 // ---------------------------------------------------------------------------
 
+const SHAPE_LABELS: Record<ShapeKind, string> = {
+  rect: 'Rectangle', rounded: 'Rounded', pill: 'Pill', circle: 'Circle',
+  diamond: 'Diamond', hexagon: 'Hexagon', star: 'Star',
+};
+
+/** A visual grid of shape swatches (each shows its true silhouette). */
+function ShapePicker({ value, onChange }: {
+  value: ShapeKind;
+  onChange: (s: ShapeKind) => void;
+}) {
+  return (
+    <div className="field">
+      <span>Shape</span>
+      <div className="tt-shape-grid" role="radiogroup" aria-label="Shape">
+        {SHAPE_KINDS.map((k) => (
+          <button
+            key={k}
+            type="button"
+            role="radio"
+            aria-checked={value === k}
+            aria-label={SHAPE_LABELS[k]}
+            title={SHAPE_LABELS[k]}
+            className={`tt-shape-swatch${value === k ? ' on' : ''}`}
+            onClick={() => onChange(k)}
+          >
+            <span style={{ clipPath: shapeClipPath(k) ?? undefined, borderRadius: shapeBorderRadius(k, { borderRadius: 4 }) }} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ShapeSection({ el, onPatchEl }: {
   el: ShapeEl;
   onPatchEl: PropertiesPanelProps['onPatchEl'];
@@ -1147,19 +1189,7 @@ function ShapeSection({ el, onPatchEl }: {
   return (
     <section className="tt-prop-section">
       <h4>Shape</h4>
-      <label className="field">
-        <span>Shape</span>
-        <select
-          className="select"
-          value={el.shape}
-          onChange={(e) => patch({ shape: e.target.value as ShapeEl['shape'] })}
-        >
-          <option value="circle">Circle</option>
-          <option value="rect">Rectangle</option>
-          <option value="diamond">Diamond</option>
-          <option value="pill">Pill</option>
-        </select>
-      </label>
+      <ShapePicker value={el.shape} onChange={(shape) => patch({ shape })} />
       <label className="field">
         <span>Label</span>
         <input

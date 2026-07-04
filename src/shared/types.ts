@@ -87,6 +87,23 @@ export interface ShadowSpec {
   inset?: boolean;
 }
 
+/** Typography shared by the text-bearing kinds (text, varText, button labels).
+ *  All optional; absent = the runner/skin default. fontSize/color/align/bold
+ *  stay on the individual kinds (they predate this and are sometimes required). */
+export interface TextStyle {
+  /** CSS font-family stack (e.g. 'Georgia, serif'). */
+  fontFamily?: string;
+  /** 100-900. */
+  fontWeight?: number;
+  italic?: boolean;
+  /** Letter spacing in px (may be negative). */
+  letterSpacing?: number;
+  /** Unitless line-height multiplier. */
+  lineHeight?: number;
+  /** Render the text uppercased. */
+  uppercase?: boolean;
+}
+
 /** Visual chrome shared by every screen element (zones, groups, buttons, …). */
 export interface LayoutStyle {
   /** CSS color/gradient. Absent = transparent. */
@@ -274,7 +291,7 @@ export type ScreenElement =
        */
       pileFace?: 'card' | 'tile';
     })
-  | (ScreenElementBase & {
+  | (ScreenElementBase & TextStyle & {
       kind: 'text';
       text: string;
       /**
@@ -289,7 +306,7 @@ export type ScreenElement =
       align: 'left' | 'center' | 'right';
       bold?: boolean;
     })
-  | (ScreenElementBase & {
+  | (ScreenElementBase & TextStyle & {
       kind: 'varText';
       varId: Id;
       /** Whose value (perPlayer vars); ignored for globals. */
@@ -303,7 +320,7 @@ export type ScreenElement =
       /** Bump (scale + accent flash) when the value changes. Default true. */
       ticker?: boolean;
     })
-  | (ScreenElementBase & {
+  | (ScreenElementBase & TextStyle & {
       kind: 'button';
       /** A none-target ActionDef id, or PASS_ACTION_ID. null = unbound (decorative). */
       actionId: Id | null;

@@ -1137,6 +1137,8 @@
 .tt-shape-swatch.on > span { background: var(--accent); }
 .tt-shape-swatch:hover { border-color: var(--accent); }
 
+.tt-check-row { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+
 /* multi-select: align/distribute */
 .tt-align-grid {
   display: grid;

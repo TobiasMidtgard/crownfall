@@ -23,7 +23,7 @@
 import { useEffect, useState } from 'react';
 import type {
   ActionDef, DeckDef, ElementState, GameDef, Id, LayoutStyle, MotionSpec, RevealAnim,
-  ScreenElement, ScreenLayout, SeatRef, ShadowSpec, ShapeKind, VariableDef, ZoneDef,
+  ScreenElement, ScreenLayout, SeatRef, ShadowSpec, ShapeKind, TextStyle, VariableDef, ZoneDef,
 } from '../../../shared/types';
 import { SHAPE_KINDS, shapeBorderRadius, shapeClipPath } from '../../../runner/layoutGeometry';
 import { PASS_ACTION_ID } from '../../../shared/types';
@@ -763,9 +763,86 @@ function PileBadgeSelect({ def, value, onChange }: {
 // Text / variable readout
 // ---------------------------------------------------------------------------
 
+/** Named CSS font stacks (no external loads — system + common faces). */
+const FONT_STACKS: { label: string; value: string }[] = [
+  { label: 'Default', value: '' },
+  { label: 'Sans', value: 'system-ui, -apple-system, "Segoe UI", sans-serif' },
+  { label: 'Serif', value: 'Georgia, "Times New Roman", serif' },
+  { label: 'Slab', value: '"Roboto Slab", Rockwell, Georgia, serif' },
+  { label: 'Mono', value: 'ui-monospace, "Courier New", monospace' },
+  { label: 'Display', value: 'Cinzel, "Trajan Pro", Georgia, serif' },
+  { label: 'Rounded', value: '"Baloo 2", "Segoe UI Rounded", system-ui, sans-serif' },
+];
+
+/** Font family / weight / italic / spacing / line-height / uppercase controls. */
+function TextStyleControls({ el, patch }: {
+  el: TextStyle;
+  patch: (p: Partial<TextStyle>) => void;
+}) {
+  const stack = FONT_STACKS.find((f) => f.value === (el.fontFamily ?? ''));
+  return (
+    <>
+      <label className="field">
+        <span>Font</span>
+        <select
+          className="select"
+          value={stack ? stack.value : '__custom'}
+          onChange={(e) => { if (e.target.value !== '__custom') patch({ fontFamily: e.target.value || undefined }); }}
+        >
+          {FONT_STACKS.map((f) => <option key={f.label} value={f.value}>{f.label}</option>)}
+          {!stack && <option value="__custom">Custom…</option>}
+        </select>
+      </label>
+      {!stack && (
+        <label className="field">
+          <span>Custom font family</span>
+          <input
+            type="text"
+            className="input"
+            placeholder='e.g. "Cinzel", serif'
+            value={el.fontFamily ?? ''}
+            onChange={(e) => patch({ fontFamily: e.target.value || undefined })}
+          />
+        </label>
+      )}
+      <div className="tt-grid">
+        <label className="field">
+          <span>Weight</span>
+          <select
+            className="select"
+            value={el.fontWeight ?? ''}
+            onChange={(e) => patch({ fontWeight: e.target.value === '' ? undefined : Number(e.target.value) })}
+          >
+            <option value="">Default</option>
+            {[300, 400, 500, 600, 700, 800, 900].map((w) => <option key={w} value={w}>{w}</option>)}
+          </select>
+        </label>
+        <Stepper
+          label="Letter-spacing"
+          value={el.letterSpacing ?? 0}
+          min={-5} max={24} step={0.5}
+          onChange={(v) => patch({ letterSpacing: v === 0 ? undefined : v })}
+        />
+      </div>
+      <div className="tt-grid">
+        <Stepper
+          label="Line-height"
+          value={el.lineHeight ?? 1.2}
+          min={0.8} max={3} step={0.05}
+          onChange={(v) => patch({ lineHeight: v })}
+        />
+      </div>
+      <div className="tt-check-row">
+        <Check label="Italic" checked={!!el.italic} onChange={(v) => patch({ italic: v || undefined })} />
+        <Check label="UPPERCASE" checked={!!el.uppercase} onChange={(v) => patch({ uppercase: v || undefined })} />
+      </div>
+    </>
+  );
+}
+
 function TypographyFields({ el, patch }: {
-  el: { fontSize: number; color?: string; align: 'left' | 'center' | 'right'; bold?: boolean };
-  patch: (p: Partial<{ fontSize: number; color?: string; align: 'left' | 'center' | 'right'; bold?: boolean }>) => void;
+  el: TextStyle & { fontSize: number; color?: string; align: 'left' | 'center' | 'right'; bold?: boolean };
+  patch: (p: Partial<TextStyle & { fontSize: number; color?: string; align: 'left' | 'center' | 'right'; bold?: boolean }>) => void;
 }) {
   return (
     <>
@@ -782,6 +859,7 @@ function TypographyFields({ el, patch }: {
         </select>
       </label>
       <Check label="Bold" checked={el.bold === true} onChange={(bold) => patch({ bold: bold || undefined })} />
+      <TextStyleControls el={el} patch={patch} />
     </>
   );
 }
@@ -1089,6 +1167,7 @@ function ButtonSection(props: PropertiesPanelProps & { el: ButtonEl }) {
         The shape clips the button's Fill (set it in Style below) and label — build pills,
         circles, diamonds, hexagons and stars.
       </p>
+      <TextStyleControls el={el} patch={patch} />
       {!isSelector && (
         <p className="faint tt-prop-hint">
           Buttons disable themselves while the move isn't legal. The automatic action bar

@@ -16,7 +16,7 @@
  */
 import type {
   Expr, GameDef, GameState, Id, LayoutStyle, MotionSpec, ScreenElement, ScreenLayout, SeatRef,
-  ShapeKind,
+  ShapeKind, TextStyle,
 } from '../shared/types';
 import { isDisplayVisible } from '../engine';
 
@@ -228,6 +228,29 @@ export interface FrameCss {
 export function shadowCss(sh: { x: number; y: number; blur: number; spread?: number; color: string; inset?: boolean }): string {
   const inset = sh.inset ? 'inset ' : '';
   return `${inset}${sh.x}px ${sh.y}px ${sh.blur}px ${sh.spread ?? 0}px ${sh.color}`;
+}
+
+/** Fields a TextStyle contributes to inline CSS (font family/weight/etc.). */
+export interface TextCss {
+  fontFamily?: string;
+  fontWeight?: number;
+  fontStyle?: 'italic';
+  letterSpacing?: string;
+  lineHeight?: number;
+  textTransform?: 'uppercase';
+}
+
+/** Authored TextStyle -> inline CSS (only authored properties emitted). */
+export function textStyleCss(t: TextStyle | undefined): TextCss {
+  const css: TextCss = {};
+  if (!t) return css;
+  if (t.fontFamily) css.fontFamily = t.fontFamily;
+  if (t.fontWeight !== undefined) css.fontWeight = t.fontWeight;
+  if (t.italic) css.fontStyle = 'italic';
+  if (t.letterSpacing !== undefined) css.letterSpacing = `${t.letterSpacing}px`;
+  if (t.lineHeight !== undefined) css.lineHeight = t.lineHeight;
+  if (t.uppercase) css.textTransform = 'uppercase';
+  return css;
 }
 
 /**

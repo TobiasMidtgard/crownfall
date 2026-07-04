@@ -63,7 +63,7 @@ import {
 import {
   filterDisplayCards, layoutStyleCss, lineColor, lineEndpoints, pctToPx,
   resolveElementAppearance, resolveSeat, shapeBorderRadius, shapeClipPath, shapePolygon,
-  computeStage,
+  textStyleCss, computeStage,
   type ActiveScreen,
 } from './layoutGeometry';
 import { ZoneBlock, type TableCtx } from './ZoneViews';
@@ -512,6 +512,7 @@ function VarTextView({ ctx, el, screenW }: {
         textAlign: el.align,
         color: el.color,
         fontWeight: el.bold ? 800 : 600,
+        ...textStyleCss(el),
       }}
     >
       {el.label !== undefined && el.label !== '' && (
@@ -630,6 +631,7 @@ function ElementBody({ ctx, el, selCtx, style, screenW, buttonMove, onMove }: {
             textAlign: el.align,
             color: el.color,
             fontWeight: el.bold ? 800 : 600,
+            ...textStyleCss(el),
           }}
         >
           {text}
@@ -647,6 +649,7 @@ function ElementBody({ ctx, el, selCtx, style, screenW, buttonMove, onMove }: {
       const fontSize = el.fontSize !== undefined
         ? Math.max(9, (screenW * el.fontSize) / 100)
         : undefined;
+      const btnStyle = { fontSize, ...textStyleCss(el) };
       if (el.role === 'selector') {
         // Selector buttons NEVER perform a game action (actionId is ignored):
         // clicking writes the group's client-side selection; the active one
@@ -654,14 +657,14 @@ function ElementBody({ ctx, el, selCtx, style, screenW, buttonMove, onMove }: {
         const group = (el.selectorGroup ?? '').trim();
         if (group === '') {
           // No group — validation warns; render inert (nothing to switch).
-          return <div className="rn-sl-btn rn-sl-deco" style={{ fontSize }}>{el.label}</div>;
+          return <div className="rn-sl-btn rn-sl-deco" style={btnStyle}>{el.label}</div>;
         }
         const on = selCtx.active.get(group) === el.id;
         return (
           <button
             type="button"
             className={`rn-sl-btn rn-sel${on ? ' rn-sel-on' : ''}`}
-            style={{ fontSize }}
+            style={btnStyle}
             aria-pressed={on}
             onClick={() => writeSelection(def.meta.id, group, el.id)}
           >
@@ -670,7 +673,7 @@ function ElementBody({ ctx, el, selCtx, style, screenW, buttonMove, onMove }: {
         );
       }
       if (el.actionId === null) {
-        return <div className="rn-sl-btn rn-sl-deco" style={{ fontSize }}>{el.label}</div>;
+        return <div className="rn-sl-btn rn-sl-deco" style={btnStyle}>{el.label}</div>;
       }
       const move = buttonMove.get(el.actionId);
       const isPass = el.actionId === PASS_ACTION_ID;
@@ -678,7 +681,7 @@ function ElementBody({ ctx, el, selCtx, style, screenW, buttonMove, onMove }: {
         <button
           type="button"
           className={`rn-sl-btn${isPass && move ? ' rn-sl-pass' : ''}`}
-          style={{ fontSize }}
+          style={btnStyle}
           disabled={move === undefined}
           onClick={move !== undefined ? () => onMove(move) : undefined}
         >

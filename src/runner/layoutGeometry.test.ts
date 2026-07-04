@@ -12,8 +12,8 @@ import {
   fanTransform, fitCount, gridSpec, gridTemplate, groupPiles, groupPilesRemembered,
   groupRelToAbs, layoutStyleCss, lineColor, lineEndpoints, MOTION_DEFAULTS, motionForTag,
   nextSpeed, pctToPx, rectContains, resolveMotion, resolveSeat, scaleMs, seatOffset,
-  SHAPE_KINDS, shapeBorderRadius, shapeClipPath, shapePolygon, speedFactor, topLegalCard,
-  type PileMemoryEntry,
+  SHAPE_KINDS, shapeBorderRadius, shapeClipPath, shapePolygon, speedFactor, textStyleCss,
+  topLegalCard, type PileMemoryEntry,
 } from './layoutGeometry';
 
 const parent = { x: 20, y: 10, w: 50, h: 40 };
@@ -137,6 +137,28 @@ describe('layoutStyleCss', () => {
 
   it('an empty shadows array emits no box-shadow', () => {
     expect(layoutStyleCss({ shadows: [] }).boxShadow).toBeUndefined();
+  });
+});
+
+describe('textStyleCss', () => {
+  it('emits nothing for absent typography', () => {
+    expect(textStyleCss(undefined)).toEqual({});
+    expect(textStyleCss({})).toEqual({});
+  });
+
+  it('emits only authored typography, mapping to CSS', () => {
+    expect(textStyleCss({
+      fontFamily: 'Georgia, serif', fontWeight: 700, italic: true,
+      letterSpacing: 2, lineHeight: 1.4, uppercase: true,
+    })).toEqual({
+      fontFamily: 'Georgia, serif', fontWeight: 700, fontStyle: 'italic',
+      letterSpacing: '2px', lineHeight: 1.4, textTransform: 'uppercase',
+    });
+  });
+
+  it('omits italic/uppercase when false and lets 0 spacing pass', () => {
+    expect(textStyleCss({ italic: false, uppercase: false, letterSpacing: 0 }))
+      .toEqual({ letterSpacing: '0px' });
   });
 });
 

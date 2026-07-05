@@ -526,6 +526,8 @@ async function execBlock(ctx: ExecCtx, b: Block): Promise<void> {
     case 'forEachPlayer': {
       const n = core.state.players.length;
       for (let i = 0; i < n; i++) {
+        // 'others' = each OPPONENT: skip the current player (i === 0 is current).
+        if (b.scope === 'others' && i === 0) continue;
         const p = core.state.players[(core.state.currentPlayerIdx + i) % n];
         ctx.frames.push({ $player: p.id });
         try {
@@ -586,6 +588,29 @@ async function execBlock(ctx: ExecCtx, b: Block): Promise<void> {
           ctx.frames.pop();
         }
       }
+      return;
+    }
+    case 'discardTo': {
+      const askerId = resolveAsker(ctx, b.who);
+      const candidates = filterCandidates(ctx, b.from, null);
+      const keep = Math.max(0, Math.floor(toNum(e, evalExpr(e, b.keep))));
+      const count = Math.max(0, candidates.length - keep);
+      if (count === 0) return; // already at or under the limit
+      const fromInst = resolveZoneInst(e, b.from);
+      const toInst = resolveZoneInst(e, b.to);
+      if (!fromInst || !toInst) return;
+      let picked: Id[];
+      if (candidates.length <= count) {
+        picked = [...candidates]; // must drop everything — no real choice
+      } else {
+        const req: ChoiceRequest = {
+          id: ++core.choiceSeq, playerId: askerId, kind: 'cards',
+          prompt: b.prompt, cardIds: candidates, min: count, max: count, revealed: false,
+        };
+        const answer = await askChoice(core, req);
+        picked = parseCardsAnswer(req, answer) ?? [];
+      }
+      if (picked.length > 0) performMove(core, fromInst, toInst, picked, 'top', true, 'discard');
       return;
     }
     case 'choosePile': {

@@ -250,7 +250,7 @@ export function execNodeRows(def: GameDef, block: Block): NodeRow[] {
     case 'changeVar': return [field('varTarget'), data('by', 'By', 'number')];
     case 'if': return [data('cond', 'Condition', 'boolean'), ...lanes];
     case 'repeat': return [data('times', 'Times', 'number'), ...lanes];
-    case 'forEachPlayer': return [...lanes];
+    case 'forEachPlayer': return [field('scope'), ...lanes];
     case 'forEachCard': return [
       field('zone'),
       data('filter', 'Where', 'boolean', { nullLabel: 'every card', addBindings: ['$card'] }),
@@ -275,6 +275,13 @@ export function execNodeRows(def: GameDef, block: Block): NodeRow[] {
       field('optional'),
       field('revealed'),
       ...lanes,
+    ];
+    case 'discardTo': return [
+      data('who', 'Who', 'player', { nullLabel: 'current player' }),
+      field('from'),
+      field('to'),
+      data('keep', 'Keep', 'number'),
+      field('prompt'),
     ];
     case 'triggerAbilities': return [data('card', 'Card', 'card'), field('zoneId')];
     case 'cancelTopEffect': return [field('cardTo')];

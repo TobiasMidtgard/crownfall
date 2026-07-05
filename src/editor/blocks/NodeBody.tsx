@@ -255,6 +255,42 @@ export function ExecFieldControl({ def, block, fieldKey, bindings, onChange }: {
       );
     case 'forEachCard':
       return <><Label>in</Label><ZoneRefChip def={def} value={block.zone} onChange={(zone) => onChange({ ...block, zone })} bindings={bindings} /></>;
+    case 'forEachPlayer':
+      if (fieldKey === 'scope') {
+        return (
+          <button
+            type="button"
+            className="blk-chip"
+            title="Every player, or only the opponents (skip the current player)?"
+            onClick={() => onChange({ ...block, scope: block.scope === 'others' ? 'all' : 'others' })}
+          >
+            {block.scope === 'others' ? 'each opponent' : 'each player'}
+          </button>
+        );
+      }
+      return null;
+    case 'discardTo':
+      if (fieldKey === 'from') {
+        return <><Label>from</Label><ZoneRefChip def={def} value={block.from} onChange={(from) => onChange({ ...block, from })} bindings={bindings} title="Discard from which zone?" /></>;
+      }
+      if (fieldKey === 'to') {
+        return <><Label>to</Label><ZoneRefChip def={def} value={block.to} onChange={(to) => onChange({ ...block, to })} bindings={bindings} title="Discard into which zone?" /></>;
+      }
+      if (fieldKey === 'prompt') {
+        return (
+          <>
+            <Label>prompt</Label>
+            <input
+              type="text"
+              className="input gr-inline-text"
+              value={block.prompt}
+              aria-label="Prompt shown to the discarding player"
+              onChange={(e) => onChange({ ...block, prompt: e.target.value })}
+            />
+          </>
+        );
+      }
+      return null;
     case 'choose':
       return <><Label>picks</Label><ChoiceSpecChip def={def} value={block.choice} onChange={(choice) => onChange({ ...block, choice })} bindings={bindings} /></>;
     case 'chooseCards':

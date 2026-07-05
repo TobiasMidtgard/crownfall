@@ -60,7 +60,8 @@ import { deepClone } from '../shared/defaults';
 import { dominionGame } from '../examples/dominion';
 import {
   ALL, CURRENT, END_PHASE, STACK_SIZE, TURN_NUMBER, add, allOf, announce, anyOf, bnd, bestCard,
-  changeVar, chooseCard, chooseCardsBlock, countCards, eq, field, forEachPlayer, getVar, gt, gte,
+  changeVar, chooseCard, chooseCardsBlock, countCards, discardDownTo, eq, field, forEachOpponent,
+  forEachPlayer, getVar, gt, gte,
   iff, lte, move, mul, neg, neq, nextPlayer, not, num, or, setVar, specific, str, sub, zone, zoneCount,
 } from '../examples/dsl';
 import { DEFAULT_KINGDOM_ID, kingdomById } from '../shared/kingdoms';
@@ -575,20 +576,17 @@ const EXAMPLE_ABILITY_OVERRIDES: Record<string, AbilityDef[]> = {
       changeVar(COINS, num(2), OWNER),
     ]),
     onPlay('dom_ab_militia_attack', 'Militia raid', [
-      forEachPlayer([
-        iff(allOf(neq(PLAYER, OWNER), eq(getVar(IMMUNE, PLAYER), num(0))), [
-          iff(gt(zoneCount(zone(HAND, PLAYER)), num(3)), [
-            chooseCardsBlock({
-              who: PLAYER,
-              from: zone(HAND, PLAYER),
-              min: sub(zoneCount(zone(HAND, PLAYER)), num(3)),
-              max: sub(zoneCount(zone(HAND, PLAYER)), num(3)),
-              prompt: 'Militia: discard down to 3 cards',
-              body: [
-                tmove(specific(CARD), zone(HAND, PLAYER), zone(DISCARD, PLAYER), 'discard', { faceUp: true }),
-              ],
-            }),
-          ]),
+      // Each OPPONENT (forEachOpponent skips the owner) who isn't Moat-immune
+      // discards down to 3 — they choose which, and it no-ops at ≤3 cards.
+      forEachOpponent([
+        iff(eq(getVar(IMMUNE, PLAYER), num(0)), [
+          discardDownTo({
+            who: PLAYER,
+            from: zone(HAND, PLAYER),
+            to: zone(DISCARD, PLAYER),
+            keep: num(3),
+            prompt: 'Militia: discard down to 3 cards',
+          }),
         ]),
       ]),
       // IMMUNE resets in the shared effectResolved trigger, per attack.

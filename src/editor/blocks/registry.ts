@@ -178,7 +178,7 @@ const BLOCK_ENTRIES: { [K in Block['kind']]: BlockEntry } = {
   },
   forEachPlayer: {
     category: 'control', label: 'For each player',
-    description: 'Run blocks once per player ($player), starting with the current player.',
+    description: 'Run blocks once per player ($player), from the current player. Flip the chip to "each opponent" to skip the current player (attacks).',
     make: () => ({ kind: 'forEachPlayer', body: [] }),
   },
   forEachCard: {
@@ -200,6 +200,14 @@ const BLOCK_ENTRIES: { [K in Block['kind']]: BlockEntry } = {
     make: (def) => ({
       kind: 'chooseCards', who: null, from: firstZoneRef(def), filter: null,
       min: num(1), max: num(1), prompt: 'Choose cards', revealed: false, body: [],
+    }),
+  },
+  discardTo: {
+    category: 'players', label: 'Discard down to N',
+    description: 'A player keeps N cards in a zone and discards the rest into another zone (their choice which) — e.g. Militia’s “discard down to 3”.',
+    make: (def) => ({
+      kind: 'discardTo', who: null, from: firstZoneRef(def), to: secondZoneRef(def),
+      keep: num(3), prompt: 'Discard down to 3 cards',
     }),
   },
   choosePile: {

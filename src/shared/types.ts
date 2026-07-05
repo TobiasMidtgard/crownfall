@@ -802,8 +802,11 @@ export type Block =
   | { kind: 'changeVar'; varId: Id; target: Expr | null; by: Expr }
   | { kind: 'if'; cond: Expr; then: Block[]; else: Block[] }
   | { kind: 'repeat'; times: Expr; body: Block[] }
-  /** Binds $player. Iterates in seating order starting from the current player. */
-  | { kind: 'forEachPlayer'; body: Block[] }
+  /**
+   * Binds $player. Iterates in seating order starting from the current player.
+   * scope 'others' skips the current player (each OPPONENT); absent/'all' = all.
+   */
+  | { kind: 'forEachPlayer'; body: Block[]; scope?: 'all' | 'others' }
   /** Binds $card. Snapshot of matching cards taken before iterating. */
   | { kind: 'forEachCard'; zone: ZoneRef; filter: Expr | null; body: Block[] }
   /** Pauses for input from `who` (a player expr; null = current player). Result bound to $choice. */
@@ -814,6 +817,13 @@ export type Block =
    * `revealed` shows candidates' faces to the chooser (deck searches).
    */
   | { kind: 'chooseCards'; who: Expr | null; from: ZoneRef; filter: Expr | null; min: Expr; max: Expr; prompt: string; revealed: boolean; body: Block[] }
+  /**
+   * Discard down to a size: `who` (null = current player) keeps `keep` cards in
+   * `from` and moves the rest to `to` (face up, tag 'discard'), CHOOSING which
+   * when there's a choice to make. No-op when `from` already holds ≤ keep. A
+   * reusable "each player discards down to N" primitive (attacks, hand limits).
+   */
+  | { kind: 'discardTo'; who: Expr | null; from: ZoneRef; to: ZoneRef; keep: Expr; prompt: string }
   /**
    * Pile choice (supply gains): the (filtered) zone's cards are grouped into
    * one pile per distinct card identity (custom cards by defId, standard

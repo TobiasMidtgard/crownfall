@@ -22,6 +22,20 @@ async function runSetup(setup: Block[], extra: Partial<GameDef> = {}) {
   return h;
 }
 
+describe('discardTo', () => {
+  it('keep 0 moves everything (no choice to make)', async () => {
+    const h = await runSetup([{ kind: 'discardTo', who: null, from: zr('a'), to: zr('b'), keep: num(0), prompt: 'x' }]);
+    expect(namesIn(h.state(), 'a')).toEqual([]);
+    expect(namesIn(h.state(), 'b')).toHaveLength(5);
+  });
+
+  it('no-ops when already at or under the keep size', async () => {
+    const h = await runSetup([{ kind: 'discardTo', who: null, from: zr('a'), to: zr('b'), keep: num(10), prompt: 'x' }]);
+    expect(namesIn(h.state(), 'a')).toHaveLength(5);
+    expect(namesIn(h.state(), 'b')).toEqual([]);
+  });
+});
+
 describe('moveCards', () => {
   it('moves top N preserving order (source top stays on top)', async () => {
     const h = await runSetup([mv(zr('a'), zr('b'), selTop(2))]);
@@ -167,6 +181,17 @@ describe('variables', () => {
     const s = h.state();
     expect(s.players[0].vars['score']).toBe(11);
     expect(s.players[1].vars['score']).toBe(21);
+  });
+
+  it('forEachPlayer scope "others" runs for opponents only (skips the current player)', async () => {
+    const h = harness(makeDef({
+      variables: [vdef('score', 'perPlayer', 'number', 0)],
+      setup: [{ kind: 'forEachPlayer', body: [cv('score', num(1))], scope: 'others' }],
+    }));
+    await h.engine.start();
+    const s = h.state();
+    expect(s.players[0].vars['score']).toBe(0); // current player skipped
+    expect(s.players[1].vars['score']).toBe(1); // each opponent runs once
   });
 
   it('perCard vars: contextual uses $card, then $self; errors without either', async () => {

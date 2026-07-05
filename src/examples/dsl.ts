@@ -90,6 +90,8 @@ export const iff = (cond: Expr, then: Block[], otherwise: Block[] = []): Block =
   ({ kind: 'if', cond, then, else: otherwise });
 export const repeat = (times: Expr, body: Block[]): Block => ({ kind: 'repeat', times, body });
 export const forEachPlayer = (body: Block[]): Block => ({ kind: 'forEachPlayer', body });
+/** Like forEachPlayer but skips the current player — each OPPONENT ($player). */
+export const forEachOpponent = (body: Block[]): Block => ({ kind: 'forEachPlayer', body, scope: 'others' });
 export const forEachCard = (z: ZoneRef, filter: Expr | null, body: Block[]): Block =>
   ({ kind: 'forEachCard', zone: z, filter, body });
 
@@ -136,6 +138,22 @@ export const chooseCardsBlock = (opts: {
   prompt: opts.prompt,
   revealed: opts.revealed ?? false,
   body: opts.body,
+});
+
+/** `who` keeps `keep` cards in `from`, discarding the rest (their choice) into `to`. */
+export const discardDownTo = (opts: {
+  who?: Expr | null;
+  from: ZoneRef;
+  to: ZoneRef;
+  keep: Expr;
+  prompt: string;
+}): Block => ({
+  kind: 'discardTo',
+  who: opts.who ?? null,
+  from: opts.from,
+  to: opts.to,
+  keep: opts.keep,
+  prompt: opts.prompt,
 });
 
 /** Counter/negate the top pending effect; its source card moves to `cardTo` (null = stays). */

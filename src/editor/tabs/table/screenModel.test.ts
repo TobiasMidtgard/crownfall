@@ -8,13 +8,14 @@
  */
 import { describe, expect, it } from 'vitest';
 import type {
-  ActionDef, DeckDef, ElementState, Expr, GameDef, PhaseDef, ScreenElement, ScreenLayout,
+  ActionDef, DeckDef, ElementState, Expr, FlowLayout, GameDef, PhaseDef, ScreenElement, ScreenLayout,
   VariableDef, ZoneDef,
 } from '../../../shared/types';
 import { newGameDef } from '../../../shared/defaults';
 import { harness, makeDef, zone } from '../../../engine/testkit';
 import {
   MOTION_DEFAULTS, PHONE_ASPECT, addElementState, alignElements, applyElementState,
+  canDropInto, containerCanFlow, isFlowChild, newFlowGroup, newImageElement, slotChildrenOf,
   buildStarterLayout, cloneElementsWithNewIds, createMobileVariant, deckCardCount,
   deepestGroupAt, deleteMobileVariant, distributeElements, findEl, groupSiblings,
   indexElements, insertIntoFocusedChildren, makeActionDef, makeVariableDef, makeZoneDef,
@@ -1137,5 +1138,116 @@ describe('resolveDropParent (drop-to-join guard)', () => {
 
   it('a null hover for a root-level element stays at root', () => {
     expect(resolveDropParent({ reparentable: true, hoverGroupId: null, origParentId: null, primaryRect: inside, origParentAbs: undefined })).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Layout backbone: FlowLayout / SlotDef / new kinds (Task 1)
+// ---------------------------------------------------------------------------
+
+describe('layout-backbone types', () => {
+  it('a group can carry a FlowLayout and slotted children', () => {
+    const layout: FlowLayout = { mode: 'grid', gap: 2, columns: 3, itemSize: 'uniform' };
+    const el: ScreenElement = {
+      kind: 'group', id: 'g1', name: 'Grid', rect: { x: 0, y: 0, w: 50, h: 50 },
+      layout, children: [
+        { kind: 'text', id: 't1', name: 'T', rect: { x: 0, y: 0, w: 10, h: 5 },
+          text: 'hi', fontSize: 2, align: 'center', slotId: 'content' },
+      ],
+    };
+    expect(el.layout?.mode).toBe('grid');
+    expect(el.children?.[0].slotId).toBe('content');
+  });
+
+  it('image and panelSwitcher are valid kinds', () => {
+    const img: ScreenElement = { kind: 'image', id: 'i1', name: 'Img',
+      rect: { x: 0, y: 0, w: 10, h: 10 }, src: 'data:,', fit: 'contain' };
+    const ps: ScreenElement = { kind: 'panelSwitcher', id: 'p1', name: 'PS',
+      rect: { x: 0, y: 0, w: 40, h: 40 }, selectorGroup: 'grp',
+      slots: [
+        { id: 'tabs', name: 'Tabs', accepts: ['button'], layout: { mode: 'row' } },
+        { id: 'content', name: 'Content', single: true, layout: { mode: 'column' } },
+      ], children: [] };
+    expect(img.kind).toBe('image');
+    expect(ps.slots).toHaveLength(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Layout backbone: factories + flow/slot helpers (Tasks 8-9)
+// ---------------------------------------------------------------------------
+
+describe('flow factories & helpers', () => {
+  it('newFlowGroup seeds a group with the requested mode', () => {
+    expect(newFlowGroup('grid', 'Grid')).toMatchObject({ kind: 'group', layout: { mode: 'grid' }, children: [] });
+    expect(newFlowGroup('row', 'Row').layout?.mode).toBe('row');
+    expect(newFlowGroup('column', 'Column').layout?.mode).toBe('column');
+  });
+  it('newImageElement is an empty contain image', () => {
+    expect(newImageElement()).toMatchObject({ kind: 'image', src: '', fit: 'contain' });
+  });
+  it('containerCanFlow: group/panelSwitcher/button yes, zone/text no', () => {
+    expect(containerCanFlow({ kind: 'group' } as ScreenElement)).toBe(true);
+    expect(containerCanFlow({ kind: 'panelSwitcher' } as ScreenElement)).toBe(true);
+    expect(containerCanFlow({ kind: 'button' } as ScreenElement)).toBe(true);
+    expect(containerCanFlow({ kind: 'zone' } as ScreenElement)).toBe(false);
+    expect(containerCanFlow({ kind: 'text' } as ScreenElement)).toBe(false);
+  });
+  it('slotChildrenOf filters by slotId', () => {
+    const parent = { children: [
+      { id: 'a', slotId: 'tabs' }, { id: 'b', slotId: 'content' }, { id: 'c' },
+    ] } as unknown as ScreenElement;
+    expect(slotChildrenOf(parent, 'tabs').map((c) => c.id)).toEqual(['a']);
+    expect(slotChildrenOf(parent, 'content').map((c) => c.id)).toEqual(['b']);
+  });
+  it('isFlowChild is true only under a flowing parent', () => {
+    const flowParent = grp('fp', rect(0, 0, 60, 20), [el('kid')]);
+    (flowParent as Extract<ScreenElement, { kind: 'group' }>).layout = { mode: 'row' };
+    const plainParent = grp('pp', rect(0, 30, 60, 20), [el('kid2')]);
+    const idx = indexElements([flowParent, plainParent, el('loose')]);
+    expect(isFlowChild(idx, 'kid')).toBe(true);
+    expect(isFlowChild(idx, 'kid2')).toBe(false);
+    expect(isFlowChild(idx, 'loose')).toBe(false);
+  });
+});
+
+describe('canDropInto + reparent slot binding', () => {
+  const ps = (): ScreenElement => ({
+    kind: 'panelSwitcher', id: 'ps', name: 'PS', rect: rect(10, 10, 60, 60), selectorGroup: 'g',
+    slots: [
+      { id: 'tabs', name: 'Tabs', accepts: ['button'], layout: { mode: 'row' }, rect: { x: 0, y: 0, w: 100, h: 12 } },
+      { id: 'content', name: 'Content', single: true, layout: { mode: 'column' }, rect: { x: 0, y: 12, w: 100, h: 88 } },
+    ],
+    children: [],
+  });
+  it('a slotless flow container accepts anything', () => {
+    expect(canDropInto(newFlowGroup('row', 'R'), 'zone')).toBe(true);
+  });
+  it('a slot with accepts filters by kind', () => {
+    expect(canDropInto(ps(), 'button', 'tabs')).toBe(true);
+    expect(canDropInto(ps(), 'zone', 'tabs')).toBe(false);
+    expect(canDropInto(ps(), 'zone', 'content')).toBe(true); // content accepts anything
+    expect(canDropInto(ps(), 'button', 'nope')).toBe(false); // no such slot
+  });
+  it('reparentEl refuses a rejected kind and binds slotId on accept', () => {
+    const tree = [ps(), el('btnable')];
+    const asButton = { ...el('btn2'), kind: 'button', actionId: null, label: 'X' } as ScreenElement;
+    const withBtn = [ps(), asButton];
+    // zone-kind el into the button-only tabs slot: refused (tree unchanged).
+    const zoneEl = { kind: 'zone', id: 'z', name: 'z', rect: rect(0, 0, 10, 10), zoneId: 'q', seat: 'shared' } as ScreenElement;
+    const refused = reparentEl([ps(), zoneEl], 'z', 'ps', rect(0, 0, 20, 20), 'tabs');
+    expect(findEl(refused, 'ps')?.children?.some((c) => c.id === 'z')).toBeFalsy();
+    // button into tabs: accepted + slotId bound.
+    const ok = reparentEl(withBtn, 'btn2', 'ps', rect(0, 0, 20, 20), 'tabs');
+    const moved = findEl(ok, 'btn2');
+    expect(moved?.slotId).toBe('tabs');
+    void tree; void asButton; void withBtn;
+  });
+  it('groupSiblings + ungroupEl preserve a child layout field', () => {
+    const flowKid = newFlowGroup('grid', 'Inner');
+    const other = el('o1');
+    const grouped = groupSiblings([flowKid, other], [flowKid.id, other.id]);
+    const innerAfter = grouped && findEl(grouped.elements, flowKid.id);
+    expect(innerAfter?.layout?.mode).toBe('grid');
   });
 });

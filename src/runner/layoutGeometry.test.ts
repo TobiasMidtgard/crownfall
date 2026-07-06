@@ -9,10 +9,10 @@ import { describe, expect, it } from 'vitest';
 import type { ScreenElement, ScreenLayout } from '../shared/types';
 import {
   absToGroupRel, activeScreenVariant, asSpeed, cardIdentity, computeStage, fanMarginPx,
-  fanTransform, fitCount, gridSpec, gridTemplate, groupPiles, groupPilesRemembered,
-  groupRelToAbs, layoutStyleCss, lineColor, lineEndpoints, MOTION_DEFAULTS, motionForTag,
-  nextSpeed, pctToPx, rectContains, resolveMotion, resolveSeat, scaleMs, seatOffset,
-  SHAPE_KINDS, shapeBorderRadius, shapeClipPath, shapePolygon, speedFactor, textStyleCss,
+  fanTransform, fitCount, flowChildCss, flowLayoutCss, gridSpec, gridTemplate, groupPiles,
+  groupPilesRemembered, groupRelToAbs, layoutStyleCss, lineColor, lineEndpoints, MOTION_DEFAULTS,
+  motionForTag, nextSpeed, pctToPx, rectContains, resolveMotion, resolveSeat, scaleMs, seatOffset,
+  SHAPE_KINDS, shapeBorderRadius, shapeClipPath, shapePolygon, slotRect, speedFactor, textStyleCss,
   topLegalCard, type PileMemoryEntry,
 } from './layoutGeometry';
 
@@ -571,5 +571,75 @@ describe('screen variants + stage geometry', () => {
 
   it('computeStage: zero-sized areas produce an empty stage', () => {
     expect(computeStage(0, 600, 1, true)).toEqual({ left: 0, top: 0, w: 0, h: 0, scrollable: false });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FlowLayout CSS (Tasks 2-3)
+// ---------------------------------------------------------------------------
+
+describe('flowLayoutCss', () => {
+  it('returns {} for undefined', () => {
+    expect(flowLayoutCss(undefined, 1000)).toEqual({});
+  });
+  it('row -> flex row with px gap/padding + justify/align/wrap', () => {
+    const css = flowLayoutCss(
+      { mode: 'row', gap: 2, padding: 1, justify: 'between', align: 'center', wrap: true }, 1000);
+    expect(css.display).toBe('flex');
+    expect(css.flexDirection).toBe('row');
+    expect(css.gap).toBe('20px');
+    expect(css.padding).toBe('10px');
+    expect(css.justifyContent).toBe('space-between');
+    expect(css.alignItems).toBe('center');
+    expect(css.flexWrap).toBe('wrap');
+  });
+  it('column -> flex column', () => {
+    expect(flowLayoutCss({ mode: 'column' }, 1000).flexDirection).toBe('column');
+  });
+  it('grid with fixed columns', () => {
+    const css = flowLayoutCss({ mode: 'grid', columns: 3, gap: 1 }, 1000);
+    expect(css.display).toBe('grid');
+    expect(css.gridTemplateColumns).toBe('repeat(3, max-content)');
+    expect(css.gap).toBe('10px');
+  });
+  it('grid rows without columns flows column-major', () => {
+    const css = flowLayoutCss({ mode: 'grid', rows: 2 }, 1000);
+    expect(css.gridTemplateRows).toBe('repeat(2, max-content)');
+    expect(css.gridAutoFlow).toBe('column');
+  });
+  it('grid autoFit -> auto-fill minmax', () => {
+    const css = flowLayoutCss({ mode: 'grid', autoFit: 8 }, 1000);
+    expect(css.gridTemplateColumns).toBe('repeat(auto-fill, minmax(80px, 1fr))');
+  });
+});
+
+describe('flowChildCss', () => {
+  it('grid child: relative only (the cell sizes it)', () => {
+    expect(flowChildCss({ mode: 'grid' }, { w: 10, h: 10 })).toEqual({ position: 'relative' });
+  });
+  it('uniform: flex 1 1 0, no explicit size', () => {
+    expect(flowChildCss({ mode: 'row', itemSize: 'uniform' }, { w: 10, h: 5 }))
+      .toEqual({ position: 'relative', flex: '1 1 0' });
+  });
+  it('auto: basis from rect w/h, flex 0 0 auto (beats .rn-el>*{flex:1})', () => {
+    expect(flowChildCss({ mode: 'row' }, { w: 16, h: 8 }))
+      .toEqual({ position: 'relative', flex: '0 0 auto', width: '16%', height: '8%' });
+  });
+  it('stretch: adds cross-axis stretch', () => {
+    expect(flowChildCss({ mode: 'row', itemSize: 'stretch' }, { w: 16, h: 8 }).alignSelf).toBe('stretch');
+  });
+});
+
+describe('slotRect', () => {
+  const psEl = {
+    kind: 'panelSwitcher', id: 'p', name: 'P', rect: { x: 10, y: 10, w: 40, h: 40 },
+    selectorGroup: 'g', children: [],
+    slots: [{ id: 'tabs', name: 'Tabs', layout: { mode: 'row' }, rect: { x: 0, y: 0, w: 100, h: 12 } }],
+  } as ScreenElement;
+  it('returns the slot region as % of the container', () => {
+    expect(slotRect(psEl, 'tabs')).toEqual({ x: 0, y: 0, w: 100, h: 12 });
+  });
+  it('missing slot -> the whole box', () => {
+    expect(slotRect(psEl, 'nope')).toEqual({ x: 0, y: 0, w: 100, h: 100 });
   });
 });

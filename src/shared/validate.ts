@@ -264,6 +264,18 @@ export function validateGameDef(def: GameDef): ValidationIssue[] {
               warn(here, `Selector group "${group}" has no selector buttons — turn on the Selector role for the buttons that should switch it.`);
             }
           }
+          // Flow/slot layout checks.
+          if (el.kind === 'zone' && el.layout != null) {
+            warn(here, 'Layout is ignored on a zone — zones arrange their cards, not child elements.');
+          }
+          if (el.slots !== undefined && el.slots.length > 0) {
+            const slotIds = new Set(el.slots.map((s) => s.id));
+            for (const child of el.children ?? []) {
+              if (child.slotId !== undefined && !slotIds.has(child.slotId)) {
+                warn(`${here} > "${child.name}"`, `Assigned to slot "${child.slotId}", which this container has no slot for — it won't show.`);
+              }
+            }
+          }
           // Children are allowed on every element (groups require them).
           if (el.kind !== 'group' && el.children) walkElements(el.children, here);
           switch (el.kind) {
@@ -312,6 +324,16 @@ export function validateGameDef(def: GameDef): ValidationIssue[] {
               break;
             case 'group':
               walkElements(el.children, here);
+              break;
+            case 'panelSwitcher': {
+              const slotIds = new Set(el.slots.map((s) => s.id));
+              if (!slotIds.has('tabs') || !slotIds.has('content')) {
+                err(here, 'A panel switcher needs a "tabs" slot and a "content" slot.');
+              }
+              break;
+            }
+            case 'image':
+              if (!el.src) warn(here, 'Image has no source — it shows an empty placeholder.');
               break;
             case 'shape': case 'line': case 'log':
               break;

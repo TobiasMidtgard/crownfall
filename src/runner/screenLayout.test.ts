@@ -714,3 +714,63 @@ describe('chronicle rows (logRows)', () => {
     expect(logRows([], true)).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// panelSwitcher recursion: the visible-actions + burn-zone walks must descend
+// into a panelSwitcher's children, not only into `group`s (review fix).
+// ---------------------------------------------------------------------------
+
+describe('panelSwitcher is walked by visibleButtonActionIds + burnZoneKeys', () => {
+  const rect = { x: 0, y: 0, w: 10, h: 10 };
+
+  function switcherDef(): GameDef {
+    const ps: ScreenElement = {
+      kind: 'panelSwitcher', id: 'ps', name: 'Switcher', rect, selectorGroup: 'g',
+      slots: [
+        { id: 'tabs', name: 'Tabs', accepts: ['button'], layout: { mode: 'row' } },
+        { id: 'content', name: 'Content', single: true, layout: { mode: 'column' } },
+      ],
+      children: [
+        {
+          kind: 'button', id: 'tab_a', name: 'A', rect, actionId: null, label: 'A',
+          role: 'selector', selectorGroup: 'g', slotId: 'tabs',
+        },
+        {
+          kind: 'group', id: 'panel_a', name: 'Panel A', rect,
+          showForSelector: 'tab_a', slotId: 'content',
+          children: [
+            { kind: 'button', id: 'b1', name: 'Act', rect, actionId: 'act', label: 'Act' },
+            { kind: 'zone', id: 'zt', name: 'Trash', rect, zoneId: 'trash', seat: 'shared', arriveEffect: 'burn' },
+          ],
+        },
+      ],
+    };
+    return makeDef({
+      zones: [zone('trash'), pzone('hand')],
+      phases: [phaseDef('main', 'manual', ['act'])],
+      actions: [actionDef('act')],
+      screenLayout: { aspect: null, elements: [ps] },
+    });
+  }
+
+  it('counts an action button inside a (default-selected) content panel', async () => {
+    const def = switcherDef();
+    const h = harness(def);
+    await h.engine.start();
+    const state = h.state();
+    // The panelSwitcher and its first tab's panel are visible by default, so
+    // the nested action button's move IS a visible screen control (and must
+    // therefore leave the auto action bar).
+    expect(visibleButtonActionIds(def, state, def.screenLayout!.elements, 'p0'))
+      .toEqual(new Set(['act']));
+  });
+
+  it('collects a burn zone nested in a content panel', async () => {
+    const def = switcherDef();
+    const h = harness(def);
+    await h.engine.start();
+    const state = h.state();
+    expect(burnZoneKeys(def, state, def.screenLayout!.elements, 'p0'))
+      .toEqual(new Set(['trash']));
+  });
+});

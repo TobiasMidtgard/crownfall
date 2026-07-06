@@ -297,7 +297,11 @@ export function visibleButtonActionIds(
       if (!selectorGateOpen(sel, el)) continue;
       if (el.kind === 'button' && el.actionId !== null && el.role !== 'selector') {
         out.add(el.actionId);
-      } else if (el.kind === 'group') walk(el.children);
+      }
+      // Descend into ANY container (group, panelSwitcher, or overlay children),
+      // not just groups — else buttons inside a panelSwitcher panel are missed
+      // and their move double-renders in the auto action bar.
+      if (el.children !== undefined && el.children.length > 0) walk(el.children);
     }
   };
   walk(elements);
@@ -319,10 +323,9 @@ export function burnZoneKeys(
   const playerIds = state.players.map((p) => p.id);
   const walk = (els: readonly ScreenElement[]) => {
     for (const el of els) {
-      if (el.kind === 'group') {
-        walk(el.children);
-        continue;
-      }
+      // Descend into ANY container (group, panelSwitcher, …) so a burn zone
+      // nested in a panelSwitcher content panel still gets its key collected.
+      if (el.children !== undefined && el.children.length > 0) walk(el.children);
       if (el.kind !== 'zone' || el.arriveEffect !== 'burn') continue;
       const zone = def.zones.find((z) => z.id === el.zoneId);
       if (!zone) continue;

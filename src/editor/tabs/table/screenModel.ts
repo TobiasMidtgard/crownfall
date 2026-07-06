@@ -20,7 +20,7 @@
  * runner and the two can never drift.
  */
 import type {
-  ActionDef, DeckDef, ElementState, GameDef, GameState, Id, LayoutStyle, MotionSpec,
+  ActionDef, DeckDef, ElementState, FlowLayout, GameDef, GameState, Id, LayoutStyle, MotionSpec,
   ScreenElement, ScreenLayout, ScreenVariant, SeatRef, VariableDef, ZoneDef, ZoneLayout,
   ZoneVisibility,
 } from '../../../shared/types';
@@ -355,10 +355,13 @@ export function setAbsRect(
 /**
  * Move an element into another parent (`targetGroupId` null = the screen),
  * keeping its on-screen rect `abs`. Appends to the new parent (frontmost).
- * Refuses cycles (dropping a group into itself / its own subtree).
+ * Refuses cycles (dropping a group into itself / its own subtree) and drops a
+ * slotted container REJECTS by its `accepts` filter (canDropInto). Into a
+ * slotted container the child binds to `slotId`; anywhere else its slotId is
+ * cleared.
  */
 export function reparentEl(
-  elements: ScreenElement[], id: Id, targetGroupId: Id | null, abs: PlainRect,
+  elements: ScreenElement[], id: Id, targetGroupId: Id | null, abs: PlainRect, slotId?: Id,
 ): ScreenElement[] {
   const el = findEl(elements, id);
   if (!el) return elements;
@@ -367,9 +370,19 @@ export function reparentEl(
     if (el.children && findEl(el.children, targetGroupId)) return elements;
   }
   const index = indexElements(elements);
+  const target = targetGroupId === null ? null : index.get(targetGroupId)?.el ?? null;
+  if (targetGroupId !== null && (target === null || !canDropInto(target, el.kind, slotId))) return elements;
   const parentAbs = targetGroupId === null ? ROOT_RECT : index.get(targetGroupId)?.abs;
   if (!parentAbs) return elements;
-  const moved: ScreenElement = { ...el, rect: roundRect(absToGroupRel(abs, parentAbs)) };
+  const slotted = target?.slots !== undefined && target.slots.length > 0 && slotId !== undefined;
+  let base = el;
+  if (slotted) {
+    base = { ...el, slotId };
+  } else if (el.slotId !== undefined) {
+    const { slotId: _gone, ...rest } = el;
+    base = rest as ScreenElement;
+  }
+  const moved: ScreenElement = { ...base, rect: roundRect(absToGroupRel(abs, parentAbs)) };
   const without = removeEls(elements, new Set([id]));
   if (targetGroupId === null) return [...without, moved];
   return updateEl(without, targetGroupId, (p) => withElChildren(p, [...elChildren(p), moved]));
@@ -731,6 +744,67 @@ export function newGroupElement(): ScreenElement {
     kind: 'group', id: uid('el'), name: 'Group',
     rect: { x: 34, y: 34, w: 32, h: 32 },
     children: [],
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Flow layout (auto-layout containers) + image
+// ---------------------------------------------------------------------------
+
+/** Kinds that can carry a FlowLayout (flow their child ELEMENTS). Zones lay
+ *  out cards, not child elements — they never flow. */
+export function containerCanFlow(el: ScreenElement): boolean {
+  return el.kind === 'group' || el.kind === 'panelSwitcher' || el.kind === 'button';
+}
+
+/** The container's children bound to one slot (by their slotId). */
+export function slotChildrenOf(el: ScreenElement, slotId: string): ScreenElement[] {
+  return (el.children ?? []).filter((c) => c.slotId === slotId);
+}
+
+/** True when `id`'s parent flows its children (drag reorders instead of moves). */
+export function isFlowChild(index: Map<Id, ElInfo>, id: Id): boolean {
+  const pid = index.get(id)?.parentId ?? null;
+  return pid !== null && index.get(pid)?.el.layout != null;
+}
+
+/**
+ * Whether a container will ACCEPT a dropped child of `kind` (into `slotId`
+ * when it has slots): a slotless flow container takes anything; a slotted
+ * container consults the matched slot's `accepts` filter. Non-containers /
+ * missing slots reject.
+ */
+export function canDropInto(target: ScreenElement, kind: ScreenElement['kind'], slotId?: Id): boolean {
+  if (target.slots !== undefined && target.slots.length > 0) {
+    const slot = target.slots.find((s) => s.id === slotId);
+    if (!slot) return false;
+    return slot.accepts === undefined || slot.accepts.includes(kind);
+  }
+  return true;
+}
+
+const FLOW_DEFAULTS: Record<'row' | 'column' | 'grid', FlowLayout> = {
+  row: { mode: 'row', gap: 2, padding: 1 },
+  column: { mode: 'column', gap: 2, padding: 1 },
+  grid: { mode: 'grid', gap: 2, padding: 1, columns: 3 },
+};
+
+/** A Grid/Row/Column palette drop: an empty group pre-seeded with a layout. */
+export function newFlowGroup(mode: 'row' | 'column' | 'grid', name: string): ScreenElement {
+  return {
+    kind: 'group', id: uid('el'), name,
+    rect: mode === 'column' ? { x: 40, y: 24, w: 20, h: 50 } : { x: 24, y: 40, w: 52, h: 16 },
+    layout: { ...FLOW_DEFAULTS[mode] },
+    children: [],
+  };
+}
+
+/** A blank image element (src filled in by the palette's picker). */
+export function newImageElement(): ScreenElement {
+  return {
+    kind: 'image', id: uid('el'), name: 'Image',
+    rect: { x: 40, y: 40, w: 20, h: 20 },
+    src: '', fit: 'contain',
   };
 }
 

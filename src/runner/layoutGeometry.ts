@@ -15,8 +15,8 @@
  *     state whose `when` holds picks the rect/style the element shows.
  */
 import type {
-  Expr, GameDef, GameState, Id, LayoutStyle, MotionSpec, ScreenElement, ScreenLayout, SeatRef,
-  ShapeKind, TextStyle,
+  Expr, FlowLayout, GameDef, GameState, Id, LayoutStyle, MotionSpec, ScreenElement, ScreenLayout,
+  SeatRef, ShapeKind, TextStyle,
 } from '../shared/types';
 import { isDisplayVisible } from '../engine';
 
@@ -342,6 +342,104 @@ export function fitCount(spanPx: number, cardW: number, gapPx: number, max = 8):
   if (cardW <= 0) return 1;
   const n = Math.floor((spanPx + gapPx) / (cardW + gapPx));
   return Math.max(1, Math.min(max, n));
+}
+
+// ---------------------------------------------------------------------------
+// FlowLayout — auto-layout of a container's CHILD ELEMENTS (row/column/grid).
+// The SINGLE source of the flex/grid CSS, shared by the runner (ScreenRenderer)
+// and the editor canvas (ScreenCanvas) so the two can never drift.
+// ---------------------------------------------------------------------------
+
+/** The CSS subset a FlowLayout container emits on its own box. */
+export interface FlowCss {
+  display?: 'flex' | 'grid';
+  flexDirection?: 'row' | 'column';
+  flexWrap?: 'wrap';
+  gap?: string;
+  padding?: string;
+  justifyContent?: string;
+  alignItems?: string;
+  gridTemplateColumns?: string;
+  gridTemplateRows?: string;
+  gridAutoFlow?: 'column';
+}
+
+const FLOW_JUSTIFY: Record<NonNullable<FlowLayout['justify']>, string> = {
+  start: 'flex-start', center: 'center', end: 'flex-end',
+  between: 'space-between', around: 'space-around',
+};
+const FLOW_ALIGN: Record<NonNullable<FlowLayout['align']>, string> = {
+  start: 'flex-start', center: 'center', end: 'flex-end', stretch: 'stretch',
+};
+
+/**
+ * FlowLayout -> CSS for the container's box. `screenW` converts %-of-screen
+ * gap/padding to px (consistent with the rest of the layout spacing model).
+ * Absent layout -> {} (the caller keeps absolute positioning).
+ */
+export function flowLayoutCss(layout: FlowLayout | undefined, screenW: number): FlowCss {
+  if (!layout) return {};
+  const css: FlowCss = {};
+  const gapPx = pctToPx(screenW, layout.gap);
+  const padPx = pctToPx(screenW, layout.padding);
+  if (gapPx !== undefined) css.gap = `${gapPx}px`;
+  if (padPx !== undefined) css.padding = `${padPx}px`;
+  if (layout.justify) css.justifyContent = FLOW_JUSTIFY[layout.justify];
+  if (layout.align) css.alignItems = FLOW_ALIGN[layout.align];
+  if (layout.mode === 'grid') {
+    css.display = 'grid';
+    if (layout.autoFit != null && layout.autoFit > 0) {
+      const min = Math.round((screenW * layout.autoFit) / 100);
+      css.gridTemplateColumns = `repeat(auto-fill, minmax(${min}px, 1fr))`;
+    } else {
+      const c = gridTemplate(layout.columns);
+      const r = gridTemplate(layout.rows);
+      if (c !== undefined) css.gridTemplateColumns = c;
+      if (r !== undefined) css.gridTemplateRows = r;
+      if (c === undefined && r !== undefined) css.gridAutoFlow = 'column';
+    }
+  } else {
+    css.display = 'flex';
+    css.flexDirection = layout.mode;
+    if (layout.wrap) css.flexWrap = 'wrap';
+  }
+  return css;
+}
+
+/** Wrapper CSS for a child INSIDE a flow container. */
+export interface FlowChildCss {
+  position: 'relative';
+  flex?: string;
+  width?: string;
+  height?: string;
+  alignSelf?: 'stretch';
+}
+
+/**
+ * Wrapper CSS for a child inside a flow container: drops absolute positioning
+ * (flex/grid places it) and sets an EXPLICIT `flex` so the runner's
+ * `.rn-el > * { flex: 1 }` rule can't force-equalize items. `auto`/`stretch`
+ * use the child's own rect w/h as basis; `uniform` gives every item equal
+ * space; grid children are sized by their cell (relative only).
+ */
+export function flowChildCss(layout: FlowLayout, rect: { w: number; h: number }): FlowChildCss {
+  const s: FlowChildCss = { position: 'relative' };
+  if (layout.mode === 'grid') return s;
+  if (layout.itemSize === 'uniform') {
+    s.flex = '1 1 0';
+    return s;
+  }
+  s.flex = '0 0 auto';
+  s.width = `${rect.w}%`;
+  s.height = `${rect.h}%`;
+  if (layout.itemSize === 'stretch') s.alignSelf = 'stretch';
+  return s;
+}
+
+/** A slot's region as % of its container (slot.rect, or the whole box). */
+export function slotRect(el: ScreenElement, slotId: string): PlainRect {
+  const slot = (el.slots ?? []).find((s) => s.id === slotId);
+  return slot?.rect ?? { x: 0, y: 0, w: 100, h: 100 };
 }
 
 // ---------------------------------------------------------------------------

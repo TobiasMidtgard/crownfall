@@ -15,6 +15,7 @@ import type { Id, ScreenElement } from '../../../shared/types';
 
 const ICONS: Record<ScreenElement['kind'], string> = {
   zone: '▭', text: 'T', varText: '#', button: '▸', shape: '◯', line: '╱', log: '☰', group: '▦',
+  panelSwitcher: '⧉', image: '🖼',
 };
 
 export interface LayersPanelProps {

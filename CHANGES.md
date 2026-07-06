@@ -46,3 +46,4 @@
 
 ## ✅ Done (delete once confirmed shipped)
 - Reusable **"for each opponent"** block + **"discard down to N"** block, and Militia rebuilt to use them (committed, not yet deployed).
+- **#8 (smart containers + typed slots) + #10 (robust grid)** — the "layout backbone" wave, on branch `feat/layout-backbone` (not yet merged/deployed). `FlowLayout` on any container (Grid/Row/Column, auto-space + reflow), typed slots, a `panelSwitcher` element, and a new `image` element; palette + inspector wired. Proven by migrating Dominion's **mobile** supply to a `panelSwitcher` (SEED_VERSION 9). *Deferred to a follow-up:* drag-to-reorder within a flow container **on the canvas** (works via the Layers panel for now); desktop supply left as-is (avoiding a flagship regression). Spec/plan in `docs/superpowers/{specs,plans}/2026-07-06-layout-backbone*`.

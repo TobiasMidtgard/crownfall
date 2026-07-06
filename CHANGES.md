@@ -10,7 +10,7 @@
 ## 🔥 Open — things I want changed
 
 ### Table designer / editor
-- **#14 — One cohesive design screen, not multiple tabs.** `(large)` Merge the separate tabs (table / cards / blocks) into a single unified design surface. *Sets the frame for most items below — probably scope this first.*
+- **#14 follow-ups** — the one-screen shell shipped (see Done); deeper unification remains: canvas-native section editing (click a zone on the canvas to edit its zone def, cards filmstrip, rules attached to elements) — overlaps #12.
 - **#9 — Vector drawing of custom shapes.** `(large)` A pen/vector tool for arbitrary shapes, beyond the preset shape kinds.
 - **#8/#10 leftovers** — drag-to-reorder inside a flow container directly **on the canvas** (works via Layers panel today); migrate the **desktop** supply to the new layout system.
 
@@ -27,6 +27,7 @@
 ---
 
 ## ✅ Done (delete once confirmed shipped)
+- **#14 — ONE game-engine screen** (`0a91cd1`): the tab bar is gone. The WYSIWYG canvas is the editor; Info/Cards/Types/Zones/Vars/Flow/Actions/Rules/Filters slide over it as panels from a left section rail (heavy sections open wide, ⇤/⤢ toggles width, rail button or ✕ closes). Edit rules and watch the screen side by side.
 - **#3 — drill-in selection** (`b56d03b`): click selects the top-level element; double-click steps into the group (repeat to reach the item); single clicks then pick siblings at that depth; Ctrl+click deep-selects instantly.
 - **#4 — full keyboard set** (`b56d03b`): Ctrl+Z/Ctrl+Shift+Z/Ctrl+Y undo-redo (real history with burst coalescing + toolbar ↶↷ buttons), Ctrl+C/X/V clipboard (works across variants/tabs), Ctrl+D duplicate, Ctrl+G/Ctrl+Shift+G group/ungroup — joining the existing Esc/Delete/arrow-nudge.
 - **#6 — theme swatches** (`b56d03b`): ★ Save pins the current colour to a persistent "My theme" row in every colour picker; right-click removes.

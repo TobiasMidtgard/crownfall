@@ -1157,6 +1157,8 @@
   gap: 1.4rem;
 }
 .hall-root .codex-grid .game-card { width: auto; rotate: none; translate: none; }
+/* Unified codex tiles: the game's own CardView, centered in its grid cell. */
+.hall-root .codex-cardwrap { display: flex; justify-content: center; }
 
 .hall-root .codex-empty {
   grid-column: 1 / -1;

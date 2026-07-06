@@ -22,11 +22,12 @@
  */
 import { useEffect, useState } from 'react';
 import type {
-  ActionDef, DeckDef, ElementState, GameDef, Id, LayoutStyle, MotionSpec, RevealAnim,
+  ActionDef, DeckDef, ElementState, FlowLayout, GameDef, Id, LayoutStyle, MotionSpec, RevealAnim,
   ScreenElement, ScreenLayout, SeatRef, ShadowSpec, ShapeKind, TextStyle, VariableDef, ZoneDef,
 } from '../../../shared/types';
 import { SHAPE_KINDS, shapeBorderRadius, shapeClipPath } from '../../../runner/layoutGeometry';
 import { PASS_ACTION_ID } from '../../../shared/types';
+import { uid } from '../../../shared/defaults';
 import { BlockScriptEditor } from '../../blocks/BlockScriptEditor';
 import { ConditionBuilder } from '../../blocks/ConditionBuilder';
 import { ExpressionEditor } from '../../blocks/ExpressionEditor';
@@ -60,6 +61,9 @@ type VarTextEl = Extract<ScreenElement, { kind: 'varText' }>;
 type ButtonEl = Extract<ScreenElement, { kind: 'button' }>;
 type ShapeEl = Extract<ScreenElement, { kind: 'shape' }>;
 type LineEl = Extract<ScreenElement, { kind: 'line' }>;
+type GroupEl = Extract<ScreenElement, { kind: 'group' }>;
+type PanelSwitcherEl = Extract<ScreenElement, { kind: 'panelSwitcher' }>;
+type ImageEl = Extract<ScreenElement, { kind: 'image' }>;
 
 export interface PropertiesPanelProps {
   def: GameDef;
@@ -428,6 +432,9 @@ function ElementProps(props: PropertiesPanelProps & { el: ScreenElement }) {
           )}
         </section>
       )}
+      {el.kind === 'group' && <LayoutSection el={el} onPatchEl={onPatchEl} />}
+      {el.kind === 'panelSwitcher' && <PanelSwitcherSection el={el} onPatchEl={onPatchEl} />}
+      {el.kind === 'image' && <ImageSection el={el} onPatchEl={onPatchEl} />}
 
       <StyleSection style={el.style} onChange={(style) => patchBase({ style })} />
 
@@ -1352,6 +1359,236 @@ function LineSection({ el, onPatchEl }: {
         </select>
       </label>
       <p className="faint tt-prop-hint">The line's color is the border color in Style.</p>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Layout (flow containers: Grid / Row / Column groups)
+// ---------------------------------------------------------------------------
+
+const FLOW_MODES: [FlowLayout['mode'] | 'none', string][] = [
+  ['none', 'None'], ['row', 'Row'], ['column', 'Column'], ['grid', 'Grid'],
+];
+
+function LayoutSection({ el, onPatchEl }: {
+  el: GroupEl;
+  onPatchEl: PropertiesPanelProps['onPatchEl'];
+}) {
+  const layout = el.layout;
+  const setMode = (mode: FlowLayout['mode'] | 'none') => onPatchEl(el.id, (c) => {
+    if (c.kind !== 'group') return c;
+    if (mode === 'none') {
+      const { layout: _gone, ...rest } = c;
+      return rest as ScreenElement;
+    }
+    const base: FlowLayout = c.layout ?? { mode };
+    return { ...c, layout: { ...base, mode } };
+  });
+  const patch = (p: Partial<FlowLayout>) => onPatchEl(el.id, (c) =>
+    (c.kind === 'group' && c.layout ? { ...c, layout: { ...c.layout, ...p } } : c));
+  return (
+    <section className="tt-prop-section">
+      <h4>Layout</h4>
+      <span className="tt-mini-label">Arrange children</span>
+      <div className="tt-seg tt-seg-small tt-seg-fill" role="group" aria-label="Layout mode">
+        {FLOW_MODES.map(([m, lbl]) => (
+          <button
+            key={m}
+            type="button"
+            className={(layout?.mode ?? 'none') === m ? 'tt-active' : ''}
+            onClick={() => setMode(m)}
+          >
+            {lbl}
+          </button>
+        ))}
+      </div>
+      {layout ? (
+        <>
+          <div className="tt-grid">
+            <Stepper label="Gap %" value={layout.gap ?? 0} min={0} max={20} step={0.5} onChange={(gap) => patch({ gap })} />
+            <Stepper label="Padding %" value={layout.padding ?? 0} min={0} max={20} step={0.5} onChange={(padding) => patch({ padding })} />
+          </div>
+          {layout.mode === 'grid' ? (
+            <div className="tt-grid">
+              <Stepper label="Columns" value={layout.columns ?? 0} min={0} max={12} onChange={(v) => patch({ columns: v === 0 ? null : v })} />
+              <Stepper label="Rows" value={layout.rows ?? 0} min={0} max={12} onChange={(v) => patch({ rows: v === 0 ? null : v })} />
+            </div>
+          ) : (
+            <Check label="Wrap onto new lines" checked={layout.wrap === true} onChange={(wrap) => patch({ wrap: wrap || undefined })} />
+          )}
+          <label className="field">
+            <span>Justify (main axis)</span>
+            <select className="select" value={layout.justify ?? 'start'} onChange={(e) => patch({ justify: e.target.value as FlowLayout['justify'] })}>
+              <option value="start">Start</option>
+              <option value="center">Center</option>
+              <option value="end">End</option>
+              <option value="between">Space between</option>
+              <option value="around">Space around</option>
+            </select>
+          </label>
+          <label className="field">
+            <span>Align (cross axis)</span>
+            <select className="select" value={layout.align ?? 'start'} onChange={(e) => patch({ align: e.target.value as FlowLayout['align'] })}>
+              <option value="start">Start</option>
+              <option value="center">Center</option>
+              <option value="end">End</option>
+              <option value="stretch">Stretch</option>
+            </select>
+          </label>
+          <label className="field">
+            <span>Item sizing</span>
+            <select className="select" value={layout.itemSize ?? 'auto'} onChange={(e) => patch({ itemSize: e.target.value as FlowLayout['itemSize'] })}>
+              <option value="auto">Keep each item's size</option>
+              <option value="uniform">Equal sizes</option>
+              <option value="stretch">Stretch to fill</option>
+            </select>
+          </label>
+          <p className="faint tt-prop-hint">
+            Children flow automatically — drag to reorder on the canvas. Choose "None" for free placement.
+          </p>
+        </>
+      ) : (
+        <p className="faint tt-prop-hint">Pick a mode to auto-arrange this group's children.</p>
+      )}
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Panel switcher (manage tabs = selector buttons + bound content panels)
+// ---------------------------------------------------------------------------
+
+function PanelSwitcherSection({ el, onPatchEl }: {
+  el: PanelSwitcherEl;
+  onPatchEl: PropertiesPanelProps['onPatchEl'];
+}) {
+  const tabs = el.children.filter((c): c is ButtonEl => c.slotId === 'tabs' && c.kind === 'button');
+  const addTab = () => onPatchEl(el.id, (c) => {
+    if (c.kind !== 'panelSwitcher') return c;
+    const n = c.children.filter((k) => k.slotId === 'tabs').length;
+    const label = `Panel ${n + 1}`;
+    const btnId = uid('el');
+    const btn: ScreenElement = {
+      kind: 'button', id: btnId, name: label, rect: { x: 0, y: 0, w: 100 / (n + 1), h: 100 },
+      actionId: null, label, fontSize: 1.6, role: 'selector', selectorGroup: c.selectorGroup, slotId: 'tabs',
+    };
+    const panel: ScreenElement = {
+      kind: 'group', id: uid('el'), name: label, rect: { x: 0, y: 12, w: 100, h: 88 },
+      showForSelector: btnId, slotId: 'content', children: [],
+    };
+    return { ...c, children: [...c.children, btn, panel] };
+  });
+  const renameTab = (btnId: Id, label: string) => onPatchEl(el.id, (c) => {
+    if (c.kind !== 'panelSwitcher') return c;
+    return {
+      ...c,
+      children: c.children.map((k) => {
+        if (k.id === btnId && k.kind === 'button') return { ...k, label, name: label };
+        if (k.slotId === 'content' && k.showForSelector === btnId) return { ...k, name: label };
+        return k;
+      }),
+    };
+  });
+  const removeTab = (btnId: Id) => onPatchEl(el.id, (c) => {
+    if (c.kind !== 'panelSwitcher') return c;
+    return {
+      ...c,
+      children: c.children.filter((k) =>
+        !(k.id === btnId || (k.slotId === 'content' && k.showForSelector === btnId))),
+    };
+  });
+  return (
+    <section className="tt-prop-section">
+      <h4>Panel switcher</h4>
+      <p className="faint tt-prop-hint">
+        Each tab is a selector button bound to one panel; players see one panel at a time. Fill a
+        panel by focusing it (⛶) and dropping elements inside.
+      </p>
+      {tabs.map((t) => (
+        <div key={t.id} style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 4 }}>
+          <input
+            type="text"
+            className="input"
+            value={t.label}
+            onChange={(e) => renameTab(t.id, e.target.value)}
+            style={{ flex: 1 }}
+          />
+          <button
+            type="button"
+            className="btn tt-comp-del"
+            aria-label={`Remove ${t.label}`}
+            disabled={tabs.length <= 1}
+            onClick={() => removeTab(t.id)}
+          >
+            ✕
+          </button>
+        </div>
+      ))}
+      <button type="button" className="btn" onClick={addTab}>+ Tab</button>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Image (source + fit)
+// ---------------------------------------------------------------------------
+
+function ImageSection({ el, onPatchEl }: {
+  el: ImageEl;
+  onPatchEl: PropertiesPanelProps['onPatchEl'];
+}) {
+  const patch = (p: Partial<ImageEl>) =>
+    onPatchEl(el.id, (c) => (c.kind === 'image' ? { ...c, ...p } : c));
+  return (
+    <section className="tt-prop-section">
+      <h4>Image</h4>
+      <label className="field">
+        <span>Upload</span>
+        <input
+          type="file"
+          accept="image/*"
+          className="input"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = () => patch({ src: String(reader.result) });
+            reader.readAsDataURL(file);
+          }}
+        />
+      </label>
+      <label className="field">
+        <span>Or image URL</span>
+        <input
+          type="text"
+          className="input"
+          placeholder="https://… or data:…"
+          value={el.src}
+          onChange={(e) => patch({ src: e.target.value })}
+        />
+      </label>
+      <label className="field">
+        <span>Fit</span>
+        <select className="select" value={el.fit ?? 'contain'} onChange={(e) => patch({ fit: e.target.value as ImageEl['fit'] })}>
+          <option value="contain">Contain (fit inside)</option>
+          <option value="cover">Cover (fill &amp; crop)</option>
+          <option value="fill">Stretch</option>
+          <option value="none">Original size</option>
+        </select>
+      </label>
+      <label className="field">
+        <span>Alt text</span>
+        <input
+          type="text"
+          className="input"
+          value={el.alt ?? ''}
+          onChange={(e) => patch({ alt: e.target.value || undefined })}
+        />
+      </label>
+      {el.src
+        ? <img src={el.src} alt="" style={{ maxWidth: '100%', maxHeight: 120, borderRadius: 4, display: 'block', marginTop: 6 }} />
+        : <p className="faint tt-prop-hint">No image yet — upload a file or paste a URL.</p>}
     </section>
   );
 }

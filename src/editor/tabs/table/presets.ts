@@ -51,60 +51,102 @@ export function panelName(names: readonly string[], i: number): string {
 }
 
 /**
- * The working switcher, one click: a wrapper group holding a selector-button
- * row (one `role: 'selector'` button per panel, sharing a fresh
- * selectorGroup) and N empty panel groups bound to their buttons via
- * `showForSelector` — exactly the shape the tabbed-group migration produces,
- * ready to restyle and fill. The first button is the default selection.
+ * The working switcher, one click: a `panelSwitcher` container with two typed
+ * slots — `tabs` (a row FlowLayout that auto-spaces one `role: 'selector'`
+ * button per panel, sharing a fresh selectorGroup) and `content` (the bound
+ * panels, gated by `showForSelector`). The runner renders it over the existing
+ * selector gate — the buttons and panels are REAL selector/showForSelector
+ * elements — so exactly one panel shows. The first button is the default.
  */
 export const panelSwitcherPreset: ScreenPreset<PanelSwitcherParams> = {
   id: 'panelSwitcher',
   name: '⧉ Panel switcher',
-  hint: 'Selector buttons + panels that swap in place — pick how many and name them',
+  hint: 'Tabs that swap panels in place — pick how many and name them',
   params: { count: 3, names: [] },
   build: ({ count, names }) => {
     const n = Math.max(PANEL_SWITCHER_MIN, Math.min(PANEL_SWITCHER_MAX, Math.round(count)));
     // The selectorGroup NAME is fresh per insert so two switchers on one
     // screen never share a radio set.
-    const group = uid('switch');
-    const buttonIds = Array.from({ length: n }, () => uid('el'));
-    const w = round2(100 / n);
-    const buttons: ScreenElement[] = buttonIds.map((id, i) => ({
+    const selectorGroup = uid('switch');
+    const tabIds = Array.from({ length: n }, () => uid('el'));
+    const tabs: ScreenElement[] = tabIds.map((id, i) => ({
       kind: 'button',
       id,
       name: panelName(names, i),
-      rect: { x: round2(i * (100 / n)), y: 0, w, h: 100 },
+      // Position within the tabs slot is flow-driven; rect is only the basis.
+      rect: { x: 0, y: 0, w: round2(100 / n), h: 100 },
       actionId: null,
       label: panelName(names, i),
       fontSize: 1.6,
       role: 'selector',
-      selectorGroup: group,
+      selectorGroup,
+      slotId: 'tabs',
     }));
-    const panels: ScreenElement[] = buttonIds.map((buttonId, i) => ({
+    const panels: ScreenElement[] = tabIds.map((tabId, i) => ({
       kind: 'group',
       id: uid('el'),
       name: panelName(names, i),
       rect: { ...PANEL_RECT },
-      showForSelector: buttonId,
+      showForSelector: tabId,
+      slotId: 'content',
       children: [],
     }));
     return [{
-      kind: 'group',
+      kind: 'panelSwitcher',
       id: uid('el'),
       name: 'Panel switcher',
       rect: { x: 20, y: 20, w: 60, h: 60 },
-      children: [
-        {
-          kind: 'group',
-          id: uid('el'),
-          name: 'Switcher buttons',
-          rect: { ...SELBAR_RECT },
-          children: buttons,
-        },
-        ...panels,
+      selectorGroup,
+      slots: [
+        { id: 'tabs', name: 'Tabs', accepts: ['button'], rect: { ...SELBAR_RECT }, layout: { mode: 'row', itemSize: 'uniform' } },
+        { id: 'content', name: 'Content', single: true, rect: { ...PANEL_RECT }, layout: { mode: 'column' } },
       ],
+      children: [...tabs, ...panels],
     }];
   },
+};
+
+// ---------------------------------------------------------------------------
+// Flow containers — Grid / Row / Column (empty groups pre-seeded with a layout)
+// ---------------------------------------------------------------------------
+
+export const gridPreset: ScreenPreset<{ columns: number }> = {
+  id: 'grid',
+  name: '▦ Grid',
+  hint: 'Auto-spacing grid — set the number of columns',
+  params: { columns: 3 },
+  build: ({ columns }) => [{
+    kind: 'group', id: uid('el'), name: 'Grid',
+    rect: { x: 20, y: 20, w: 60, h: 40 },
+    layout: { mode: 'grid', columns: Math.max(1, Math.round(columns)), gap: 2, padding: 1 },
+    children: [],
+  }],
+};
+
+export const rowPreset: ScreenPreset<{ gap: number }> = {
+  id: 'row',
+  name: '▭ Row',
+  hint: 'Horizontal auto-spacing row',
+  params: { gap: 2 },
+  build: ({ gap }) => [{
+    kind: 'group', id: uid('el'), name: 'Row',
+    rect: { x: 20, y: 42, w: 60, h: 14 },
+    layout: { mode: 'row', gap, padding: 1 },
+    children: [],
+  }],
+};
+
+export const columnPreset: ScreenPreset<{ gap: number }> = {
+  id: 'column',
+  name: '▯ Column',
+  hint: 'Vertical auto-spacing column',
+  params: { gap: 2 },
+  build: ({ gap }) => [{
+    kind: 'group', id: uid('el'), name: 'Column',
+    rect: { x: 40, y: 20, w: 20, h: 50 },
+    layout: { mode: 'column', gap, padding: 1 },
+    children: [],
+  }],
 };
 
 // ---------------------------------------------------------------------------
@@ -112,4 +154,4 @@ export const panelSwitcherPreset: ScreenPreset<PanelSwitcherParams> = {
 // ---------------------------------------------------------------------------
 
 /** Every shipped preset, in palette order. */
-export const SCREEN_PRESETS = [panelSwitcherPreset] as const;
+export const SCREEN_PRESETS = [panelSwitcherPreset, gridPreset, rowPreset, columnPreset] as const;

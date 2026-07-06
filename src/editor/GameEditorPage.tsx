@@ -1,6 +1,11 @@
 /**
- * GameEditorPage — tabbed editor over one GameDef:
- * Info | Cards | Types | Zones | Table | Variables | Flow | Actions | Rules | Filters.
+ * GameEditorPage — ONE game-engine screen (#14). The WYSIWYG table canvas is
+ * the editor: it stays mounted as the whole surface, and every other section
+ * (Info | Cards | Types | Zones | Variables | Flow | Actions | Rules |
+ * Filters) opens as a slide-over panel from the section rail on the left —
+ * design the screen and tune rules/cards/zones side by side, no page swaps.
+ * Heavy sections (Cards, Flow, Actions, Rules) open wide by default; ⇤/⤢
+ * toggles the width, ✕ (or the rail button again) closes.
  * Loads the game by id, autosaves edits to the store (~400ms debounce),
  * validates live, and opens built-in examples read-only with "Clone & edit".
  */
@@ -35,20 +40,22 @@ export interface GameEditorPageProps {
   readOnlyNote?: string;
 }
 
-const TABS = [
-  { id: 'info', label: 'Info' },
-  { id: 'cards', label: 'Cards' },
-  { id: 'types', label: 'Types' },
-  { id: 'zones', label: 'Zones' },
-  { id: 'table', label: 'Table' },
-  { id: 'variables', label: 'Variables' },
-  { id: 'flow', label: 'Flow' },
-  { id: 'actions', label: 'Actions' },
-  { id: 'rules', label: 'Rules' },
-  { id: 'filters', label: 'Filters' },
+const SECTIONS = [
+  { id: 'info', label: 'Info', icon: 'ⓘ' },
+  { id: 'cards', label: 'Cards', icon: '▧' },
+  { id: 'types', label: 'Types', icon: '◆' },
+  { id: 'zones', label: 'Zones', icon: '▦' },
+  { id: 'variables', label: 'Vars', icon: '＃' },
+  { id: 'flow', label: 'Flow', icon: '⟳' },
+  { id: 'actions', label: 'Actions', icon: '▸' },
+  { id: 'rules', label: 'Rules', icon: '§' },
+  { id: 'filters', label: 'Filters', icon: '▽' },
 ] as const;
 
-type TabId = (typeof TABS)[number]['id'];
+type SectionId = (typeof SECTIONS)[number]['id'];
+
+/** Sections that host big surfaces (card grids, node graphs) open wide. */
+const WIDE_BY_DEFAULT: ReadonlySet<SectionId> = new Set(['cards', 'flow', 'actions', 'rules']);
 
 const SAVE_DEBOUNCE_MS = 400;
 
@@ -57,11 +64,20 @@ export function GameEditorPage({ gameId, navigate, readOnly: forcedReadOnly, rea
     const game = getGameById(gameId);
     return game ? deepClone(game) : null;
   });
-  const [tab, setTab] = useState<TabId>('info');
+  const [panel, setPanel] = useState<SectionId | null>(null);
+  const [wide, setWide] = useState(false);
   const [saveState, setSaveState] = useState<'saved' | 'pending' | 'error'>('saved');
   const [issuesOpen, setIssuesOpen] = useState(false);
 
   const readOnly = !!draft?.meta.builtIn || !!forcedReadOnly;
+
+  const openPanel = (id: SectionId) => {
+    setPanel((cur) => {
+      if (cur === id) return null; // rail button toggles
+      setWide(WIDE_BY_DEFAULT.has(id));
+      return id;
+    });
+  };
 
   // Debounced autosave; refs let the unmount flush see the latest state.
   const timerRef = useRef<number | undefined>(undefined);
@@ -128,6 +144,7 @@ export function GameEditorPage({ gameId, navigate, readOnly: forcedReadOnly, rea
 
   const errorCount = issues.filter((i) => i.severity === 'error').length;
   const warningCount = issues.length - errorCount;
+  const panelLabel = SECTIONS.find((s) => s.id === panel)?.label ?? '';
 
   return (
     <>
@@ -164,42 +181,79 @@ export function GameEditorPage({ gameId, navigate, readOnly: forcedReadOnly, rea
         </button>
       </header>
 
-      <nav className="tabbar">
-        {TABS.map((t) => (
-          <button key={t.id} type="button" className={tab === t.id ? 'active' : ''} onClick={() => setTab(t.id)}>
-            {t.label}
-          </button>
-        ))}
-      </nav>
-
-      <main className="app-main">
-        <div className="page ed-page">
-          {readOnly && (
-            <div className="ed-banner">
-              <span>{readOnlyNote ?? 'This is a built-in example — open it to learn, but edits aren\'t saved.'}</span>
+      <main className="app-main ed-single-main">
+        <div className="ed-shell">
+          <nav className="ed-rail" aria-label="Game sections">
+            {SECTIONS.map((s) => (
               <button
+                key={s.id}
                 type="button"
-                className="btn btn-small btn-primary"
-                onClick={() => {
-                  const copy = cloneGame(draft);
-                  navigate(`#/edit/${copy.meta.id}`);
-                }}
+                className={panel === s.id ? 'active' : ''}
+                onClick={() => openPanel(s.id)}
+                aria-pressed={panel === s.id}
+                title={panel === s.id ? `Close ${s.label}` : s.label}
               >
-                Clone &amp; edit
+                <span className="ed-rail-icon" aria-hidden="true">{s.icon}</span>
+                <span className="ed-rail-label">{s.label}</span>
               </button>
-            </div>
-          )}
+            ))}
+          </nav>
 
-          {tab === 'info' && <InfoTab def={draft} onChange={onChange} />}
-          {tab === 'cards' && <CardsTab def={draft} onChange={onChange} />}
-          {tab === 'types' && <TypesTab def={draft} onChange={onChange} />}
-          {tab === 'zones' && <ZonesTab def={draft} onChange={onChange} />}
-          {tab === 'table' && <TableTab def={draft} onChange={onChange} />}
-          {tab === 'variables' && <VariablesTab def={draft} onChange={onChange} />}
-          {tab === 'flow' && <FlowTab def={draft} onChange={onChange} />}
-          {tab === 'actions' && <ActionsTab def={draft} onChange={onChange} />}
-          {tab === 'rules' && <RulesTab def={draft} onChange={onChange} />}
-          {tab === 'filters' && <FiltersTab def={draft} onChange={onChange} />}
+          <div className="ed-work">
+            {readOnly && (
+              <div className="ed-banner">
+                <span>{readOnlyNote ?? 'This is a built-in example — open it to learn, but edits aren\'t saved.'}</span>
+                <button
+                  type="button"
+                  className="btn btn-small btn-primary"
+                  onClick={() => {
+                    const copy = cloneGame(draft);
+                    navigate(`#/edit/${copy.meta.id}`);
+                  }}
+                >
+                  Clone &amp; edit
+                </button>
+              </div>
+            )}
+            <TableTab def={draft} onChange={onChange} />
+          </div>
+
+          {panel !== null && (
+            <section className={wide ? 'ed-panel ed-panel-wide' : 'ed-panel'} aria-label={`${panelLabel} panel`}>
+              <header className="ed-panel-head">
+                <h3>{panelLabel}</h3>
+                <div className="spacer" />
+                <button
+                  type="button"
+                  className="btn btn-small"
+                  onClick={() => setWide((w) => !w)}
+                  title={wide ? 'Narrow panel' : 'Widen panel'}
+                  aria-label={wide ? 'Narrow panel' : 'Widen panel'}
+                >
+                  {wide ? '⇤' : '⤢'}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-small"
+                  onClick={() => setPanel(null)}
+                  aria-label={`Close ${panelLabel}`}
+                >
+                  ✕
+                </button>
+              </header>
+              <div className="ed-panel-body">
+                {panel === 'info' && <InfoTab def={draft} onChange={onChange} />}
+                {panel === 'cards' && <CardsTab def={draft} onChange={onChange} />}
+                {panel === 'types' && <TypesTab def={draft} onChange={onChange} />}
+                {panel === 'zones' && <ZonesTab def={draft} onChange={onChange} />}
+                {panel === 'variables' && <VariablesTab def={draft} onChange={onChange} />}
+                {panel === 'flow' && <FlowTab def={draft} onChange={onChange} />}
+                {panel === 'actions' && <ActionsTab def={draft} onChange={onChange} />}
+                {panel === 'rules' && <RulesTab def={draft} onChange={onChange} />}
+                {panel === 'filters' && <FiltersTab def={draft} onChange={onChange} />}
+              </div>
+            </section>
+          )}
         </div>
       </main>
 

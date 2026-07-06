@@ -49,6 +49,96 @@
 
 .ed-page { padding-top: 16px; }
 
+/* ---------- #14: ONE game-engine screen ----------
+   The table canvas IS the editor surface; all other sections open as a
+   slide-over panel from the vertical section rail. The panel floats OVER
+   the canvas (z below modals) so screen + rules edit side by side. */
+
+.forge-root .ed-single-main {
+  display: flex;
+  overflow: hidden;
+  padding: 0;
+}
+.ed-shell {
+  position: relative;
+  flex: 1;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+.ed-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 58px;
+  flex-shrink: 0;
+  padding: 8px 4px calc(8px + var(--safe-bottom));
+  overflow-y: auto;
+  background: var(--bg-raised);
+  border-right: 1px solid var(--border);
+}
+.ed-rail button {
+  appearance: none;
+  background: none;
+  border: none;
+  border-radius: 8px;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 7px 2px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+.ed-rail button:hover { color: var(--text); background: rgba(255, 255, 255, 0.05); }
+.ed-rail button.active { color: var(--text); background: rgba(200, 16, 46, 0.18); }
+.ed-rail-icon { font-size: 15px; line-height: 1; }
+.ed-rail-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.ed-work {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 16px calc(24px + var(--safe-bottom));
+}
+.ed-panel {
+  position: absolute;
+  left: 58px;
+  top: 0;
+  bottom: 0;
+  z-index: 40; /* under modals (50) — pickers/confirms still win */
+  width: min(660px, calc(100vw - 58px));
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-raised);
+  border-right: 1px solid var(--border);
+  box-shadow: 12px 0 32px rgba(0, 0, 0, 0.45);
+}
+.ed-panel-wide { width: min(1180px, calc(100vw - 58px)); }
+.ed-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.ed-panel-head h3 { margin: 0; font-size: 1rem; }
+.ed-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 12px 16px calc(24px + var(--safe-bottom));
+}
+
 .ed-banner {
   display: flex;
   flex-wrap: wrap;

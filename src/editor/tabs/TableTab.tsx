@@ -443,6 +443,9 @@ function Workspace({ def, layout, onChange }: {
       if (document.querySelector('.modal-backdrop')) return;
       const t = e.target as HTMLElement | null;
       if (t && t.closest?.('input, select, textarea, [contenteditable]')) return;
+      // The one-screen editor's slide-over section panel owns its own keys —
+      // Ctrl+Z in the Flow editor must not undo the table layout.
+      if (t && t.closest?.('.ed-panel')) return;
 
       if (e.key === 'Escape') {
         if (ctx.drawer) setDrawer(null);

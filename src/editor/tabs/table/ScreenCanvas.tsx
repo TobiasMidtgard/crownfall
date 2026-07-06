@@ -865,9 +865,6 @@ export function ScreenCanvas({
     }
     const hover = live?.hoverGroupId === el.id;
     const conditional = el.visible != null;
-    const hasStates = (el.states?.length ?? 0) > 0;
-    // Non-group containers: chip the count (children are edited via focus).
-    const childCount = el.kind === 'group' ? 0 : el.children?.length ?? 0;
     // Shapes/lines paint their chrome themselves (circle radius, line color).
     const ownChrome = el.kind === 'shape' || el.kind === 'line';
     const padPx = el.kind === 'zone' ? pctToPx(unitW, el.padding) : undefined;
@@ -954,20 +951,8 @@ export function ScreenCanvas({
               return next;
             })}
           >
-            ⇥ Preview collapsed
+            ⇥ Collapse
           </button>
-        )}
-        {(conditional || hasStates || el.collapsible != null || childCount > 0) && (
-          <span className="tt-chips" aria-hidden="true">
-            {hasStates && <span className="tt-fx" title="Reactive states">⚡</span>}
-            {conditional && <span className="tt-fx" title="Visible-when expression">ƒx</span>}
-            {el.collapsible != null && <span className="tt-fx" title="Collapsible panel">⇥</span>}
-            {childCount > 0 && (
-              <span className="tt-fx" title={`${childCount} element${childCount === 1 ? '' : 's'} on top — double-click to edit`}>
-                ▦{childCount}
-              </span>
-            )}
-          </span>
         )}
         {isSel && sel.length === 1 && !flow && (
           <div
@@ -1294,8 +1279,8 @@ export function ScreenCanvas({
       </div>
 
       {pvState !== null && (
-        <div className="tt-context-bar" role="group" aria-label="Preview context — design each board state">
-          <span className="tt-ctx-label">Previewing</span>
+        <div className="tt-context-bar" role="group" aria-label="Board state — design each state of the screen">
+          <span className="tt-ctx-label">Board state</span>
           <div className="tt-seg tt-seg-small" role="group" aria-label="Whose turn">
             {(['you', 'foe', 'over'] as const).map((a) => (
               <button

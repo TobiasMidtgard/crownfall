@@ -1849,8 +1849,8 @@ function StatesSection(props: PropertiesPanelProps & { el: ScreenElement }) {
       </p>
       {states.length > 0 && (
         <>
-          <span className="tt-mini-label">Preview on canvas</span>
-          <div className="tt-seg tt-seg-small tt-state-preview" role="group" aria-label="Preview state">
+          <span className="tt-mini-label">Show on canvas</span>
+          <div className="tt-seg tt-seg-small tt-state-preview" role="group" aria-label="Show state on canvas">
             <button
               type="button"
               className={statePreviewId === null ? 'tt-active' : ''}

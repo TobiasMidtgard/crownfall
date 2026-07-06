@@ -574,32 +574,11 @@
   background: rgba(255, 255, 255, 0.18);
 }
 
-/* ƒx-conditional elements: dimmed but NEVER invisible in the editor. */
+/* ƒx-conditional elements: dimmed but NEVER invisible in the editor.
+   (Only applies while the live sample is unavailable — the canvas itself
+   carries no badge chips: it must look exactly like gameplay. States/ƒx
+   metadata lives in the Layers panel rows instead.) */
 .tt-fx-dim { opacity: 0.4; }
-
-/* Badge chips (⚡ states / ƒx visible-when), top-right of the element —
-   counter-scaled so they stay legible at any zoom. */
-.tt-chips {
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  z-index: 3;
-  display: flex;
-  gap: 3px;
-  pointer-events: none;
-  transform: scale(var(--tt-hit, 1));
-  transform-origin: top right;
-}
-.tt-fx {
-  font-size: 10px;
-  font-weight: 800;
-  font-style: italic;
-  padding: 1px 5px;
-  border-radius: 999px;
-  background: var(--accent-soft, rgba(124, 92, 255, 0.25));
-  color: var(--accent-2, #2dd4bf);
-  border: 1px solid var(--accent);
-}
 
 /* ---------- real-render preview layer (runner ScreenRenderer) ---------- */
 

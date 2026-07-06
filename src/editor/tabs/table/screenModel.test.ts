@@ -8,7 +8,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import type {
-  ActionDef, DeckDef, ElementState, Expr, GameDef, PhaseDef, ScreenElement, ScreenLayout,
+  ActionDef, DeckDef, ElementState, Expr, FlowLayout, GameDef, PhaseDef, ScreenElement, ScreenLayout,
   VariableDef, ZoneDef,
 } from '../../../shared/types';
 import { newGameDef } from '../../../shared/defaults';
@@ -1137,5 +1137,37 @@ describe('resolveDropParent (drop-to-join guard)', () => {
 
   it('a null hover for a root-level element stays at root', () => {
     expect(resolveDropParent({ reparentable: true, hoverGroupId: null, origParentId: null, primaryRect: inside, origParentAbs: undefined })).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Layout backbone: FlowLayout / SlotDef / new kinds (Task 1)
+// ---------------------------------------------------------------------------
+
+describe('layout-backbone types', () => {
+  it('a group can carry a FlowLayout and slotted children', () => {
+    const layout: FlowLayout = { mode: 'grid', gap: 2, columns: 3, itemSize: 'uniform' };
+    const el: ScreenElement = {
+      kind: 'group', id: 'g1', name: 'Grid', rect: { x: 0, y: 0, w: 50, h: 50 },
+      layout, children: [
+        { kind: 'text', id: 't1', name: 'T', rect: { x: 0, y: 0, w: 10, h: 5 },
+          text: 'hi', fontSize: 2, align: 'center', slotId: 'content' },
+      ],
+    };
+    expect(el.layout?.mode).toBe('grid');
+    expect(el.children?.[0].slotId).toBe('content');
+  });
+
+  it('image and panelSwitcher are valid kinds', () => {
+    const img: ScreenElement = { kind: 'image', id: 'i1', name: 'Img',
+      rect: { x: 0, y: 0, w: 10, h: 10 }, src: 'data:,', fit: 'contain' };
+    const ps: ScreenElement = { kind: 'panelSwitcher', id: 'p1', name: 'PS',
+      rect: { x: 0, y: 0, w: 40, h: 40 }, selectorGroup: 'grp',
+      slots: [
+        { id: 'tabs', name: 'Tabs', accepts: ['button'], layout: { mode: 'row' } },
+        { id: 'content', name: 'Content', single: true, layout: { mode: 'column' } },
+      ], children: [] };
+    expect(img.kind).toBe('image');
+    expect(ps.slots).toHaveLength(2);
   });
 });

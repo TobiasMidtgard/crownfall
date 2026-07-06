@@ -196,6 +196,54 @@ export interface ElementState {
 }
 
 /** Fields shared by every screen element. Rect is % of the PARENT (screen or group). */
+/**
+ * Auto-layout for a container's CHILDREN. When an element carries `layout`,
+ * its children FLOW (flex/grid) instead of being absolutely positioned by
+ * their own rect: child rect.x/y are ignored, rect.w/h become the basis size
+ * (unless `itemSize` overrides). Absent `layout` = today's absolute rects.
+ * All CSS is emitted from runner/layoutGeometry.flowLayoutCss so the runner
+ * and the editor canvas never drift.
+ */
+export interface FlowLayout {
+  mode: 'row' | 'column' | 'grid';
+  /** Between-item spacing, % of screen width. */
+  gap?: number;
+  /** Inset from the container edge, % of screen width. */
+  padding?: number;
+  /** Main-axis distribution. */
+  justify?: 'start' | 'center' | 'end' | 'between' | 'around';
+  /** Cross-axis alignment. */
+  align?: 'start' | 'center' | 'end' | 'stretch';
+  /** row/column: wrap onto new lines. */
+  wrap?: boolean;
+  /** grid: fixed track counts (absent/null = auto). */
+  columns?: number | null;
+  rows?: number | null;
+  /** grid: minimum item width (% screen) → auto-fill/wrap grid. */
+  autoFit?: number | null;
+  /** How children are sized on the cross axis / within cells. */
+  itemSize?: 'auto' | 'uniform' | 'stretch';
+}
+
+/**
+ * A typed sub-region of a container. Children route into a slot via their
+ * `slotId`; each slot flows its own children (`layout`) and may constrain
+ * which kinds it `accepts`. Ships via the panelSwitcher template + the button
+ * content-slot; free-form slot authoring is a later wave.
+ */
+export interface SlotDef {
+  id: Id;
+  name: string;
+  /** Allowed child kinds (absent = any kind). */
+  accepts?: ScreenElement['kind'][];
+  /** How this slot flows its own children. */
+  layout: FlowLayout;
+  /** Slot region as % of the container (absent = the whole box). */
+  rect?: { x: number; y: number; w: number; h: number };
+  /** Holds at most one visible child (content areas that swap by tab). */
+  single?: boolean;
+}
+
 export interface ScreenElementBase {
   id: Id;
   /** Label shown in the Layers panel. */
@@ -243,6 +291,16 @@ export interface ScreenElementBase {
    * (theirs is required); edit children via the builder's focus mode.
    */
   children?: ScreenElement[];
+  /**
+   * Auto-layout: when set, this container FLOWS its children (row/column/grid)
+   * instead of positioning each by absolute rect. Absent = absolute (default).
+   * Meaningless on `zone` (zones lay out cards, not child elements) — ignored.
+   */
+  layout?: FlowLayout;
+  /** Typed sub-regions; children route in via their `slotId`. */
+  slots?: SlotDef[];
+  /** Which parent slot this element occupies (the parent must declare it). */
+  slotId?: Id;
 }
 
 export type ScreenElement =
@@ -380,6 +438,26 @@ export type ScreenElement =
        * parses.
        */
       tabbed?: boolean;
+    })
+  /**
+   * A smart container with two typed slots — `tabs` (role:'selector' buttons,
+   * auto-spaced by a row FlowLayout) and `content` (the bound panels). A thin
+   * kind: its tabs are REAL selector buttons and its panels use REAL
+   * showForSelector, so the runner's existing selector gate shows exactly one
+   * panel — no bespoke gating. `selectorGroup` is the radio-set the tabs share.
+   */
+  | (ScreenElementBase & {
+      kind: 'panelSwitcher';
+      children: ScreenElement[];
+      slots: SlotDef[];
+      selectorGroup: string;
+    })
+  /** A picture: inline data URL or remote URL, sized by object-fit. */
+  | (ScreenElementBase & {
+      kind: 'image';
+      src: string;
+      fit?: 'contain' | 'cover' | 'fill' | 'none';
+      alt?: string;
     });
 
 /** Card-flight tuning (DGT-style WAAPI clones). All optional. */

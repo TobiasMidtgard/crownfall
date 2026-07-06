@@ -709,28 +709,29 @@ describe("the mobile variant is the original's pocket table (one viewport)", () 
     expect(m.aspect ?? null).toBeNull();
   });
 
-  it('the supply is a SWITCHER: three selector buttons + three bound panels (no tabbed flag)', () => {
+  it('the supply is a panelSwitcher: tabs slot (selector buttons) + content slot (bound panels)', () => {
     // The deprecated tabbed:true runner chrome is gone from the def source.
     expect(JSON.stringify(def)).not.toContain('"tabbed"');
-    const supply = findEl(m.elements, 'dom_el_m_supply') as Extract<ScreenElement, { kind: 'group' }>;
-    expect(supply.kind).toBe('group');
-    expect(supply.children.map((p) => p.name))
-      .toEqual(['Supply switcher', 'Treasury', 'Victory', 'Kingdom']);
-    // The selector row: three designed buttons, ONE radio group, no actions.
-    const selbar = supply.children[0] as Extract<ScreenElement, { kind: 'group' }>;
-    const buttons = selbar.children as Extract<ScreenElement, { kind: 'button' }>[];
+    const supply = findEl(m.elements, 'dom_el_m_supply') as Extract<ScreenElement, { kind: 'panelSwitcher' }>;
+    expect(supply.kind).toBe('panelSwitcher');
+    expect(supply.selectorGroup).toBe('dom_el_m_supply');
+    expect(supply.slots.map((s) => s.id)).toEqual(['tabs', 'content']);
+    expect(supply.slots[0].layout.mode).toBe('row'); // tabs auto-space
+    // The tabs slot: three designed buttons, ONE radio group, no actions.
+    const buttons = supply.children.filter(
+      (c): c is Extract<ScreenElement, { kind: 'button' }> => c.slotId === 'tabs' && c.kind === 'button');
     expect(buttons.map((b) => b.id)).toEqual([
       'dom_el_m_tab_treasury_sel', 'dom_el_m_tab_victory_sel', 'dom_el_m_tab_kingdom_sel',
     ]);
     expect(buttons.map((b) => b.label)).toEqual(['Treasury', 'Victory', 'Kingdom']);
     for (const b of buttons) {
-      expect(b.kind).toBe('button');
       expect(b.role, `${b.id} switches, never acts`).toBe('selector');
       expect(b.selectorGroup).toBe('dom_el_m_supply');
       expect(b.actionId).toBeNull();
     }
-    // Each panel binds to ITS button and holds ITS slice of the one supply.
-    const panels = supply.children.slice(1);
+    // The content slot: each panel binds to ITS button and holds ITS slice.
+    const panels = supply.children.filter((c) => c.slotId === 'content');
+    expect(panels.map((p) => p.name)).toEqual(['Treasury', 'Victory', 'Kingdom']);
     expect(panels.map((p) => p.showForSelector)).toEqual([
       'dom_el_m_tab_treasury_sel', 'dom_el_m_tab_victory_sel', 'dom_el_m_tab_kingdom_sel',
     ]);

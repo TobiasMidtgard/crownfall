@@ -953,9 +953,11 @@ const M_SUPPLY_GROUP = 'dom_el_m_supply';
 function mSupplyTab(panelId: string, label: string, i: number): ScreenElement {
   return {
     kind: 'button', id: `${panelId}_sel`, name: `${label} selector`,
+    // Position is flow-driven inside the panelSwitcher's 'tabs' slot (row,
+    // itemSize uniform → equal thirds); rect is only the fallback basis.
     rect: { x: i * 33.33, y: 0, w: i === 2 ? 33.34 : 33.33, h: 100 },
     actionId: null, label, fontSize: 2.7,
-    role: 'selector', selectorGroup: M_SUPPLY_GROUP,
+    role: 'selector', selectorGroup: M_SUPPLY_GROUP, slotId: 'tabs',
   };
 }
 
@@ -974,8 +976,11 @@ function mSupplyPanel(
 ): ScreenElement {
   return {
     kind: 'group', id: panelId, name: label,
-    rect: { x: 0, y: 13, w: 100, h: 87 },
+    // Fills the panelSwitcher's 'content' slot (which already sits below the
+    // tabs); flow ignores x/y, uses w/h as the basis so it fills the slot.
+    rect: { x: 0, y: 0, w: 100, h: 100 },
     showForSelector: `${panelId}_sel`,
+    slotId: 'content',
     children: [{
       kind: 'zone', id: zoneElId, name: `Supply — ${label.toLowerCase()}`,
       rect: { x: 0, y: 0, w: 100, h: 100 },
@@ -1062,18 +1067,17 @@ function buildMobileScreen(): ScreenVariant {
       // chrome is replaced by real, restylable def elements). Treasury is
       // first in paint order, so it is the default selection.
       {
-        kind: 'group', id: M_SUPPLY_GROUP, name: 'Supply',
+        kind: 'panelSwitcher', id: M_SUPPLY_GROUP, name: 'Supply',
         rect: { x: 1.5, y: 8.4, w: 97, h: 29.8 },
+        selectorGroup: M_SUPPLY_GROUP,
+        slots: [
+          { id: 'tabs', name: 'Tabs', accepts: ['button'], rect: { x: 0, y: 0, w: 100, h: 13 }, layout: { mode: 'row', itemSize: 'uniform' } },
+          { id: 'content', name: 'Content', single: true, rect: { x: 0, y: 13, w: 100, h: 87 }, layout: { mode: 'column' } },
+        ],
         children: [
-          {
-            kind: 'group', id: 'dom_el_m_supply_selbar', name: 'Supply switcher',
-            rect: { x: 0, y: 0, w: 100, h: 13 },
-            children: [
-              mSupplyTab('dom_el_m_tab_treasury', 'Treasury', 0),
-              mSupplyTab('dom_el_m_tab_victory', 'Victory', 1),
-              mSupplyTab('dom_el_m_tab_kingdom', 'Kingdom', 2),
-            ],
-          },
+          mSupplyTab('dom_el_m_tab_treasury', 'Treasury', 0),
+          mSupplyTab('dom_el_m_tab_victory', 'Victory', 1),
+          mSupplyTab('dom_el_m_tab_kingdom', 'Kingdom', 2),
           mSupplyPanel('dom_el_m_tab_treasury', 'Treasury', 'dom_el_m_supply_treasures', IS_TREASURE_CARD, 'shift'),
           mSupplyPanel('dom_el_m_tab_victory', 'Victory', 'dom_el_m_supply_victory', IS_BASIC_VICTORY_PILE, 'ctrl'),
           mSupplyPanel('dom_el_m_tab_kingdom', 'Kingdom', 'dom_el_m_supply_kingdom', IS_KINGDOM_PILE, 'alt'),

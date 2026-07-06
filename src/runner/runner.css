@@ -865,9 +865,12 @@ section.rn-bottom.rn-priority { border-top-color: var(--accent); }
   align-items: center;
   justify-content: center;
   width: 100%;
+  /* Cards are width-clamped to FIT the rect (ZoneBlock fitCardWidth); any
+     residue a degenerate rect still can't hold clips — never a scrollbar. */
+  overflow: hidden;
 }
-.rn-zone-fill .rn-spread { padding: 4px 2px 2px; max-height: 100%; }
-.rn-zone-fill .rn-gridz { max-height: 100%; overflow-y: auto; padding: 2px; }
+.rn-zone-fill .rn-spread { padding: 4px 2px 2px; max-height: 100%; overflow: hidden; }
+.rn-zone-fill .rn-gridz { max-height: 100%; overflow: hidden; padding: 2px; }
 .rn-zone-fill .rn-zone-cap { flex-shrink: 0; }
 
 /* Authored fan gap: margin-left = gap - cardWidth (set inline as a CSS var).

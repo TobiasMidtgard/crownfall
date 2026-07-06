@@ -34,7 +34,7 @@
  * aligned); badge vars render as chips on the card (hidden when 0/''/false).
  * Zones with a capacity show "n/cap" and flag fullness subtly.
  */
-import { Fragment } from 'react';
+import { Fragment, useLayoutEffect, useState } from 'react';
 import type { GameDef, GameState, Id, Move, VariableDef, ZoneDef, ZoneInstance } from '../shared/types';
 import { isCardVisibleTo } from '../engine';
 import { CardView } from '../components/CardView';
@@ -116,6 +116,36 @@ export type ZoneSize = 'strip' | 'center' | 'hand';
 const CARD_WIDTH: Record<ZoneSize, number> = { strip: 44, center: 72, hand: 88 };
 
 /**
+ * Largest card width that fits an authored zone rect (fill mode): height
+ * bounds single-line layouts (stack/row/fan/carousel); grids and pile boards
+ * bound by rows AND columns. Floored at 24px — a degenerate rect clips (the
+ * fill CSS hides overflow) rather than rendering unreadable cards.
+ */
+function fitCardWidth(opts: {
+  gridLike: boolean;
+  fanOn: boolean;
+  box: { w: number; h: number };
+  aspect: number;
+  count: number;
+  gap: number;
+  rows: number | null;
+  columns: number | null;
+}): number {
+  const { box, aspect } = opts;
+  // Vertical chrome inside the body: fan dip/lift room, badge overhang.
+  const pad = opts.fanOn ? 20 : 8;
+  const availH = Math.max(0, box.h - pad);
+  if (opts.gridLike) {
+    const cols = opts.columns;
+    const rows = opts.rows ?? (cols !== null ? Math.max(1, Math.ceil(opts.count / cols)) : 1);
+    const byH = ((availH - (rows - 1) * opts.gap) / rows) * aspect;
+    const byW = cols !== null ? (box.w - (cols - 1) * opts.gap - 4) / cols : Number.POSITIVE_INFINITY;
+    return Math.max(24, Math.floor(Math.min(byH, byW)));
+  }
+  return Math.max(24, Math.floor(availH * aspect));
+}
+
+/**
  * Keyboard activation for role=button divs: Enter/Space act, with the
  * default cancelled — otherwise Space also page-scrolls the nearest
  * scrollable ancestor (native buttons suppress that for free; divs don't).
@@ -143,7 +173,7 @@ export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, cus
   /** Authored style + spacing (custom layouts). */
   custom?: ZoneCustom;
 }) {
-  const width = cardWidth ?? CARD_WIDTH[size];
+  const baseWidth = cardWidth ?? CARD_WIDTH[size];
   const tappable = (ctx.zoneMoves.get(inst.key)?.length ?? 0) > 0;
   // The display slice (cardFilter); legal glow only considers visible cards.
   const ids = custom?.cardIds ?? inst.cardIds;
@@ -157,6 +187,41 @@ export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, cus
   const sig = `${count}:${count > 0 ? ids[count - 1] : ''}`;
   const isPiles = custom?.display === 'piles';
   const isCarousel = custom?.display === 'carousel';
+  const fanOn = zone.layout === 'fan' && !isPiles
+    && (custom?.fanAngle ?? DEFAULT_FAN_ANGLE) !== 0;
+
+  // Fit-to-zone (authored rects): measure the body box and clamp the card
+  // width so cards genuinely FIT the rect — no clipped faces, no scrollbars.
+  // The body (.rn-pop) remounts on content change, so the node is tracked in
+  // state and the observer re-attaches with it.
+  const [popEl, setPopEl] = useState<HTMLDivElement | null>(null);
+  const [popBox, setPopBox] = useState<{ w: number; h: number } | null>(null);
+  useLayoutEffect(() => {
+    if (fill !== true || popEl === null) return;
+    const update = () => setPopBox((prev) => {
+      const w = popEl.clientWidth;
+      const h = popEl.clientHeight;
+      return prev !== null && prev.w === w && prev.h === h ? prev : { w, h };
+    });
+    update();
+    if (typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(update);
+    ro.observe(popEl);
+    return () => ro.disconnect();
+  }, [fill, popEl]);
+  const card0 = count > 0 ? ctx.state.cards[ids[0]] : undefined;
+  const width = fill === true && popBox !== null
+    ? Math.min(baseWidth, fitCardWidth({
+        gridLike: (zone.layout === 'grid' || isPiles) && !isCarousel,
+        fanOn,
+        box: popBox,
+        aspect: card0 !== undefined ? templateOf(ctx.def, card0)?.aspect ?? 0.714 : 0.714,
+        count: isPiles || isCarousel ? groupPiles(ids, ctx.state.cards).length : count,
+        gap: custom?.gapPx ?? 6,
+        rows: custom?.rows ?? null,
+        columns: custom?.columns ?? null,
+      }))
+    : baseWidth;
 
   const renderCard = (cardId: Id) => (
     <TableCard
@@ -198,8 +263,6 @@ export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, cus
       }))
     : ids.map((id) => ({ key: id, cardId: id, n: 1, memberIds: [id] }));
 
-  const fanOn = zone.layout === 'fan' && !isPiles
-    && (custom?.fanAngle ?? DEFAULT_FAN_ANGLE) !== 0;
   const renderItem = (it: RenderItem, i: number) => {
     // A collapsed group's face stays bright while ANY member is legal.
     const groupLegal = it.n > 1 && topLegalCard(it.memberIds, hasMoves) !== null;
@@ -353,7 +416,7 @@ export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, cus
       {(caption !== '' || capChip !== null) && (
         <span className="rn-zone-cap">{caption}{capChip}</span>
       )}
-      <div className="rn-pop" key={sig}>{body}</div>
+      <div className="rn-pop" key={sig} ref={fill === true ? setPopEl : undefined}>{body}</div>
     </div>
   );
 }

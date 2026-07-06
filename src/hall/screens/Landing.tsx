@@ -43,7 +43,7 @@ export function Landing() {
                 <Edit id="game-1-desc" fallback="The deck-builder itself. Draw five, act, buy, and sharpen your deck turn by turn until the provinces fall to you." />
               </p>
               <div className="game-actions">
-                <a className="btn btn-primary" href="#/tables"><Edit id="game-1-cta-seat" fallback="Take a seat" /></a>
+                <a className="btn btn-primary" href="#/forge/play/dominion-crownfall"><Edit id="game-1-cta-seat" fallback="Take a seat" /></a>
                 <a className="btn btn-ghost" href="#/codex"><Edit id="game-1-cta-cards" fallback="The cards" /></a>
               </div>
             </div>
@@ -213,7 +213,7 @@ export function Landing() {
             <Edit id="hero-tag" fallback="One engine beneath the floor. Many games upon the table. Dominion deals first." />
           </p>
           <div className="hero-cta reveal" style={iv(4)}>
-            <a className="btn btn-primary" href="#/tables"><Edit id="hero-cta-play" fallback="Play Dominion" /></a>
+            <a className="btn btn-primary" href="#/forge/play/dominion-crownfall"><Edit id="hero-cta-play" fallback="Play Dominion" /></a>
             <a className="btn btn-ghost" href="#/codex"><Edit id="hero-cta-browse" fallback="Browse the cards" /></a>
           </div>
           <p className="hero-meta reveal" style={iv(5)}>

@@ -59,10 +59,6 @@ async function act(engine: Engine, playerId: Id, actionId: string, cardName?: st
   await engine.performAction(playerId, chosen);
 }
 
-function pass(engine: Engine, playerId: Id): Promise<void> {
-  return engine.performAction(playerId, { actionId: PASS_ACTION_ID });
-}
-
 // ---------------------------------------------------------------------------
 // (a) MTG: Counterspell cancels Divination in the response window
 // ---------------------------------------------------------------------------

@@ -406,11 +406,34 @@ export function flowLayoutCss(layout: FlowLayout | undefined, screenW: number): 
   return css;
 }
 
-/** Per-child CSS under a flow layout: uniform basis / cross-axis stretch. */
-export function flowItemCss(layout: FlowLayout): { flex?: string; alignSelf?: string } {
-  if (layout.itemSize === 'uniform') return { flex: '1 1 0' };
-  if (layout.itemSize === 'stretch') return { alignSelf: 'stretch' };
-  return {};
+/** Wrapper CSS for a child INSIDE a flow container. */
+export interface FlowChildCss {
+  position: 'relative';
+  flex?: string;
+  width?: string;
+  height?: string;
+  alignSelf?: 'stretch';
+}
+
+/**
+ * Wrapper CSS for a child inside a flow container: drops absolute positioning
+ * (flex/grid places it) and sets an EXPLICIT `flex` so the runner's
+ * `.rn-el > * { flex: 1 }` rule can't force-equalize items. `auto`/`stretch`
+ * use the child's own rect w/h as basis; `uniform` gives every item equal
+ * space; grid children are sized by their cell (relative only).
+ */
+export function flowChildCss(layout: FlowLayout, rect: { w: number; h: number }): FlowChildCss {
+  const s: FlowChildCss = { position: 'relative' };
+  if (layout.mode === 'grid') return s;
+  if (layout.itemSize === 'uniform') {
+    s.flex = '1 1 0';
+    return s;
+  }
+  s.flex = '0 0 auto';
+  s.width = `${rect.w}%`;
+  s.height = `${rect.h}%`;
+  if (layout.itemSize === 'stretch') s.alignSelf = 'stretch';
+  return s;
 }
 
 /** A slot's region as % of its container (slot.rect, or the whole box). */

@@ -50,7 +50,7 @@
  *     are decorative.
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import type { Id, LayoutStyle, Move, ScreenElement } from '../shared/types';
+import type { FlowLayout, Id, LayoutStyle, Move, ScreenElement } from '../shared/types';
 import { PASS_ACTION_ID } from '../shared/types';
 import { isDisplayVisible } from '../engine';
 import { prefersReducedMotion } from './flip';
@@ -61,9 +61,9 @@ import {
   writeSelection, zoneInstKey, type SelectorContext,
 } from './layout';
 import {
-  filterDisplayCards, layoutStyleCss, lineColor, lineEndpoints, pctToPx,
-  resolveElementAppearance, resolveSeat, shapeBorderRadius, shapeClipPath, shapePolygon,
-  textStyleCss, computeStage,
+  filterDisplayCards, flowChildCss, flowLayoutCss, layoutStyleCss, lineColor, lineEndpoints,
+  pctToPx, resolveElementAppearance, resolveSeat, shapeBorderRadius, shapeClipPath, shapePolygon,
+  slotRect, textStyleCss, computeStage,
   type ActiveScreen,
 } from './layoutGeometry';
 import { ZoneBlock, type TableCtx } from './ZoneViews';
@@ -177,7 +177,7 @@ export function ScreenRenderer({ ctx, screen, buttonMove, onMove }: {
  * `rn-rv-<anim>` animation (incl. on first appearance); leaving keeps the
  * node briefly with `rn-rv-<anim>-out` before removal. 'none' is instant.
  */
-function Reveal({ show, anim, rect, frame, dim, inert, rotate, children }: {
+function Reveal({ show, anim, rect, frame, dim, inert, rotate, flow, children }: {
   show: boolean;
   anim: ScreenElement['reveal'];
   rect: { x: number; y: number; w: number; h: number };
@@ -189,6 +189,9 @@ function Reveal({ show, anim, rect, frame, dim, inert, rotate, children }: {
   inert?: boolean;
   /** Rotation in degrees about the element's centre. */
   rotate?: number;
+  /** The PARENT's flow layout when this element is a flowed child: the
+   *  wrapper drops absolute left/top and lets flex/grid place it. */
+  flow?: FlowLayout;
   children: React.ReactNode;
 }) {
   const [present, setPresent] = useState(show);
@@ -222,14 +225,16 @@ function Reveal({ show, anim, rect, frame, dim, inert, rotate, children }: {
   // collapsible slide-in), spinning about the element's own centre.
   const spin = rotate !== undefined && rotate !== 0 ? `rotate(${rotate}deg)` : null;
   const transform = [frame?.transform, spin].filter(Boolean).join(' ') || undefined;
+  // A flowed child drops absolute positioning: flex/grid places it. Explicit
+  // `flex` overrides `.rn-el > * { flex: 1 }` so item sizing is respected.
+  const pos: React.CSSProperties = flow
+    ? flowChildCss(flow, rect)
+    : { left: `${rect.x}%`, top: `${rect.y}%`, width: `${rect.w}%`, height: `${rect.h}%` };
   return (
     <div
       className={`rn-el${animClass}${dim === true ? ' rn-kb-dim' : ''}${inert === true ? ' rn-el-inert' : ''}`}
       style={{
-        left: `${rect.x}%`,
-        top: `${rect.y}%`,
-        width: `${rect.w}%`,
-        height: `${rect.h}%`,
+        ...pos,
         ...frame,
         ...(transform ? { transform } : {}),
       }}
@@ -322,7 +327,7 @@ function useCollapsed(defId: Id, elId: Id, startCollapsed: boolean): [boolean, (
 
 const COLLAPSE_GLYPH = { left: '‹', right: '›', top: '⌃', bottom: '⌄' } as const;
 
-function ElementView({ ctx, el, selCtx, screenW, buttonMove, onMove, root }: {
+function ElementView({ ctx, el, selCtx, screenW, buttonMove, onMove, root, flow }: {
   ctx: TableCtx;
   el: ScreenElement;
   /** Resolved selector selections for the ACTIVE screen (showForSelector gates). */
@@ -332,6 +337,8 @@ function ElementView({ ctx, el, selCtx, screenW, buttonMove, onMove, root }: {
   onMove: (m: Move) => void;
   /** Top-level element (keyboard spotlight dims at this granularity). */
   root?: boolean;
+  /** The parent's flow layout when this element is a flowed child. */
+  flow?: FlowLayout;
 }) {
   const spec = el.collapsible ?? null;
   const [collapsed, toggleCollapsed] = useCollapsed(
@@ -370,7 +377,17 @@ function ElementView({ ctx, el, selCtx, screenW, buttonMove, onMove, root }: {
   // plate CSS instead of hiding behind an opaque button background.
   const ownChrome = el.kind === 'zone' || el.kind === 'shape' || el.kind === 'line'
     || el.kind === 'button';
-  const frame = ownChrome ? undefined : (layoutStyleCss(app.style) as React.CSSProperties);
+  // A container that FLOWS its own children (Grid/Row/Column groups) gets the
+  // flex/grid CSS on its box. Slotted containers (panelSwitcher) flow PER SLOT
+  // instead, so they don't take container flow here.
+  const containerFlow = el.kind !== 'zone' && el.layout != null
+    && !(el.slots !== undefined && el.slots.length > 0);
+  const frame = ownChrome
+    ? undefined
+    : {
+        ...(layoutStyleCss(app.style) as React.CSSProperties),
+        ...(containerFlow ? (flowLayoutCss(el.layout, screenW) as React.CSSProperties) : {}),
+      };
   let body = (
     <ElementBody
       ctx={ctx}
@@ -383,8 +400,9 @@ function ElementView({ ctx, el, selCtx, screenW, buttonMove, onMove, root }: {
     />
   );
   // Child elements (any kind, not just groups): drawn on top of the parent's
-  // box, % of its rect. Groups render theirs inside ElementBody already.
-  if (el.kind !== 'group' && el.children && el.children.length > 0) {
+  // box, % of its rect. Groups and panelSwitchers render theirs inside
+  // ElementBody already (flow / slots aware).
+  if (el.kind !== 'group' && el.kind !== 'panelSwitcher' && el.children && el.children.length > 0) {
     body = (
       <>
         {body}
@@ -430,6 +448,7 @@ function ElementView({ ctx, el, selCtx, screenW, buttonMove, onMove, root }: {
         dim={dim}
         inert={inert}
         rotate={el.rotation}
+        flow={flow}
       >
         {changeAnim === 'breathe'
           ? (
@@ -551,6 +570,59 @@ function LogView({ ctx, el, screenW }: {
         ? <div className="rn-sl-logsep" key={`t${r.turn}`}>Turn {r.turn}</div>
         : <div className="rn-sl-logentry" key={r.index}>{r.text}</div>))}
     </div>
+  );
+}
+
+interface ChildCommon {
+  ctx: TableCtx;
+  selCtx: SelectorContext;
+  screenW: number;
+  buttonMove: ReadonlyMap<Id, Move>;
+  onMove: (m: Move) => void;
+}
+
+/**
+ * A container's children, laid out by (in priority): its SLOTS — each an
+ * absolutely-positioned region that flows its own children — else its flow
+ * `layout` — else absolute rects (today's default). The single place both the
+ * group and panelSwitcher branches route children.
+ */
+function ContainerChildren({ el, common }: { el: ScreenElement; common: ChildCommon }) {
+  const kids = el.children ?? [];
+  if (el.slots !== undefined && el.slots.length > 0) {
+    return (
+      <>
+        {el.slots.map((slot) => {
+          const region = slotRect(el, slot.id);
+          return (
+            <div
+              key={slot.id}
+              className="rn-slot"
+              style={{
+                position: 'absolute',
+                left: `${region.x}%`,
+                top: `${region.y}%`,
+                width: `${region.w}%`,
+                height: `${region.h}%`,
+                ...(flowLayoutCss(slot.layout, common.screenW) as React.CSSProperties),
+              }}
+            >
+              {kids.filter((c) => c.slotId === slot.id).map((child) => (
+                <ElementView key={child.id} el={child} flow={slot.layout} {...common} />
+              ))}
+            </div>
+          );
+        })}
+      </>
+    );
+  }
+  const flow = el.layout ?? undefined;
+  return (
+    <>
+      {kids.map((child) => (
+        <ElementView key={child.id} el={child} flow={flow} {...common} />
+      ))}
+    </>
   );
 }
 
@@ -794,21 +866,25 @@ function ElementBody({ ctx, el, selCtx, style, screenW, buttonMove, onMove }: {
       );
     }
 
+    case 'image':
+      return el.src
+        ? (
+          <img
+            className="rn-sl-img"
+            src={el.src}
+            alt={el.alt ?? el.name}
+            style={{ width: '100%', height: '100%', objectFit: el.fit ?? 'contain', display: 'block' }}
+          />
+        )
+        : <div className="rn-img-empty" aria-label={el.alt ?? el.name} />;
+
     case 'group':
+    case 'panelSwitcher':
       return (
-        <>
-          {el.children.map((child) => (
-            <ElementView
-              key={child.id}
-              ctx={ctx}
-              el={child}
-              selCtx={selCtx}
-              screenW={screenW}
-              buttonMove={buttonMove}
-              onMove={onMove}
-            />
-          ))}
-        </>
+        <ContainerChildren
+          el={el}
+          common={{ ctx, selCtx, screenW, buttonMove, onMove }}
+        />
       );
   }
 }

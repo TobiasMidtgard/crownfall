@@ -51,6 +51,7 @@ const RANK_LABELS: [number, string][] = [
 const KIND_LABELS: Record<ScreenElement['kind'], string> = {
   zone: 'zone', text: 'text', varText: 'variable', button: 'button',
   shape: 'shape', line: 'line', log: 'log', group: 'group',
+  panelSwitcher: 'panel switcher', image: 'image',
 };
 
 type ZoneEl = Extract<ScreenElement, { kind: 'zone' }>;

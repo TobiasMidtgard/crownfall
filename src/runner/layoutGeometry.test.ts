@@ -9,7 +9,7 @@ import { describe, expect, it } from 'vitest';
 import type { ScreenElement, ScreenLayout } from '../shared/types';
 import {
   absToGroupRel, activeScreenVariant, asSpeed, cardIdentity, computeStage, fanMarginPx,
-  fanTransform, fitCount, flowItemCss, flowLayoutCss, gridSpec, gridTemplate, groupPiles,
+  fanTransform, fitCount, flowChildCss, flowLayoutCss, gridSpec, gridTemplate, groupPiles,
   groupPilesRemembered, groupRelToAbs, layoutStyleCss, lineColor, lineEndpoints, MOTION_DEFAULTS,
   motionForTag, nextSpeed, pctToPx, rectContains, resolveMotion, resolveSeat, scaleMs, seatOffset,
   SHAPE_KINDS, shapeBorderRadius, shapeClipPath, shapePolygon, slotRect, speedFactor, textStyleCss,
@@ -613,15 +613,20 @@ describe('flowLayoutCss', () => {
   });
 });
 
-describe('flowItemCss', () => {
-  it('uniform -> equal basis (flex 1 1 0)', () => {
-    expect(flowItemCss({ mode: 'row', itemSize: 'uniform' })).toEqual({ flex: '1 1 0' });
+describe('flowChildCss', () => {
+  it('grid child: relative only (the cell sizes it)', () => {
+    expect(flowChildCss({ mode: 'grid' }, { w: 10, h: 10 })).toEqual({ position: 'relative' });
   });
-  it('stretch -> align-self stretch', () => {
-    expect(flowItemCss({ mode: 'row', itemSize: 'stretch' })).toEqual({ alignSelf: 'stretch' });
+  it('uniform: flex 1 1 0, no explicit size', () => {
+    expect(flowChildCss({ mode: 'row', itemSize: 'uniform' }, { w: 10, h: 5 }))
+      .toEqual({ position: 'relative', flex: '1 1 0' });
   });
-  it('auto -> nothing forced', () => {
-    expect(flowItemCss({ mode: 'row' })).toEqual({});
+  it('auto: basis from rect w/h, flex 0 0 auto (beats .rn-el>*{flex:1})', () => {
+    expect(flowChildCss({ mode: 'row' }, { w: 16, h: 8 }))
+      .toEqual({ position: 'relative', flex: '0 0 auto', width: '16%', height: '8%' });
+  });
+  it('stretch: adds cross-axis stretch', () => {
+    expect(flowChildCss({ mode: 'row', itemSize: 'stretch' }, { w: 16, h: 8 }).alignSelf).toBe('stretch');
   });
 });
 

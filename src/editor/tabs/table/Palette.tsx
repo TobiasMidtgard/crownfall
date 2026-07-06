@@ -18,7 +18,7 @@ import {
   PANEL_SWITCHER_MAX, PANEL_SWITCHER_MIN, SCREEN_PRESETS, panelName, panelSwitcherPreset,
 } from './presets';
 import {
-  makeZoneDef, newButtonElement, newGroupElement, newLineElement, newLogElement,
+  makeZoneDef, newButtonElement, newGroupElement, newImageElement, newLineElement, newLogElement,
   newPhaseTrackElement, newShapeElement, newTextElement, newVarTextElement, newZoneElement,
 } from './screenModel';
 
@@ -83,6 +83,7 @@ export function Palette({
           !hasPhases,
         )}
         {item('▦ Group', 'An empty container — drag elements inside', () => onInsert(newGroupElement()))}
+        {item('🖼 Image', 'A picture (set its source in the inspector)', () => onInsert(newImageElement()))}
       </section>
       <h3 className="tt-rail-title">Presets</h3>
       <section className="tt-tray-section">
@@ -91,7 +92,17 @@ export function Palette({
             key={p.id}
             type="button"
             className="btn tt-tray-item"
-            onClick={() => setPresetModal(p.id)}
+            onClick={() => {
+              // The panel switcher asks for a count + names; the flow
+              // containers (Grid/Row/Column) drop with sensible defaults you
+              // then tune in the Layout inspector.
+              if (p.id === panelSwitcherPreset.id) {
+                setPresetModal(p.id);
+                return;
+              }
+              const build = p.build as (params: unknown) => ScreenElement[];
+              for (const el of build(p.params)) onInsert(el);
+            }}
             title={p.hint}
           >
             {p.name}

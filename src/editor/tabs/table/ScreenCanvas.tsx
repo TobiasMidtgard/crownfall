@@ -37,7 +37,7 @@
  * wave-3 selector work composes its gating into the same visibility path.
  */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import type { GameDef, GameState, Id, LayoutStyle, ScreenElement, ScreenLayout } from '../../../shared/types';
+import type { FlowLayout, GameDef, GameState, Id, LayoutStyle, ScreenElement, ScreenLayout } from '../../../shared/types';
 import { exprToText } from '../../blocks/exprToText';
 import {
   formatVarValue, readSelection, renderTextParts, selectionVersion, subscribeSelection,
@@ -58,7 +58,9 @@ import {
   zonePreview, zoneSampleCount,
   type AspectPreset, type PlainRect, type VariantKey, type ZonePreview,
 } from './screenModel';
-import { shapeBorderRadius, shapeClipPath } from '../../../runner/layoutGeometry';
+import {
+  flowChildCss, flowLayoutCss, shapeBorderRadius, shapeClipPath, slotRect,
+} from '../../../runner/layoutGeometry';
 
 /** Logical stage width in px at zoom 1. Rects are % of the screen. */
 export const SCREEN_W = 1000;
@@ -797,7 +799,7 @@ export function ScreenCanvas({
    * One element (recursive for groups). `parentAbs` in screen %; `ghost`
    * renders the live-dragged copy at screen level in absolute coords.
    */
-  const renderElement = (el: ScreenElement, parentAbs: PlainRect, ghost: boolean): JSX.Element | null => {
+  const renderElement = (el: ScreenElement, parentAbs: PlainRect, ghost: boolean, flow?: FlowLayout): JSX.Element | null => {
     if (!ghost && liveMoveSet?.has(el.id)) return null; // ghost renders at screen level
     // Live preview: hidden elements are NOT painted (a selected one gets a
     // ghost outline from the previewGhosts pass instead), like the runner.
@@ -869,6 +871,16 @@ export function ScreenCanvas({
     // Shapes/lines paint their chrome themselves (circle radius, line color).
     const ownChrome = el.kind === 'shape' || el.kind === 'line';
     const padPx = el.kind === 'zone' ? pctToPx(unitW, el.padding) : undefined;
+    // Flow: a container that flows its own children (Grid/Row/Column) vs one
+    // that routes children through typed slots (panelSwitcher). Mirrors the
+    // runner so the hit boxes land exactly on the flowed elements.
+    const hasSlots = el.slots !== undefined && el.slots.length > 0;
+    const containerFlow = el.kind !== 'zone' && el.layout != null && !hasSlots;
+    // A flowed child drops absolute positioning (flex/grid places it); ghosts
+    // still render absolutely at screen level.
+    const posStyle: React.CSSProperties = flow && !ghost
+      ? flowChildCss(flow, pos)
+      : { left: `${pos.x}%`, top: `${pos.y}%`, width: `${pos.w}%`, height: `${pos.h}%` };
     // Real-render preview: this .tt-el is a transparent HIT BOX only — its body
     // and chrome (background/border/padding from the kind class + inline style)
     // are suppressed so the ScreenRenderer painting behind shows through. The
@@ -890,8 +902,11 @@ export function ScreenCanvas({
         key={el.id}
         className={cls}
         style={{
-          left: `${pos.x}%`, top: `${pos.y}%`, width: `${pos.w}%`, height: `${pos.h}%`,
+          ...posStyle,
           ...(rotDeg ? { transform: `rotate(${rotDeg}deg)` } : {}),
+          // Flow container: display:flex|grid + gap so its hit boxes flow like
+          // the real render (kept even in hit-box mode for alignment).
+          ...(containerFlow ? flowLayoutCss(el.layout, unitW) : {}),
           // Hit-box mode: no inline chrome/padding — the real render is behind.
           ...(asHitbox || ownChrome ? {} : layoutStyleCss(style)),
           ...(!asHitbox && padPx !== undefined ? { padding: padPx } : {}),
@@ -904,7 +919,30 @@ export function ScreenCanvas({
         {!asHitbox && (
           <ElementBody def={def} el={el} abs={abs} screenH={screenH} screenW={unitW} style={style} sample={pvState} />
         )}
-        {el.children?.map((c) => renderElement(c, abs, false))}
+        {hasSlots
+          ? (el.slots ?? []).map((s) => {
+              const region = slotRect(el, s.id);
+              return (
+                <div
+                  key={s.id}
+                  className={`tt-slot${isSel && !ghost ? ' tt-slot-active' : ''}`}
+                  style={{
+                    position: 'absolute',
+                    left: `${region.x}%`, top: `${region.y}%`,
+                    width: `${region.w}%`, height: `${region.h}%`,
+                    ...flowLayoutCss(s.layout, unitW),
+                  }}
+                >
+                  {(el.children ?? [])
+                    .filter((c) => c.slotId === s.id)
+                    .map((c) => renderElement(c, abs, false, s.layout))}
+                  {isSel && !ghost && (
+                    <span className="tt-slot-label" aria-hidden="true">{s.name}</span>
+                  )}
+                </div>
+              );
+            })
+          : el.children?.map((c) => renderElement(c, abs, false, containerFlow ? el.layout : undefined))}
         {pvState !== null && el.collapsible != null && isSel && !ghost && (
           <button
             type="button"
@@ -938,7 +976,7 @@ export function ScreenCanvas({
             aria-label={`Resize ${el.name}`}
           />
         )}
-        {isSel && sel.length === 1 && !ghost && (
+        {isSel && sel.length === 1 && !ghost && !flow && (
           <div
             className="tt-rotate-handle"
             onPointerDown={(e) => startRotate(e, el.id, abs)}
@@ -1120,7 +1158,16 @@ export function ScreenCanvas({
               )
             )}
             {backdrop}
-            {elements.map((el) => renderElement(el, ROOT_RECT, false))}
+            {focusEl && focusEl.layout != null && !(focusEl.slots !== undefined && focusEl.slots.length > 0)
+              ? (
+                <div
+                  className="tt-focus-flow"
+                  style={{ position: 'absolute', inset: 0, ...flowLayoutCss(focusEl.layout, unitW) }}
+                >
+                  {elements.map((el) => renderElement(el, ROOT_RECT, false, focusEl.layout))}
+                </div>
+              )
+              : elements.map((el) => renderElement(el, ROOT_RECT, false))}
             {ghosts}
             {previewGhosts}
             {scrollPage && (
@@ -1311,8 +1358,27 @@ function ElementBody({ def, el, abs, screenH, screenW, style, sample }: {
     case 'shape': return <ShapeBody el={el} style={style} screenW={screenW} />;
     case 'line': return <LineBody el={el} abs={abs} screenH={screenH} style={style} />;
     case 'log': return <LogBody el={el} screenW={screenW} />;
-    case 'group': return <span className="tt-group-name">{el.name}</span>;
+    // Flow groups render nothing here (their children flow); plain groups show
+    // a faint name label.
+    case 'group': return el.layout ? null : <span className="tt-group-name">{el.name}</span>;
+    case 'panelSwitcher': return null;
+    case 'image': return <ImageBody el={el} />;
   }
+}
+
+function ImageBody({ el }: { el: Extract<ScreenElement, { kind: 'image' }> }) {
+  if (!el.src) {
+    return <div className="tt-img-empty" aria-label={el.alt ?? el.name} />;
+  }
+  return (
+    <img
+      className="tt-img"
+      src={el.src}
+      alt={el.alt ?? el.name}
+      style={{ width: '100%', height: '100%', objectFit: el.fit ?? 'contain', display: 'block' }}
+      draggable={false}
+    />
+  );
 }
 
 const SEAT_TAGS: Record<string, string | null> = {

@@ -436,6 +436,33 @@
   white-space: nowrap;
 }
 
+/* Flow-layout slot region (panelSwitcher). Editor chrome only — the runner
+   draws just the children. The dashed outline + name show while the container
+   is selected, so the idle view stays pixel-exact WYSIWYG. */
+.tt-slot { position: absolute; box-sizing: border-box; }
+.tt-slot-active { outline: 1px dashed rgba(255, 255, 255, 0.22); outline-offset: -1px; }
+.tt-slot-label {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  font-size: calc(9px * var(--tt-hit, 1));
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: rgba(255, 255, 255, 0.55);
+  pointer-events: none;
+}
+
+/* Image element on the canvas. */
+.tt-img { border-radius: inherit; }
+.tt-img-empty {
+  width: 100%;
+  height: 100%;
+  border: 1px dashed rgba(255, 255, 255, 0.28);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
 /* text / varText */
 .tt-text-body {
   align-items: center;

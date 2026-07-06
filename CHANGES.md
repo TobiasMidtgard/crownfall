@@ -11,9 +11,6 @@
 
 ### Table designer / editor
 - **#14 — One cohesive design screen, not multiple tabs.** `(large)` Merge the separate tabs (table / cards / blocks) into a single unified design surface. *Sets the frame for most items below — probably scope this first.*
-- **#3 — Group selection drills in on double-click.** Single click selects the whole group; double-click steps into the next nested group, and again down to the item (Figma/Illustrator style). *Today it dives straight to the deepest item.*
-- **#4 — Keyboard shortcuts.** `(large-ish)` Full set: Ctrl+Z undo, Ctrl+Y redo, Ctrl+C copy, Ctrl+V paste, Ctrl+X cut, Ctrl+D duplicate, arrow-key nudge, Delete, group/ungroup. Needs a real undo/history stack + clipboard model.
-- **#6 — Save a color to my theme.** Let me pin a custom color into a reusable theme palette / swatches, so I'm not re-picking it each time.
 - **#9 — Vector drawing of custom shapes.** `(large)` A pen/vector tool for arbitrary shapes, beyond the preset shape kinds.
 - **#8/#10 leftovers** — drag-to-reorder inside a flow container directly **on the canvas** (works via Layers panel today); migrate the **desktop** supply to the new layout system.
 
@@ -30,6 +27,9 @@
 ---
 
 ## ✅ Done (delete once confirmed shipped)
+- **#3 — drill-in selection** (`b56d03b`): click selects the top-level element; double-click steps into the group (repeat to reach the item); single clicks then pick siblings at that depth; Ctrl+click deep-selects instantly.
+- **#4 — full keyboard set** (`b56d03b`): Ctrl+Z/Ctrl+Shift+Z/Ctrl+Y undo-redo (real history with burst coalescing + toolbar ↶↷ buttons), Ctrl+C/X/V clipboard (works across variants/tabs), Ctrl+D duplicate, Ctrl+G/Ctrl+Shift+G group/ungroup — joining the existing Esc/Delete/arrow-nudge.
+- **#6 — theme swatches** (`b56d03b`): ★ Save pins the current colour to a persistent "My theme" row in every colour picker; right-click removes.
 - **Militia "cancel" prompt** — fixed in the engine (`8a8b3dc`): players with no possible response are auto-passed, so the attacker never sees a Pass prompt on their own attack; response windows land directly on players who can actually react (Moat/Counterspell/traps) and stacks with no possible responders resolve instantly.
 - **#5 — no scrollbars on cards** (`32a1429`): cards in authored zones are measured + width-clamped to genuinely fit their rect (fans by height, grids by rows×columns); zone containers clip instead of scrolling.
 - **#16 — hero CTAs** (`32a1429`): "Play Dominion" / "Take a seat" go straight to the Dominion setup screen (no login wall).

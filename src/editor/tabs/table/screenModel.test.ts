@@ -17,7 +17,7 @@ import {
   MOTION_DEFAULTS, PHONE_ASPECT, addElementState, alignElements, applyElementState,
   canDropInto, containerCanFlow, isFlowChild, newFlowGroup, newImageElement, slotChildrenOf,
   buildStarterLayout, cloneElementsWithNewIds, createMobileVariant, deckCardCount,
-  deepestGroupAt, deleteMobileVariant, distributeElements, findEl, groupSiblings,
+  deepestGroupAt, deleteMobileVariant, distributeElements, duplicateEls, findEl, groupSiblings,
   indexElements, insertIntoFocusedChildren, makeActionDef, makeVariableDef, makeZoneDef,
   moveElementState, newCustomDeckAt, newElementState, newLineElement, newLogElement,
   newPhaseTrackElement, newShapeElement, patchMobileVariant, patchMotion, pathToEl,
@@ -289,6 +289,40 @@ describe('makeVariableDef / makeActionDef', () => {
 // ---------------------------------------------------------------------------
 // Group / ungroup rect conversion
 // ---------------------------------------------------------------------------
+
+describe('duplicateEls', () => {
+  it('clones as a fresh-id sibling right after the original, nudged +2%', () => {
+    const a = el('a', rect(10, 10, 20, 10));
+    const b = el('b', rect(40, 30, 10, 20));
+    const { elements, newIds } = duplicateEls([a, b], ['a']);
+    expect(newIds).toHaveLength(1);
+    expect(elements.map((e) => e.id)).toEqual(['a', newIds[0], 'b']);
+    const clone = findEl(elements, newIds[0])!;
+    expect(clone.rect).toEqual(rect(12, 12, 20, 10));
+    expect(clone.id).not.toBe('a');
+    // The original is untouched.
+    expect(findEl(elements, 'a')!.rect).toEqual(rect(10, 10, 20, 10));
+  });
+
+  it('duplicates a nested child inside its parent and clamps to the box', () => {
+    const child = el('x', rect(85, 92, 15, 8));
+    const tree = [grp('g', rect(0, 0, 50, 50), [child])];
+    const { elements, newIds } = duplicateEls(tree, ['x']);
+    const g = findEl(elements, 'g') as Extract<ScreenElement, { kind: 'group' }>;
+    expect(g.children.map((c) => c.id)).toEqual(['x', newIds[0]]);
+    // +2 clamped so the clone stays inside the parent box.
+    expect(findEl(elements, newIds[0])!.rect).toEqual(rect(85, 92, 15, 8));
+  });
+
+  it('regenerates ids across the whole cloned subtree', () => {
+    const tree = [grp('g', rect(0, 0, 50, 50), [el('x'), el('y')])];
+    const { elements, newIds } = duplicateEls(tree, ['g']);
+    const clone = findEl(elements, newIds[0]) as Extract<ScreenElement, { kind: 'group' }>;
+    const ids = new Set([clone.id, ...clone.children.map((c) => c.id)]);
+    expect(ids.has('g') || ids.has('x') || ids.has('y')).toBe(false);
+    expect(clone.children).toHaveLength(2);
+  });
+});
 
 describe('groupSiblings / ungroupEl', () => {
   const a = el('a', rect(10, 10, 20, 10));

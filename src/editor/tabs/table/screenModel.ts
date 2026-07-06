@@ -292,6 +292,35 @@ export function removeEls(elements: ScreenElement[], ids: ReadonlySet<Id>): Scre
   return changed ? out : elements;
 }
 
+/**
+ * Duplicate each of `ids` (nested selections pruned by the caller) as a
+ * fresh-id sibling inserted right after its original, nudged +2% (clamped)
+ * so the copy reads on the canvas. Returns the tree + the clones' ids.
+ */
+export function duplicateEls(
+  elements: ScreenElement[],
+  ids: readonly Id[],
+): { elements: ScreenElement[]; newIds: Id[] } {
+  let els = elements;
+  const newIds: Id[] = [];
+  for (const id of ids) {
+    const original = findEl(els, id);
+    if (!original) continue;
+    const clone = cloneElementsWithNewIds([original])[0];
+    clone.rect = {
+      ...clone.rect,
+      x: Math.min(Math.max(clone.rect.x + 2, 0), Math.max(0, 100 - clone.rect.w)),
+      y: Math.min(Math.max(clone.rect.y + 2, 0), Math.max(0, 100 - clone.rect.h)),
+    };
+    newIds.push(clone.id);
+    els = editSiblings(els, id, (sibs) => {
+      const at = sibs.findIndex((s) => s.id === id);
+      return [...sibs.slice(0, at + 1), clone, ...sibs.slice(at + 1)];
+    });
+  }
+  return { elements: els, newIds };
+}
+
 /** Run `edit` on the sibling array that contains `id` (root or a parent's children). */
 function editSiblings(
   elements: ScreenElement[], id: Id, edit: (siblings: ScreenElement[]) => ScreenElement[],

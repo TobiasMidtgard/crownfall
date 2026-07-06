@@ -8,7 +8,10 @@
  *   right = Layers (nested tree, frontmost on top) over Properties
  * On phones the rails collapse into bottom-sheet drawers. ⛶ goes fullscreen
  * (fixed overlay, Esc exits). Keyboard: Esc clears selection, Delete removes
- * the selected elements (layout only), arrows nudge 1% (shift = 5%).
+ * the selected elements (layout only), arrows nudge 1% (shift = 5%),
+ * Ctrl+Z/Y undo/redo (layout snapshots, bursts coalesced), Ctrl+C/X/V
+ * copy/cut/paste (module clipboard, survives variant/tab hops), Ctrl+D
+ * duplicate in place, Ctrl+G / Ctrl+Shift+G group/ungroup.
  *
  * FOCUS MODE (editor-only, never persisted): double-click an element (canvas
  * or Layers row) or hit ⛶ Focus in Properties — the canvas shows just that
@@ -35,7 +38,7 @@ import {
 import {
   ASPECT_VALUES, alignElements, buildStarterLayout, cloneElementsWithNewIds, createMobileVariant,
   deleteMobileVariant,
-  distributeElements, elChildren, findEl, groupSiblings, indexElements,
+  distributeElements, duplicateEls, elChildren, findEl, groupSiblings, indexElements,
   insertIntoFocusedChildren, pathToEl, placeRelativeEl, pruneNested, removeEls, reorderSibling,
   reparentEl, setAbsRect, siblingsOf, ungroupEl, updateEl, validFocusPath, variantElements,
   withElChildren, withVariantElements,
@@ -142,6 +145,18 @@ export function TableTab({ def: rawDef, onChange }: TableTabProps) {
 
 type Drawer = 'palette' | 'layers' | 'props' | null;
 
+// Copied elements (deep-frozen clones). Module scope on purpose: the board
+// survives tab switches and variant hops, so copy on desktop / paste on
+// mobile just works. Ids regenerate on every paste.
+let clipboardEls: ScreenElement[] = [];
+let pasteSeq = 0;
+
+/** Undo/redo memory: layout snapshots. Bursts (slider scrubs, rapid patches)
+ *  within this window coalesce into ONE entry, so undo steps feel like edits,
+ *  not mouse events. */
+const HISTORY_BURST_MS = 400;
+const HISTORY_CAP = 100;
+
 function Workspace({ def, layout, onChange }: {
   def: GameDef;
   layout: ScreenLayout;
@@ -159,7 +174,46 @@ function Workspace({ def, layout, onChange }: {
   // FOCUS MODE (editor-only): id chain root → focused element ([] = screen).
   const [focusPath, setFocusPath] = useState<Id[]>([]);
 
-  const setLayout = (sl: ScreenLayout) => onChange({ ...def, screenLayout: sl });
+  // ----- undo/redo (#4): layout snapshots, coalesced per edit burst -----
+  const historyRef = useRef<{ past: ScreenLayout[]; future: ScreenLayout[]; last: number }>(
+    { past: [], future: [], last: 0 },
+  );
+  const pushHistory = () => {
+    const h = historyRef.current;
+    const now = Date.now();
+    if (now - h.last > HISTORY_BURST_MS) {
+      h.past.push(layout);
+      if (h.past.length > HISTORY_CAP) h.past.shift();
+    }
+    h.last = now;
+    h.future = [];
+  };
+  // Undo/redo swap the CURRENT layout with a snapshot; other tabs' def edits
+  // are never touched (snapshots carry only screenLayout).
+  const undo = () => {
+    const h = historyRef.current;
+    const prev = h.past.pop();
+    if (prev === undefined) return;
+    h.future.push(layout);
+    h.last = 0;
+    onChange({ ...def, screenLayout: prev });
+  };
+  const redo = () => {
+    const h = historyRef.current;
+    const next = h.future.pop();
+    if (next === undefined) return;
+    h.past.push(layout);
+    h.last = 0;
+    onChange({ ...def, screenLayout: next });
+  };
+  // Recomputed every render (each edit re-renders), so the buttons stay live.
+  const canUndo = historyRef.current.past.length > 0;
+  const canRedo = historyRef.current.future.length > 0;
+
+  const setLayout = (sl: ScreenLayout) => {
+    pushHistory();
+    onChange({ ...def, screenLayout: sl });
+  };
   // EVERYTHING edits the open variant's tree (palette, layers, canvas, props).
   const elements = variantElements(layout, variant);
   const setElements = (els: ScreenElement[]) => setLayout(withVariantElements(layout, variant, els));
@@ -302,6 +356,7 @@ function Workspace({ def, layout, onChange }: {
     const nextEls = focusEl
       ? insertIntoFocusedChildren(elements, focusEl.id, el)
       : [...elements, el];
+    pushHistory(); // undo restores the layout; the zone def stays (harmless orphan)
     onChange({
       ...def,
       zones: [...def.zones, zone],
@@ -309,6 +364,45 @@ function Workspace({ def, layout, onChange }: {
     });
     setSel([el.id]);
     setDrawer(null);
+  };
+
+  // ----- clipboard (#4): copy / cut / paste / duplicate -----
+
+  const copySelection = () => {
+    const ids = pruneNested(index, sel);
+    if (ids.length === 0) return;
+    clipboardEls = ids
+      .map((id) => index.get(id)?.el)
+      .filter((el): el is ScreenElement => el !== undefined)
+      .map((el) => structuredClone(el));
+    pasteSeq = 0;
+  };
+
+  const pasteClipboard = () => {
+    if (clipboardEls.length === 0) return;
+    pasteSeq += 1;
+    const off = 2 * pasteSeq;
+    const pasted = cloneElementsWithNewIds(structuredClone(clipboardEls)).map((el) => ({
+      ...el,
+      rect: {
+        ...el.rect,
+        x: Math.min(Math.max(el.rect.x + off, 0), Math.max(0, 100 - el.rect.w)),
+        y: Math.min(Math.max(el.rect.y + off, 0), Math.max(0, 100 - el.rect.h)),
+      },
+    }));
+    setElements(focusEl
+      ? pasted.reduce((acc, el) => insertIntoFocusedChildren(acc, focusEl.id, el), elements)
+      : [...elements, ...pasted]);
+    setSel(pasted.map((el) => el.id));
+  };
+
+  const duplicateSelection = () => {
+    const ids = pruneNested(index, sel);
+    if (ids.length === 0) return;
+    const result = duplicateEls(elements, ids);
+    if (result.newIds.length === 0) return;
+    setElements(result.elements);
+    setSel(result.newIds);
   };
 
   const groupSelection = () => {
@@ -331,10 +425,16 @@ function Workspace({ def, layout, onChange }: {
     return !!sibs && sel.every((id) => sibs.some((s) => s.id === id));
   }, [sel, elements]);
 
-  // ----- keyboard: Esc / Delete / arrows -----
+  // ----- keyboard: Esc / Delete / arrows / undo-redo / clipboard / grouping -----
 
-  const keyCtx = useRef({ sel, fullscreen, drawer, elements, focusPath, scopeEls, scopeIndex, setScopeEls, setFocus });
-  keyCtx.current = { sel, fullscreen, drawer, elements, focusPath, scopeEls, scopeIndex, setScopeEls, setFocus };
+  const keyCtx = useRef({
+    sel, fullscreen, drawer, elements, focusPath, scopeEls, scopeIndex, setScopeEls, setFocus,
+    undo, redo, copySelection, pasteClipboard, duplicateSelection, groupSelection, ungroup, index,
+  });
+  keyCtx.current = {
+    sel, fullscreen, drawer, elements, focusPath, scopeEls, scopeIndex, setScopeEls, setFocus,
+    undo, redo, copySelection, pasteClipboard, duplicateSelection, groupSelection, ungroup, index,
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -351,7 +451,54 @@ function Workspace({ def, layout, onChange }: {
         else if (ctx.fullscreen) setFullscreen(false);
         return;
       }
+
+      const mod = e.ctrlKey || e.metaKey;
+      const k = e.key.toLowerCase();
+      // History + paste work with or without a selection.
+      if (mod && k === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) ctx.redo(); else ctx.undo();
+        return;
+      }
+      if (mod && k === 'y') {
+        e.preventDefault();
+        ctx.redo();
+        return;
+      }
+      if (mod && k === 'v') {
+        e.preventDefault();
+        ctx.pasteClipboard();
+        return;
+      }
       if (ctx.sel.length === 0) return;
+
+      if (mod && k === 'c') {
+        e.preventDefault();
+        ctx.copySelection();
+        return;
+      }
+      if (mod && k === 'x') {
+        e.preventDefault();
+        ctx.copySelection();
+        setElements(removeEls(ctx.elements, new Set(ctx.sel)));
+        setSel([]);
+        return;
+      }
+      if (mod && k === 'd') {
+        e.preventDefault(); // beat the browser's bookmark shortcut
+        ctx.duplicateSelection();
+        return;
+      }
+      if (mod && k === 'g') {
+        e.preventDefault();
+        if (e.shiftKey) {
+          const only = ctx.sel.length === 1 ? ctx.index.get(ctx.sel[0])?.el : undefined;
+          if (only?.kind === 'group') ctx.ungroup(only.id);
+        } else {
+          ctx.groupSelection();
+        }
+        return;
+      }
 
       if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
@@ -465,6 +612,10 @@ function Workspace({ def, layout, onChange }: {
       statePreview={statePreview}
       focusPath={focusPath}
       onFocusPath={setFocus}
+      onUndo={undo}
+      onRedo={redo}
+      canUndo={canUndo}
+      canRedo={canRedo}
     />
   );
 

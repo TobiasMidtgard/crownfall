@@ -1106,6 +1106,14 @@
   gap: 5px;
 }
 .tt-cp-recents { border-top: 1px solid var(--border); padding-top: 8px; }
+/* #6: pinned personal palette — header row (label + ★ Save) above the grid. */
+.tt-cp-theme-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+}
 .tt-cp-swatch {
   aspect-ratio: 1;
   padding: 0;

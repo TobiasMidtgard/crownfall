@@ -17,23 +17,28 @@ const PRESETS = [
 ];
 
 const RECENTS_KEY = 'cardsmith.recent-colors';
+/** #6: colours the user PINNED — a durable personal palette, unlike recents. */
+const THEME_KEY = 'cardsmith.theme-colors';
 const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
 
-function readRecents(): string[] {
+function readColorList(key: string, cap: number): string[] {
   try {
-    const raw = JSON.parse(localStorage.getItem(RECENTS_KEY) ?? '[]');
-    return Array.isArray(raw) ? raw.filter((s): s is string => typeof s === 'string').slice(0, 12) : [];
+    const raw = JSON.parse(localStorage.getItem(key) ?? '[]');
+    return Array.isArray(raw) ? raw.filter((s): s is string => typeof s === 'string').slice(0, cap) : [];
   } catch {
     return [];
   }
 }
-function pushRecent(css: string): void {
+function writeColorList(key: string, colors: string[]): void {
   try {
-    const next = [css, ...readRecents().filter((c) => c !== css)].slice(0, 12);
-    localStorage.setItem(RECENTS_KEY, JSON.stringify(next));
+    localStorage.setItem(key, JSON.stringify(colors));
   } catch {
-    // storage barred — recents just don't persist
+    // storage barred — the list just doesn't persist
   }
+}
+const readRecents = () => readColorList(RECENTS_KEY, 12);
+function pushRecent(css: string): void {
+  writeColorList(RECENTS_KEY, [css, ...readRecents().filter((c) => c !== css)].slice(0, 12));
 }
 
 /** A rail/field the user scrubs: reports the pointer as 0-1 fractions. */
@@ -96,6 +101,20 @@ export function ColorPicker({ value, onChange, onClose }: {
   const solid = `rgb(${r}, ${g}, ${b})`;
   const recents = readRecents();
 
+  // #6: pinned personal palette (persists across sessions and games).
+  const [theme, setTheme] = useState<string[]>(() => readColorList(THEME_KEY, 24));
+  const saveToTheme = () => {
+    const css = hsvaToCss(latest.current);
+    const next = [css, ...theme.filter((c) => c !== css)].slice(0, 24);
+    setTheme(next);
+    writeColorList(THEME_KEY, next);
+  };
+  const removeFromTheme = (css: string) => {
+    const next = theme.filter((c) => c !== css);
+    setTheme(next);
+    writeColorList(THEME_KEY, next);
+  };
+
   return (
     <>
       <div className="tt-cp-backdrop" onPointerDown={onClose} />
@@ -137,6 +156,35 @@ export function ColorPicker({ value, onChange, onClose }: {
             </button>
           ))}
         </div>
+
+        <div className="tt-cp-theme-head">
+          <span className="tt-mini-label">My theme</span>
+          <button
+            type="button"
+            className="btn btn-small"
+            title="Pin the current colour to my theme"
+            onClick={saveToTheme}
+          >
+            ★ Save
+          </button>
+        </div>
+        {theme.length > 0 && (
+          <div className="tt-cp-swatches tt-cp-theme">
+            {theme.map((c) => (
+              <button
+                key={c}
+                type="button"
+                className="tt-cp-swatch tt-cp-checker"
+                title={`${c} — right-click to remove`}
+                aria-label={`theme colour ${c}`}
+                onClick={() => pick(c)}
+                onContextMenu={(e) => { e.preventDefault(); removeFromTheme(c); }}
+              >
+                <span style={{ background: c }} />
+              </button>
+            ))}
+          </div>
+        )}
         {recents.length > 0 && (
           <div className="tt-cp-swatches tt-cp-recents">
             {recents.map((c, i) => (

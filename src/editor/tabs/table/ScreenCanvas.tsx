@@ -125,6 +125,9 @@ interface DragState {
   /** Single move drags may change parents on drop. */
   reparentable: boolean;
   origParentId: Id | null;
+  /** The DEEPEST element under the pointer (the drilled selection may be an
+   *  ancestor of it) — double-click descends one level toward this leaf. */
+  leafId: Id;
   /** Tap on an already-multi-selected element collapses to it on release. */
   tapCollapse: boolean;
   /** Double-tap disambiguation: touch zooms-to-fit, mouse enters focus mode. */
@@ -169,11 +172,16 @@ export interface ScreenCanvasProps {
   focusPath: Id[];
   /** Breadcrumb jumps / double-click descend / ✕ Exit focus. */
   onFocusPath: (path: Id[]) => void;
+  onUndo: () => void;
+  onRedo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
 }
 
 export function ScreenCanvas({
   def, layout, variant, mobileExists, onVariant, sel, onSelect, onToggleSelect, onCommitDrag,
   onPatchEl, onAspect, fullscreen, onToggleFullscreen, statePreview = null, focusPath, onFocusPath,
+  onUndo, onRedo, canUndo, canRedo,
 }: ScreenCanvasProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const screenRef = useRef<HTMLDivElement>(null);
@@ -284,6 +292,60 @@ export function ScreenCanvas({
 
   const index = useMemo(() => indexElements(elements), [elements]);
   const selSet = useMemo(() => new Set(sel), [sel]);
+
+  // ----- drill-in selection (#3, Figma-style) --------------------------------
+  // Single click selects the TOP-LEVEL element under the pointer; double-click
+  // steps one level INTO the clicked container (the "entered" context), after
+  // which single clicks pick siblings at that depth. Clicking outside the
+  // entered subtree pops back to top-level. Ctrl/Cmd-click deep-selects the
+  // leaf directly.
+  const enteredRef = useRef<Id | null>(null);
+
+  /** Ancestor chain of `id` in the current editing tree: [topLevel, …, id]. */
+  const ancestorChain = (id: Id): Id[] => {
+    const chain: Id[] = [];
+    let cur: Id | null = id;
+    while (cur !== null) {
+      chain.unshift(cur);
+      cur = index.get(cur)?.parentId ?? null;
+    }
+    return chain;
+  };
+
+  /** The element a plain click on `leafId` should select (see above). */
+  const drillTarget = (leafId: Id, deep: boolean): Id => {
+    if (deep) return leafId;
+    const chain = ancestorChain(leafId);
+    // Clicking inside something already selected keeps it (drag moves it).
+    for (let i = chain.length - 1; i >= 0; i--) {
+      if (selSet.has(chain[i])) return chain[i];
+    }
+    const entered = enteredRef.current;
+    if (entered !== null) {
+      const k = chain.indexOf(entered);
+      if (k >= 0 && k < chain.length - 1) return chain[k + 1];
+      enteredRef.current = null; // clicked outside the entered subtree
+    }
+    return chain[0];
+  };
+
+  // Context sanity: drop the entered context when the selection leaves its
+  // subtree (Layers picks, deletes, focus hops) or the group itself vanishes.
+  useEffect(() => {
+    const entered = enteredRef.current;
+    if (entered === null) return;
+    if (!index.has(entered)) {
+      enteredRef.current = null;
+      return;
+    }
+    const inside = sel.some((id) => {
+      for (let cur: Id | null = id; cur !== null; cur = index.get(cur)?.parentId ?? null) {
+        if (cur === entered) return true;
+      }
+      return false;
+    });
+    if (!inside) enteredRef.current = null;
+  }, [sel, index]);
   // Elements hidden by a closed selector gate: never drop targets and never
   // snap targets. Keeps a drag inside the selector panel the user can actually
   // see, instead of silently re-nesting into a stacked, hidden sibling panel.
@@ -478,10 +540,14 @@ export function ScreenCanvas({
   const detachRef = useRef<(() => void) | null>(null);
   useEffect(() => () => detachRef.current?.(), []);
 
-  const startDrag = (e: React.PointerEvent, id: Id, mode: 'move' | 'resize') => {
+  const startDrag = (e: React.PointerEvent, hitId: Id, mode: 'move' | 'resize') => {
     if (spaceRef.current || dragRef.current) return; // space = pan instead
     e.preventDefault();
     e.stopPropagation();
+    // Drill-in: the pointer lands on the DEEPEST element (DOM stacking), but a
+    // plain click selects/drags at the drilled level. Resize handles only exist
+    // on the selected element, so they bypass the resolution.
+    const id = mode === 'resize' ? hitId : drillTarget(hitId, e.ctrlKey || e.metaKey);
     if (e.shiftKey && mode === 'move') {
       onToggleSelect(id);
       return;
@@ -508,6 +574,7 @@ export function ScreenCanvas({
       mode,
       ids: origs.map((o) => o.id),
       primary: id,
+      leafId: hitId,
       startX: e.clientX,
       startY: e.clientY,
       scaleX: r.width / 100,
@@ -674,16 +741,26 @@ export function ScreenCanvas({
       if (d.mode === 'move' && last && last.id === d.primary && now - last.t < DOUBLE_TAP_MS) {
         lastTapRef.current = null;
         const primEl = index.get(d.primary)?.el;
+        // Drill-in (#3): descend one level toward the tapped leaf. Repeated
+        // double-clicks keep drilling until the leaf itself is selected.
+        const chain = ancestorChain(d.leafId);
+        const k = chain.indexOf(d.primary);
+        const deeper = k >= 0 && k < chain.length - 1 ? chain[k + 1] : null;
         // Plain text / button leaves inline-edit their content; ones WITH child
         // overlays keep double-click = focus (so you can edit those children).
         const inlineEditable = primEl !== undefined
           && (primEl.children?.length ?? 0) === 0
           && ((primEl.kind === 'text' && primEl.parts === undefined) || primEl.kind === 'button');
-        if (d.pointerType !== 'touch' && inlineEditable) {
-          // Double-click a text/button (mouse): edit its content in place.
-          setEditing({ id: d.primary, draft: primEl.kind === 'text' ? primEl.text : (primEl as { label: string }).label });
-        } else if (d.pointerType === 'touch') {
+        if (d.pointerType === 'touch') {
           zoomToFitEl(d.primary);
+        } else if (deeper !== null) {
+          enteredRef.current = d.primary;
+          onSelect([deeper]);
+          // Seed the tap tracker so a triple-click keeps descending.
+          lastTapRef.current = { id: deeper, t: now };
+        } else if (inlineEditable) {
+          // Double-click a leaf text/button (mouse): edit its content in place.
+          setEditing({ id: d.primary, draft: primEl.kind === 'text' ? primEl.text : (primEl as { label: string }).label });
         } else {
           focusElement(d.primary);
         }
@@ -1243,6 +1320,26 @@ export function ScreenCanvas({
         {sample === null && (
           <span className="tt-pv-chip" role="status">setup fails to run — showing the design outline</span>
         )}
+        <button
+          type="button"
+          className="btn btn-small"
+          aria-label="Undo"
+          title="Undo (Ctrl+Z)"
+          disabled={!canUndo}
+          onClick={onUndo}
+        >
+          ↶
+        </button>
+        <button
+          type="button"
+          className="btn btn-small"
+          aria-label="Redo"
+          title="Redo (Ctrl+Y)"
+          disabled={!canRedo}
+          onClick={onRedo}
+        >
+          ↷
+        </button>
         <button
           type="button"
           className="btn btn-small"

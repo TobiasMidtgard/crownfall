@@ -169,3 +169,62 @@ describe('unused vocabulary warnings', () => {
     expect(warningsOf(def).filter((w) => w.includes('Defined but unused'))).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Layout backbone: flow / slot / panelSwitcher / image validation
+// ---------------------------------------------------------------------------
+
+describe('layout backbone validation', () => {
+  const screenDef = (elements: unknown[]): GameDef =>
+    baseDef({ screenLayout: { aspect: null, elements: elements as never } });
+
+  it('warns when a zone carries a flow layout', () => {
+    const def = screenDef([
+      { kind: 'zone', id: 'e1', name: 'Table zone', rect: { x: 0, y: 0, w: 20, h: 20 },
+        zoneId: 'z1', seat: 'shared', layout: { mode: 'row' } },
+    ]);
+    expect(warningsOf(def).some((w) => /Layout is ignored on a zone/.test(w))).toBe(true);
+  });
+
+  it('warns when a child names a slot the container does not have', () => {
+    const def = screenDef([
+      { kind: 'panelSwitcher', id: 'ps', name: 'PS', rect: { x: 0, y: 0, w: 40, h: 40 },
+        selectorGroup: 'g',
+        slots: [
+          { id: 'tabs', name: 'Tabs', accepts: ['button'], layout: { mode: 'row' } },
+          { id: 'content', name: 'Content', layout: { mode: 'column' } },
+        ],
+        children: [
+          { kind: 'text', id: 't1', name: 'Stray', rect: { x: 0, y: 0, w: 10, h: 5 },
+            text: 'x', fontSize: 2, align: 'center', slotId: 'nope' },
+        ] },
+    ]);
+    expect(warningsOf(def).some((w) => /slot "nope", which this container has no slot for/.test(w))).toBe(true);
+  });
+
+  it('errors when a panel switcher is missing the tabs or content slot', () => {
+    const def = screenDef([
+      { kind: 'panelSwitcher', id: 'ps', name: 'PS', rect: { x: 0, y: 0, w: 40, h: 40 },
+        selectorGroup: 'g',
+        slots: [{ id: 'tabs', name: 'Tabs', layout: { mode: 'row' } }],
+        children: [] },
+    ]);
+    expect(errorsOf(def).some((e) => /panel switcher needs a "tabs" slot and a "content" slot/.test(e))).toBe(true);
+  });
+
+  it('warns when an image has no source', () => {
+    const def = screenDef([
+      { kind: 'image', id: 'i1', name: 'Pic', rect: { x: 0, y: 0, w: 10, h: 10 }, src: '' },
+    ]);
+    expect(warningsOf(def).some((w) => /Image has no source/.test(w))).toBe(true);
+  });
+
+  it('a well-formed grid group + image with a src produce no new errors', () => {
+    const def = screenDef([
+      { kind: 'group', id: 'g1', name: 'Grid', rect: { x: 0, y: 0, w: 40, h: 40 },
+        layout: { mode: 'grid', columns: 3, gap: 2 }, children: [] },
+      { kind: 'image', id: 'i1', name: 'Pic', rect: { x: 50, y: 0, w: 10, h: 10 }, src: 'data:,', fit: 'contain' },
+    ]);
+    expect(errorsOf(def)).toEqual([]);
+  });
+});

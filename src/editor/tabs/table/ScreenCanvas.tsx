@@ -969,7 +969,7 @@ export function ScreenCanvas({
             )}
           </span>
         )}
-        {isSel && sel.length === 1 && (
+        {isSel && sel.length === 1 && !flow && (
           <div
             className="tt-handle"
             onPointerDown={(e) => startDrag(e, el.id, 'resize')}
@@ -1158,16 +1158,43 @@ export function ScreenCanvas({
               )
             )}
             {backdrop}
-            {focusEl && focusEl.layout != null && !(focusEl.slots !== undefined && focusEl.slots.length > 0)
-              ? (
-                <div
-                  className="tt-focus-flow"
-                  style={{ position: 'absolute', inset: 0, ...flowLayoutCss(focusEl.layout, unitW) }}
-                >
-                  {elements.map((el) => renderElement(el, ROOT_RECT, false, focusEl.layout))}
-                </div>
-              )
-              : elements.map((el) => renderElement(el, ROOT_RECT, false))}
+            {(() => {
+              // Focused INTO a slotted container (panelSwitcher): render slot
+              // regions so the hit boxes flow per-slot exactly like the real
+              // render behind them.
+              if (focusEl && focusEl.slots !== undefined && focusEl.slots.length > 0) {
+                return focusEl.slots.map((s) => {
+                  const region = slotRect(focusEl, s.id);
+                  return (
+                    <div
+                      key={s.id}
+                      className="tt-slot tt-slot-active"
+                      style={{
+                        position: 'absolute',
+                        left: `${region.x}%`, top: `${region.y}%`,
+                        width: `${region.w}%`, height: `${region.h}%`,
+                        ...flowLayoutCss(s.layout, unitW),
+                      }}
+                    >
+                      {elements.filter((c) => c.slotId === s.id).map((c) => renderElement(c, ROOT_RECT, false, s.layout))}
+                      <span className="tt-slot-label" aria-hidden="true">{s.name}</span>
+                    </div>
+                  );
+                });
+              }
+              // Focused into a flow group (Grid/Row/Column): flow its children.
+              if (focusEl && focusEl.layout != null) {
+                return (
+                  <div
+                    className="tt-focus-flow"
+                    style={{ position: 'absolute', inset: 0, ...flowLayoutCss(focusEl.layout, unitW) }}
+                  >
+                    {elements.map((el) => renderElement(el, ROOT_RECT, false, focusEl.layout))}
+                  </div>
+                );
+              }
+              return elements.map((el) => renderElement(el, ROOT_RECT, false));
+            })()}
             {ghosts}
             {previewGhosts}
             {scrollPage && (

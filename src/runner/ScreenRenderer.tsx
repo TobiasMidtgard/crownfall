@@ -377,17 +377,11 @@ function ElementView({ ctx, el, selCtx, screenW, buttonMove, onMove, root, flow 
   // plate CSS instead of hiding behind an opaque button background.
   const ownChrome = el.kind === 'zone' || el.kind === 'shape' || el.kind === 'line'
     || el.kind === 'button';
-  // A container that FLOWS its own children (Grid/Row/Column groups) gets the
-  // flex/grid CSS on its box. Slotted containers (panelSwitcher) flow PER SLOT
-  // instead, so they don't take container flow here.
-  const containerFlow = el.kind !== 'zone' && el.layout != null
-    && !(el.slots !== undefined && el.slots.length > 0);
-  const frame = ownChrome
-    ? undefined
-    : {
-        ...(layoutStyleCss(app.style) as React.CSSProperties),
-        ...(containerFlow ? (flowLayoutCss(el.layout, screenW) as React.CSSProperties) : {}),
-      };
+  // Flow CSS is NOT put on this `.rn-el` box: it goes on an inner `.rn-flow`
+  // div that DIRECTLY wraps the children (see ContainerChildren), so it
+  // survives any intervening onChangeAnim / collapsible wrapper. Slotted
+  // containers (panelSwitcher) flow per slot region instead.
+  const frame = ownChrome ? undefined : (layoutStyleCss(app.style) as React.CSSProperties);
   let body = (
     <ElementBody
       ctx={ctx}
@@ -616,11 +610,31 @@ function ContainerChildren({ el, common }: { el: ScreenElement; common: ChildCom
       </>
     );
   }
-  const flow = el.layout ?? undefined;
+  // A flow (non-slot) container wraps its children in one `.rn-flow` div that
+  // carries the flex/grid CSS. That div is the DIRECT flex parent of the
+  // children, so the layout holds even when this element also has an
+  // onChangeAnim (.rn-changewrap) or collapsible (.rn-collapse-open) wrapper
+  // between the `.rn-el` box and here.
+  if (el.layout) {
+    return (
+      <div
+        className="rn-flow"
+        style={{
+          width: '100%',
+          height: '100%',
+          ...(flowLayoutCss(el.layout, common.screenW) as React.CSSProperties),
+        }}
+      >
+        {kids.map((child) => (
+          <ElementView key={child.id} el={child} flow={el.layout} {...common} />
+        ))}
+      </div>
+    );
+  }
   return (
     <>
       {kids.map((child) => (
-        <ElementView key={child.id} el={child} flow={flow} {...common} />
+        <ElementView key={child.id} el={child} {...common} />
       ))}
     </>
   );

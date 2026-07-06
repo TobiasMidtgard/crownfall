@@ -817,6 +817,10 @@ section.rn-bottom.rn-priority { border-top-color: var(--accent); }
    children. */
 .rn-slot { position: absolute; box-sizing: border-box; min-width: 0; min-height: 0; }
 .rn-slot > * { min-height: 0; }
+/* The direct flex/grid parent of a flow container's children — fills the
+   `.rn-el` box (through any onChangeAnim/collapsible wrapper) and carries the
+   inline flowLayoutCss. */
+.rn-flow { box-sizing: border-box; min-width: 0; min-height: 0; }
 
 /* Image element: fills its box; empty src shows a faint dashed placeholder. */
 .rn-sl-img { border-radius: inherit; }

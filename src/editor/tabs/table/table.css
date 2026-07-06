@@ -439,7 +439,10 @@
 /* Flow-layout slot region (panelSwitcher). Editor chrome only — the runner
    draws just the children. The dashed outline + name show while the container
    is selected, so the idle view stays pixel-exact WYSIWYG. */
-.tt-slot { position: absolute; box-sizing: border-box; }
+/* overflow:hidden keeps a slot's content within its region — matters in the
+   rare static fallback (no sample state) where every showForSelector panel of
+   a 'single' content slot renders at once instead of one gated panel. */
+.tt-slot { position: absolute; box-sizing: border-box; overflow: hidden; }
 .tt-slot-active { outline: 1px dashed rgba(255, 255, 255, 0.22); outline-offset: -1px; }
 .tt-slot-label {
   position: absolute;

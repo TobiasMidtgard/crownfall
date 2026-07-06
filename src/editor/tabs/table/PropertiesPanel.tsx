@@ -1445,7 +1445,8 @@ function LayoutSection({ el, onPatchEl }: {
             </select>
           </label>
           <p className="faint tt-prop-hint">
-            Children flow automatically — drag to reorder on the canvas. Choose "None" for free placement.
+            Children flow automatically — reorder them in the Layers panel (▲▼ or drag).
+            Choose "None" for free placement.
           </p>
         </>
       ) : (

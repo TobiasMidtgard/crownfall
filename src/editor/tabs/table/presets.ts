@@ -86,7 +86,9 @@ export const panelSwitcherPreset: ScreenPreset<PanelSwitcherParams> = {
       kind: 'group',
       id: uid('el'),
       name: panelName(names, i),
-      rect: { ...PANEL_RECT },
+      // Fills the content slot (whose region is already PANEL_RECT, below the
+      // tabs); flow ignores x/y and uses w/h as the basis.
+      rect: { x: 0, y: 0, w: 100, h: 100 },
       showForSelector: tabId,
       slotId: 'content',
       children: [],

@@ -94,14 +94,12 @@ describe('stacked actions & priority windows', () => {
     const move = h.engine.getLegalMoves('p0').find((m) => m.actionId === 'cast')!;
     await h.engine.performAction('p0', move);
 
-    // p0 passes; p1 counters (resets passes), then both pass.
+    // p0 passes; p1 counters — the cancel empties the stack, so the window
+    // auto-closes (no one can respond to nothing; remaining passes implied).
     await h.engine.performAction('p0', { actionId: PASS_ACTION_ID });
     const counter = h.engine.getLegalMoves('p1').find((m) => m.actionId === 'counter')!;
     await h.engine.performAction('p1', counter);
-    expect(h.state().window?.passes).toBe(0);
-
-    await h.engine.performAction('p0', { actionId: PASS_ACTION_ID });
-    await h.engine.performAction('p1', { actionId: PASS_ACTION_ID });
+    expect(h.state().window).toBeNull();
 
     // Counter (unstacked response) ran inline: the spell was cancelled before
     // it could resolve — its effect never applied, the card went to the grave.
@@ -159,12 +157,43 @@ describe('stacked actions & priority windows', () => {
     const h = harness(def);
     await h.engine.start();
     await h.engine.performAction('p0', { actionId: 'put' });
-    expect(h.state().stack).toHaveLength(1);
-    expect(h.state().globalVars['seen']).toBe('');
-    await h.engine.performAction('p0', { actionId: PASS_ACTION_ID });
-    await h.engine.performAction('p1', { actionId: PASS_ACTION_ID });
+    // Nobody has a response move, so the window auto-resolved (every pass
+    // was implied) — the trigger still ran via the stack with its snapshot.
+    expect(h.state().stack).toHaveLength(0);
     expect(h.state().globalVars['seen']).toBe('c1'); // $card came from the snapshot
     expect(h.state().window).toBeNull();
+  });
+
+  it('auto-passes a holder with no response moves (attacker never prompted)', async () => {
+    // Only p1 can ever counter: p0's pass is implied, the window lands on p1.
+    const def = duelDef();
+    def.actions.find((a) => a.id === 'counter')!.legality = {
+      kind: 'logic', op: 'and',
+      left: cmp('>', { kind: 'stackSize' }, num(0)),
+      right: cmp('==', bnd('$player'), str('p1')),
+    };
+    const h = harness(def);
+    await h.engine.start();
+    const move = h.engine.getLegalMoves('p0').find((m) => m.actionId === 'cast')!;
+    await h.engine.performAction('p0', move);
+    expect(h.state().window?.holderId).toBe('p1');
+    expect(h.engine.getLegalMoves('p0')).toEqual([]);
+    // p1 passes -> resolves without p0 ever seeing the window.
+    await h.engine.performAction('p1', { actionId: PASS_ACTION_ID });
+    expect(h.state().window).toBeNull();
+    expect(h.state().globalVars['effect']).toBe('bolt');
+  });
+
+  it('resolves the stack with no window at all when nobody can respond', async () => {
+    const def = duelDef();
+    def.actions = def.actions.filter((a) => a.id !== 'counter');
+    const h = harness(def);
+    await h.engine.start();
+    const move = h.engine.getLegalMoves('p0').find((m) => m.actionId === 'cast')!;
+    await h.engine.performAction('p0', move);
+    expect(h.state().window).toBeNull();
+    expect(h.state().stack).toHaveLength(0);
+    expect(h.state().globalVars['effect']).toBe('bolt');
   });
 
   it('endGame during a resolution discards the rest of the stack', async () => {

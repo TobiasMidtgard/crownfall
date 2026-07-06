@@ -108,28 +108,25 @@ describe('MTG interrupt: Counterspell vs Divination', () => {
     await act(h.engine, 'p0', 'mtg_action_cast', 'Divination');
 
     expect(h.state().stack).toHaveLength(1);
-    expect(h.state().window?.holderId).toBe('p0');
+    // p0 spent all mana on the cast and holds no instant: their pass is
+    // implied, so priority lands directly on p1 — the Counterspell holder.
+    expect(h.state().window?.holderId).toBe('p1');
     expect(cardsIn(h.state(), 'mtg_zone_thestack')).toEqual(['Divination']);
     // Only response-speed moves + the pass move are offered to the holder.
-    const holderMoves = h.engine.getLegalMoves('p0');
+    const holderMoves = h.engine.getLegalMoves('p1');
     expect(holderMoves.some((m) => m.actionId === PASS_ACTION_ID)).toBe(true);
     expect(holderMoves.some((m) => m.actionId === 'mtg_action_land')).toBe(false);
-    expect(h.engine.getLegalMoves('p1')).toEqual([]);
+    expect(h.engine.getLegalMoves('p0')).toEqual([]);
 
     // p1 responds in the window: tap two Islands, then cast Counterspell.
-    await pass(h.engine, 'p0');
+    // (p0 never has a move, so priority snaps back to p1 after each action.)
     expect(h.engine.getLegalMoves('p1').some((m) => m.actionId === 'mtg_action_tap')).toBe(true);
     await act(h.engine, 'p1', 'mtg_action_tap');
-    await pass(h.engine, 'p0');
     await act(h.engine, 'p1', 'mtg_action_tap');
-    await pass(h.engine, 'p0');
     await act(h.engine, 'p1', 'mtg_action_cast', 'Counterspell');
-    expect(h.state().stack).toHaveLength(2);
 
-    // Everyone passes: Counterspell resolves first (LIFO) and cancels.
-    await pass(h.engine, 'p0');
-    await pass(h.engine, 'p1');
-
+    // With Counterspell cast, nobody has a response left — every remaining
+    // pass is implied: Counterspell resolves first (LIFO) and cancels.
     const s = h.state();
     expect(s.stack).toHaveLength(0);
     expect(s.window).toBeNull();
@@ -183,11 +180,12 @@ describe('Yu-Gi-Oh interrupt: Trap Hole vs La Jinn', () => {
     // p1 turn: normal-summon La Jinn (1800 ATK) -> stacked, window opens.
     await act(h.engine, 'p1', 'ygo_action_summon', LA_JINN);
     expect(h.state().stack).toHaveLength(1);
-    expect(h.state().window?.holderId).toBe('p1');
+    // p1 (the summoner) has nothing to respond with: their pass is implied
+    // and priority lands straight on p0, whose face-down Trap Hole is live.
+    expect(h.state().window?.holderId).toBe('p0');
     expect(cardsIn(h.state(), 'ygo_zone_monsters:p1')).toEqual([LA_JINN]);
 
-    // p1 holds priority and passes; p0 springs the trap (inline response).
-    await pass(h.engine, 'p1');
+    // p0 springs the trap (inline response).
     const trapMoves = h.engine.getLegalMoves('p0').filter((m) => m.actionId === 'ygo_action_trap');
     expect(trapMoves).toHaveLength(1);
     await h.engine.performAction('p0', trapMoves[0]);
@@ -199,9 +197,7 @@ describe('Yu-Gi-Oh interrupt: Trap Hole vs La Jinn', () => {
     expect(cardsIn(h.state(), 'ygo_zone_graveyard:p0')).toEqual(['Trap Hole']);
     expect(h.state().zones['ygo_zone_spelltrap:p0'].cardIds).toHaveLength(0);
 
-    // Close the (now empty) window; nothing resolves.
-    await pass(h.engine, 'p1');
-    await pass(h.engine, 'p0');
+    // The emptied window closed itself — no one can respond to nothing.
     const s = h.state();
     expect(s.window).toBeNull();
     // The summon's resolution never ran.
@@ -245,21 +241,20 @@ describe('Dominion interrupt: Moat vs Militia (3 players)', () => {
     // p0 plays Militia: +2 coins immediately, the attack goes on the stack.
     await act(h.engine, 'p0', 'dom_action_play', 'Militia');
     expect(h.state().stack).toHaveLength(1);
-    expect(h.state().window?.holderId).toBe('p0');
+    // Neither the attacker (p0) nor the reaction-less p2 ever holds the
+    // window — their passes are implied and priority lands straight on p1,
+    // the Moat holder. This is the fix for "the attacker gets a Pass prompt
+    // on their own attack that looks like a cancel".
+    expect(h.state().window?.holderId).toBe('p1');
     expect(h.state().players[0].vars['dom_var_coins']).toBe(2);
+    expect(h.engine.getLegalMoves('p0')).toEqual([]);
+    expect(h.engine.getLegalMoves('p2')).toEqual([]);
 
-    // Priority rotates from the turn player: p0 passes, p1 reveals Moat.
-    await pass(h.engine, 'p0');
+    // p1 reveals Moat. Immunity spends their reaction (reveal goes illegal),
+    // nobody else can respond — the attack resolves immediately.
     const reveal = h.engine.getLegalMoves('p1').filter((m) => m.actionId === 'dom_action_reveal_moat');
     expect(reveal).toHaveLength(1);
     await h.engine.performAction('p1', reveal[0]);
-    expect(h.state().players[1].vars['dom_var_immune']).toBe(1);
-
-    // p2 has no reaction — everyone passes and the Militia attack resolves.
-    expect(h.engine.getLegalMoves('p2').map((m) => m.actionId)).toEqual([PASS_ACTION_ID]);
-    await pass(h.engine, 'p2');
-    await pass(h.engine, 'p0');
-    await pass(h.engine, 'p1');
 
     const s = h.state();
     expect(s.stack).toHaveLength(0);

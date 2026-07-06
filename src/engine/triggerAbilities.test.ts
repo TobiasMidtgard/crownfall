@@ -4,7 +4,7 @@
  * through nested response windows and cascade bounding.
  */
 import { describe, expect, it } from 'vitest';
-import type { AbilityDef, Block, GameDef } from '../shared/types';
+import type { AbilityDef, ActionDef, Block, GameDef } from '../shared/types';
 import { PASS_ACTION_ID } from '../shared/types';
 import {
   actionDef, bnd, cdef, customDeck, cv, harness, makeDef, num, phaseDef, sv,
@@ -19,6 +19,13 @@ const again = (over: Partial<Extract<Block, { kind: 'triggerAbilities' }>> = {})
 const ability = (over: Partial<AbilityDef> = {}): AbilityDef => ({
   id: 'ab', name: 'ab', on: 'enterZone', zoneId: 'field', condition: null,
   script: [cv('plays', num(1))], ...over,
+});
+
+/** A do-nothing response action: keeps windows open for the pass tests
+ *  (holders with no response moves are auto-passed and never prompted). */
+const holdAction = (): ActionDef => actionDef('hold', {
+  speed: 'response',
+  legality: { kind: 'compare', op: '>', left: { kind: 'stackSize' }, right: num(0) },
 });
 
 function throneDef(ab: AbilityDef, over: Partial<GameDef> = {}): GameDef {
@@ -83,7 +90,9 @@ describe('triggerAbilities', () => {
   });
 
   it('stacked abilities triggered synthetically stack and resolve via the window', async () => {
-    const h = harness(throneDef(ability({ stacked: true })));
+    const def = throneDef(ability({ stacked: true }));
+    def.actions.push(holdAction()); // keep the window open for manual passes
+    const h = harness(def);
     await h.engine.start();
     await h.engine.performAction('p0', { actionId: 'throne' });
     expect(h.state().stack).toHaveLength(1);
@@ -105,7 +114,9 @@ describe('triggerAbilities', () => {
       condition: { kind: 'compare', op: '<', left: { kind: 'getVar', varId: 'plays', target: null }, right: num(2) },
       script: [cv('plays', num(1)), again()],
     });
-    const h = harness(throneDef(onceMore));
+    const def = throneDef(onceMore);
+    def.actions.push(holdAction()); // keep the window open for manual passes
+    const h = harness(def);
     await h.engine.start();
     await h.engine.performAction('p0', { actionId: 'throne' });
     expect(h.state().stack).toHaveLength(1);

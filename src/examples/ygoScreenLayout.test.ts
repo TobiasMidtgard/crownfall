@@ -86,12 +86,15 @@ function fixedYgo(): GameDef {
   const def = structuredClone(ygoGame);
   const deck = def.decks[0];
   deck.shuffle = false;
-  // Cards spawn in entry order (last = top of the deck = the opening hand).
+  // Cards spawn in entry order (last = top of the deck = the opening hand):
+  // p0 opens with 4 La Jinn + Trap Hole, so a set trap can hold the window
+  // open on their own summon (moveless holders are auto-passed).
   deck.source = {
     kind: 'custom',
     entries: [
       { cardId: 'ygo_card_mystical_elf', count: 20 },
-      { cardId: 'ygo_card_la_jinn', count: 5 },
+      { cardId: 'ygo_card_la_jinn', count: 4 },
+      { cardId: 'ygo_card_trap_hole', count: 1 },
     ],
   };
   return def;
@@ -144,6 +147,12 @@ describe('duel mat Pass-button gating', () => {
     expect(isDisplayVisible(def, state, pass.visible!, 'p0')).toBe(false);
     expect(isDisplayVisible(def, state, pass.visible!, 'p1')).toBe(false);
     expect(stateName(def, state, pass, 'p0')).toBeNull();
+
+    // p0 sets Trap Hole first: their own live response keeps the window
+    // open on the summon (holders with no response moves are auto-passed).
+    const set = h.engine.getLegalMoves('p0').find((m) => m.actionId === 'ygo_action_set');
+    expect(set).toBeDefined();
+    await h.engine.performAction('p0', set!);
 
     // p0 normal-summons La Jinn — a stacked action: announce runs, the
     // summon goes on the stack and a response window opens.

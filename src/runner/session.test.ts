@@ -110,8 +110,9 @@ describe('GameSession', () => {
 
   it('routes a response window to the holder; AI seats pass it to resolution', async () => {
     // "cast" is stacked: announce moves the top card to the stack zone, the
-    // resolution sets `effect` and buries it. No response actions exist, so
-    // the AI holder's only legal move is the built-in Pass.
+    // resolution sets `effect` and buries it. "hold" is a live response for
+    // everyone — without one, the engine would auto-pass both moveless
+    // holders and resolve the stack before the session ever saw the window.
     const def = makeDef({
       variables: [vdef('effect', 'global', 'string', '')],
       zones: [zone('source'), zone('stackzone'), zone('grave')],
@@ -126,10 +127,16 @@ describe('GameSession', () => {
           announce: [mv(zr('source'), zr('stackzone'), selTop(1))],
           script: [sv('effect', { kind: 'str', value: 'resolved' }), mv(zr('stackzone'), zr('grave'), selTop(1))],
         },
+        actionDef('hold', {
+          speed: 'response',
+          legality: cmp('>', { kind: 'stackSize' }, num(0)),
+        }),
         actionDef('idle'),
       ],
     });
     vi.useFakeTimers();
+    // Pin the AI's window decision to "pass" (aiWindowMove rolls Math.random).
+    const rand = vi.spyOn(Math, 'random').mockReturnValue(0.99);
     const session = new GameSession(def, [
       { name: 'Human', isAI: false },
       { name: 'Bot', isAI: true },
@@ -139,22 +146,25 @@ describe('GameSession', () => {
     expect(session.snapshot.moves).toContainEqual({ actionId: 'cast' });
 
     await session.performHumanMove({ actionId: 'cast' });
-    // Announced but unresolved: entry on the stack, window open on the caster.
+    // Announced but unresolved: entry on the stack, window open on the caster
+    // (who has a live response move, so the engine does not auto-pass them).
     expect(session.snapshot.state.stack).toHaveLength(1);
     expect(session.snapshot.state.window?.holderId).toBe('p0');
     expect(session.snapshot.state.globalVars['effect']).toBe('');
-    // The human holder is offered the built-in Pass as a legal move.
+    // The human holder is offered the response and the built-in Pass.
+    expect(session.snapshot.moves).toContainEqual({ actionId: 'hold' });
     expect(session.snapshot.moves).toContainEqual({ actionId: PASS_ACTION_ID });
 
     await session.performHumanMove({ actionId: PASS_ACTION_ID });
     expect(session.snapshot.state.window?.holderId).toBe('p1');
-    // The AI holder (NOT the current player) auto-passes after its delay,
+    // The AI holder (NOT the current player) passes after its delay,
     // which completes the rotation and resolves the top of the stack.
     await vi.advanceTimersByTimeAsync(5000);
     expect(session.snapshot.state.window).toBeNull();
     expect(session.snapshot.state.stack).toHaveLength(0);
     expect(session.snapshot.state.globalVars['effect']).toBe('resolved');
     expect(session.snapshot.state.zones['grave'].cardIds).toHaveLength(1);
+    rand.mockRestore();
     session.dispose();
   });
 

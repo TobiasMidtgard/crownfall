@@ -128,8 +128,9 @@ describe('effectResolved', () => {
     await h.engine.performAction('p0', { actionId: PASS_ACTION_ID });
     const counter = h.engine.getLegalMoves('p1').find((m) => m.actionId === 'counter')!;
     await h.engine.performAction('p1', counter); // cancels the cast inline
-    await h.engine.performAction('p0', { actionId: PASS_ACTION_ID });
-    await h.engine.performAction('p1', { actionId: PASS_ACTION_ID });
+    // The cancel emptied the stack: no one can respond to nothing, so the
+    // window auto-closed (remaining passes implied) and play resumed.
+    expect(h.state().window).toBeNull();
     expect(h.state().stack).toHaveLength(0);
     expect(h.state().globalVars['resolved']).toBe(0); // nothing ever RESOLVED
   });

@@ -276,6 +276,27 @@ async function passPriority(core: Core): Promise<void> {
 }
 
 /**
+ * Auto-pass while the priority holder has no response moves: a player who
+ * cannot possibly respond is never prompted — their pass is implied. Only
+ * players actually holding a live response (a Reaction, an instant, a trap)
+ * ever see the window. Without this, the player who just played an attack
+ * got a lone Pass prompt on their own effect, which read as "cancel".
+ * Bounded like proceed(): a trigger loop that kept restacking forever would
+ * otherwise spin here instead of at a human's Pass button.
+ */
+async function autoPassMoveless(core: Core): Promise<void> {
+  let steps = 0;
+  while (!core.finished && core.state.window) {
+    if (enumerateResponseMoves(core, core.state.window.holderId).length > 0) return;
+    if (++steps > MAX_TRANSITIONS) {
+      report(core, `Stopped after ${MAX_TRANSITIONS} automatic passes without player input (possible trigger loop).`);
+      return;
+    }
+    await passPriority(core);
+  }
+}
+
+/**
  * Run the phase machine until the engine waits for player input or the game
  * ends. `entering = true` runs the current phase's entry (phaseStart +
  * onEnter); `false` resumes mid-phase (deadlock check only).
@@ -406,9 +427,11 @@ export function createEngine(def: GameDef, opts: EngineOptions): EngineHandle {
       if (maybeOpenWindow(core)) {
         // Stacked triggers fired during setup; enter the first phase after.
         core.afterStack = 'enterPhase';
+        await autoPassMoveless(core);
         return;
       }
       await proceed(core, true);
+      await autoPassMoveless(core);
     } finally {
       core.busy = false;
     }
@@ -424,6 +447,7 @@ export function createEngine(def: GameDef, opts: EngineOptions): EngineHandle {
     try {
       if (move.actionId === PASS_ACTION_ID) {
         await passPriority(core);
+        await autoPassMoveless(core);
         return;
       }
       const action = ownDef.actions.find((a) => a.id === move.actionId)!;
@@ -465,6 +489,7 @@ export function createEngine(def: GameDef, opts: EngineOptions): EngineHandle {
           w.holderId = core.state.players[(idx + 1) % core.state.players.length].id;
           notify(core);
         }
+        await autoPassMoveless(core);
         return;
       }
 
@@ -476,6 +501,7 @@ export function createEngine(def: GameDef, opts: EngineOptions): EngineHandle {
       // off) opens a window; the phase bookkeeping waits for the stack.
       if (maybeOpenWindow(core)) {
         core.afterStack = after;
+        await autoPassMoveless(core);
         return;
       }
       if (after === 'endTurn' || after === 'advancePhase') {
@@ -483,12 +509,15 @@ export function createEngine(def: GameDef, opts: EngineOptions): EngineHandle {
         if (core.finished) return;
         if (maybeOpenWindow(core)) {
           core.afterStack = 'enterPhase';
+          await autoPassMoveless(core);
           return;
         }
         await proceed(core, true);
       } else {
         await proceed(core, false);
       }
+      // proceed(entering) can itself open a window during phase entry.
+      await autoPassMoveless(core);
     } finally {
       core.busy = false;
     }

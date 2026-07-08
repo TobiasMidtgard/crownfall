@@ -91,8 +91,6 @@
   white-space: nowrap;
 }
 
-.dz-tpl-toolbar { min-height: 44px; }
-.dz-toolbar-title { font-weight: 700; font-size: 1.05rem; }
 
 /* ---------- Template editor layout ---------- */
 
@@ -103,8 +101,56 @@
   align-items: start;
 }
 @media (min-width: 900px) {
-  .dz-tpl-editor { grid-template-columns: auto minmax(0, 1fr); }
+  /* Deckhand layout: tool rail · canvas · one context inspector. */
+  .dz-tpl-editor { grid-template-columns: 64px minmax(0, 1fr) 300px; }
   .dz-canvas-col { position: sticky; top: 10px; }
+}
+
+/* One-click element tools (shares the palette tile look from table.css). */
+.dz-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 3px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-l);
+}
+@media (max-width: 899px) {
+  .dz-tools { flex-direction: row; flex-wrap: wrap; }
+  .dz-tools .tt-pal { flex: 1 1 60px; }
+}
+
+/* Element chips under the canvas: compact selection for overlapping parts. */
+.dz-el-chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 3px;
+}
+.dz-el-chip {
+  appearance: none;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--accent-2);
+  cursor: pointer;
+  padding: 0;
+}
+.dz-el-chip:hover { border-color: var(--accent); }
+.dz-el-chip-selected { border-color: var(--accent); background: var(--accent-soft); }
+
+/* Inspector header actions: order + delete for the selected element,
+   duplicate/delete for the template when nothing is selected. */
+.dz-el-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .dz-canvas-col {
@@ -184,57 +230,6 @@
   box-shadow: var(--shadow-1);
 }
 
-/* ---------- Layer list ---------- */
-
-.dz-layer-row {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-m);
-  background: var(--bg-raised);
-  margin-bottom: 6px;
-  padding: 2px;
-}
-.dz-layer-row-selected { border-color: var(--accent); background: var(--accent-soft); }
-.dz-layer-main {
-  appearance: none;
-  background: none;
-  border: none;
-  color: var(--text);
-  font: inherit;
-  flex: 1;
-  min-width: 0;
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 8px;
-  cursor: pointer;
-  text-align: left;
-  -webkit-tap-highlight-color: transparent;
-}
-.dz-layer-icon {
-  flex-shrink: 0;
-  width: 26px;
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  background: var(--panel-2);
-  color: var(--accent-2);
-  font-weight: 700;
-  font-size: 0.85rem;
-}
-.dz-layer-label {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 0.88rem;
-  font-weight: 600;
-}
-
 .dz-icon-btn {
   min-width: 44px;
   min-height: 44px;
@@ -242,30 +237,6 @@
   flex-shrink: 0;
 }
 .dz-danger-text { color: var(--danger); }
-
-/* ---------- Add-element picker ---------- */
-
-.dz-picker-option {
-  appearance: none;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px;
-  margin-bottom: 8px;
-  min-height: 56px;
-  background: var(--bg-raised);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-m);
-  color: var(--text);
-  font: inherit;
-  cursor: pointer;
-  text-align: left;
-  -webkit-tap-highlight-color: transparent;
-}
-.dz-picker-option:hover { border-color: var(--accent); }
-.dz-picker-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.dz-picker-title { font-weight: 700; }
 
 /* ---------- Inspector controls ---------- */
 

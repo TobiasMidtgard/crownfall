@@ -28,6 +28,10 @@ const PATHS = {
   switcher: '<rect x="3" y="9" width="18" height="11" rx="2"/><path d="M5 9V6h5v3M12 9V6h5v3"/>',
   image: '<rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9" cy="10" r="1.4"/><path d="M5 17l5-5 3 3 3-2 3 3"/>',
   component: '<path d="M12 3l7.8 4.5v9L12 21l-7.8-4.5v-9z"/>',
+  // card template tools
+  box: '<rect x="4" y="6" width="16" height="12" rx="2"/>',
+  ellipse: '<ellipse cx="12" cy="12" rx="8" ry="6.5"/>',
+  stat: '<circle cx="12" cy="12" r="8"/><path d="M12 8.5v7M8.5 12h7"/>',
   // section rail
   info: '<circle cx="12" cy="12" r="8.5"/><path d="M12 8.2h.01M12 11.5V16"/>',
   cards: '<rect x="4" y="5" width="14" height="17" rx="2"/><path d="M8 9h6M8 12h6"/>',

@@ -77,6 +77,45 @@ export function elementLabel(el: TemplateElement, template: CardTemplate): strin
   }
 }
 
+/**
+ * The card designer's tool rail (Deckhand-style): one-click adds. Circle and
+ * Line are box PRESETS — same TemplateElement kind, so the runner's CardView
+ * renders them with zero new machinery.
+ */
+export type ToolKind = ElementKind | 'circle' | 'line';
+
+export const TOOL_KINDS = ['text', 'stat', 'image', 'box', 'circle', 'line'] as const;
+
+export const TOOL_LABEL: Record<ToolKind, string> = {
+  text: 'Text', stat: 'Stat', image: 'Image', box: 'Box', circle: 'Circle', line: 'Line',
+};
+
+export const TOOL_HINT: Record<ToolKind, string> = {
+  text: 'A line or block of text, static or bound to a field',
+  stat: 'A number badge (cost, attack, health…)',
+  image: 'Artwork from a URL or an image field',
+  box: 'A colored rectangle (banners, panels)',
+  circle: 'A colored circle (a box with full corner radius)',
+  line: 'A thin divider rule (a 1.5%-tall box)',
+};
+
+/** New element for a tool: plain kinds defer to newElement; presets shape a box. */
+export function newToolElement(tool: ToolKind, aspect: number): TemplateElement {
+  if (tool === 'circle') {
+    const w = 26;
+    const h = clampPct(w * aspect, 2, 100);
+    return {
+      kind: 'box', id: uid('el'),
+      x: clampPct(50 - w / 2), y: clampPct(50 - h / 2), w, h,
+      fill: '#8a1c28', radius: 50,
+    };
+  }
+  if (tool === 'line') {
+    return { kind: 'box', id: uid('el'), x: 10, y: 50, w: 80, h: 1.5, fill: '#f2f3f8', radius: 0 };
+  }
+  return newElement(tool, aspect);
+}
+
 /** New element with sensible defaults, centered on the card. */
 export function newElement(kind: ElementKind, aspect: number): TemplateElement {
   const id = uid('el');

@@ -14,6 +14,7 @@ import { useState } from 'react';
 import type { GameDef, ScreenElement, SeatRef, ZoneDef, ZoneLayout, ZoneVisibility } from '../../../shared/types';
 import type { SavedComponent } from './components';
 import { Modal } from '../../common/Modal';
+import { EdIcon, type EdIconName } from '../../common/icons';
 import {
   PANEL_SWITCHER_MAX, PANEL_SWITCHER_MIN, SCREEN_PRESETS, panelName, panelSwitcherPreset,
 } from './presets';
@@ -21,6 +22,42 @@ import {
   makeZoneDef, newButtonElement, newGroupElement, newImageElement, newLineElement, newLogElement,
   newPhaseTrackElement, newShapeElement, newTextElement, newVarTextElement, newZoneElement,
 } from './screenModel';
+
+/**
+ * One-click holders (the Deckhand workflow): each drops a READY game zone —
+ * def + element in one tap, named uniquely, sized/arranged for its role.
+ * Deck: your face-down stack. Pile: a face-up discard. Hand: your fan.
+ * Slot: one shared card space. Grid: shared piles board. Carousel: the
+ * swipeable mobile supply row.
+ */
+const HOLDER_PRESETS: {
+  id: string;
+  label: string;
+  icon: EdIconName;
+  hint: string;
+  owner: ZoneDef['owner'];
+  visibility: ZoneVisibility;
+  layout: ZoneLayout;
+  capacity?: number;
+  display?: 'piles' | 'carousel';
+  rect: { x: number; y: number; w: number; h: number };
+}[] = [
+  { id: 'deck', label: 'Deck', icon: 'deck', hint: 'Your face-down draw pile', owner: 'perPlayer', visibility: 'none', layout: 'stack', rect: { x: 45.5, y: 60, w: 9, h: 22 } },
+  { id: 'pile', label: 'Pile', icon: 'pile', hint: 'A face-up pile (discard)', owner: 'perPlayer', visibility: 'all', layout: 'stack', rect: { x: 45.5, y: 60, w: 9, h: 22 } },
+  { id: 'hand', label: 'Hand', icon: 'hand', hint: 'Your fanned hand — only you see the faces', owner: 'perPlayer', visibility: 'owner', layout: 'fan', rect: { x: 27, y: 74, w: 46, h: 23 } },
+  { id: 'slot', label: 'Slot', icon: 'slot', hint: 'One shared card space (capacity 1)', owner: 'shared', visibility: 'all', layout: 'row', capacity: 1, rect: { x: 45.5, y: 36, w: 9, h: 22 } },
+  { id: 'grid', label: 'Grid', icon: 'grid', hint: 'A shared board of piles (supply)', owner: 'shared', visibility: 'all', layout: 'grid', display: 'piles', rect: { x: 33, y: 26, w: 34, h: 42 } },
+  { id: 'carousel', label: 'Carousel', icon: 'carousel', hint: 'A swipeable pile row (mobile supply)', owner: 'shared', visibility: 'all', layout: 'row', display: 'carousel', rect: { x: 26, y: 30, w: 48, h: 24 } },
+];
+
+/** "Deck", "Deck 2", … — holder names stay readable in rule dropdowns. */
+function uniqueZoneName(def: GameDef, base: string): string {
+  const has = (s: string) => def.zones.some((z) => z.name === s);
+  if (!has(base)) return base;
+  let i = 2;
+  while (has(`${base} ${i}`)) i++;
+  return `${base} ${i}`;
+}
 
 export interface PaletteProps {
   def: GameDef;
@@ -45,45 +82,68 @@ export function Palette({
   const hasVars = def.variables.some((v) => v.scope !== 'perCard');
   const hasPhases = def.phases.length > 0;
 
-  const item = (label: string, hint: string, onClick: () => void, disabled = false) => (
+  const tile = (icon: EdIconName, label: string, hint: string, onClick: () => void, disabled = false) => (
     <button
       type="button"
-      className="btn tt-tray-item"
+      className="tt-pal"
       onClick={onClick}
       disabled={disabled}
       title={hint}
     >
-      {label}
+      <EdIcon name={icon} />
+      <span>{label}</span>
     </button>
   );
 
+  const dropHolder = (p: (typeof HOLDER_PRESETS)[number]) => {
+    const zone: ZoneDef = {
+      ...makeZoneDef(uniqueZoneName(def, p.label), p.owner, p.visibility, p.layout),
+      ...(p.capacity !== undefined ? { capacity: p.capacity } : {}),
+    };
+    const el = newZoneElement(zone, 'viewer');
+    const placed: ScreenElement = el.kind === 'zone'
+      ? { ...el, rect: { ...p.rect }, ...(p.display !== undefined ? { display: p.display } : {}) }
+      : el;
+    onCreateZone(zone, placed);
+  };
+
   return (
     <div className="tt-tray">
-      <h3 className="tt-rail-title">Add elements</h3>
-      <section className="tt-tray-section">
-        {item('▭ Zone…', 'Show a game zone (or create a new one)', () => setZoneModal(true))}
-        {item('Ⓣ Text', 'A static label', () => onInsert(newTextElement()))}
-        {item('# Variable', hasVars ? 'A live variable readout' : 'Add a variable first (Variables tab)', () => {
+      <h3 className="tt-rail-title">Holders</h3>
+      <section className="tt-pal-grid">
+        {HOLDER_PRESETS.map((p) => (
+          <button key={p.id} type="button" className="tt-pal" title={p.hint} onClick={() => dropHolder(p)}>
+            <EdIcon name={p.icon} />
+            <span>{p.label}</span>
+          </button>
+        ))}
+      </section>
+      <h3 className="tt-rail-title">Elements</h3>
+      <section className="tt-pal-grid">
+        {tile('zone', 'Zone…', 'Show an existing game zone (or create one with full options)', () => setZoneModal(true))}
+        {tile('text', 'Text', 'A static label', () => onInsert(newTextElement()))}
+        {tile('variable', 'Variable', hasVars ? 'A live variable readout' : 'Add a variable first (Vars panel)', () => {
           const el = newVarTextElement(def);
           if (el) onInsert(el);
         }, !hasVars)}
-        {item('▸ Button', 'Performs a plain action (or Pass)', () => onInsert(newButtonElement(def)))}
-        {item('◯ Circle / shape', 'A styled shape — states change it with the game', () => onInsert(newShapeElement()))}
-        {item('╱ Line', 'A connector line (dashes, arrows, diagonals)', () => onInsert(newLineElement()))}
-        {item('☰ Game log', 'The chronicle — every move scrolls in, with turn separators', () => onInsert(newLogElement()))}
-        {item(
-          '⦿ Phase track',
+        {tile('button', 'Button', 'Performs a plain action (or Pass)', () => onInsert(newButtonElement(def)))}
+        {tile('shape', 'Shape', 'A styled shape — states change it with the game', () => onInsert(newShapeElement()))}
+        {tile('line', 'Line', 'A connector line (dashes, arrows, diagonals)', () => onInsert(newLineElement()))}
+        {tile('log', 'Log', 'The chronicle — every move scrolls in, with turn separators', () => onInsert(newLogElement()))}
+        {tile(
+          'phases',
+          'Phases',
           hasPhases
             ? 'Ready-made circles + lines that follow the turn phases'
-            : 'Add phases first (Flow tab)',
+            : 'Add phases first (Flow panel)',
           () => {
             const el = newPhaseTrackElement(def);
             if (el) onInsert(el);
           },
           !hasPhases,
         )}
-        {item('▦ Group', 'An empty container — drag elements inside', () => onInsert(newGroupElement()))}
-        {item('🖼 Image', 'A picture (set its source in the inspector)', () => onInsert(newImageElement()))}
+        {tile('group', 'Group', 'An empty container — drag elements inside', () => onInsert(newGroupElement()))}
+        {tile('image', 'Image', 'A picture (set its source in the inspector)', () => onInsert(newImageElement()))}
       </section>
       <h3 className="tt-rail-title">Presets</h3>
       <section className="tt-tray-section">

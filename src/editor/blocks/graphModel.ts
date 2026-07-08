@@ -512,7 +512,7 @@ export function moveBlock(blocks: Block[], fromPath: BlockPath, loc: ExecPinLoc)
 
 /** Layout constants (px at zoom 1). */
 export const G = {
-  EXEC_W: 250, DATA_W: 215, START_W: 104,
+  EXEC_W: 250, DATA_W: 215, START_W: 132,
   HEADER_H: 34, ROW_H: 34, PAD: 8,
   GAP_X: 64, GAP_Y: 26, LANE_INDENT: 48, LANE_GAP: 26,
   DATA_COL_GAP: 30, DATA_ROW_GAP: 14, MARGIN: 24,

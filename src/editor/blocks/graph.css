@@ -131,6 +131,25 @@
 }
 .gr-node-data .gr-title { font-weight: 600; }
 
+/* --- the WHEN / IF / DO reading line (visual-scripting language) ------------ */
+
+.gr-tag {
+  flex: none;
+  font-family: ui-monospace, 'Cascadia Mono', monospace;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.09em;
+  padding: 1.5px 5px;
+  border-radius: 4px;
+}
+.gr-tag-when { background: rgba(94, 143, 106, 0.22); color: #8fce9d; border: 1px solid rgba(94, 143, 106, 0.55); }
+.gr-tag-if   { background: color-mix(in srgb, var(--accent-2) 16%, transparent); color: var(--accent-2); border: 1px solid color-mix(in srgb, var(--accent-2) 45%, transparent); }
+.gr-tag-do   { background: rgba(107, 143, 184, 0.2); color: #9dc0e8; border: 1px solid rgba(107, 143, 184, 0.5); }
+/* Color-coded spine on the step nodes, Deckhand-style. */
+.gr-tagged-when { border-left: 4px solid #5e8f6a; }
+.gr-tagged-if   { border-left: 4px solid color-mix(in srgb, var(--accent-2) 80%, transparent); }
+.gr-tagged-do   { border-left: 4px solid #6b8fb8; }
+
 .gr-menu-btn {
   flex-shrink: 0;
   width: 24px;

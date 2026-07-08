@@ -16,6 +16,7 @@ import { validateGameDef } from '../shared/validate';
 import { cloneGame, getGameById, saveGame } from '../state/store';
 import { CardsTab } from '../designer/CardsTab';
 import { Modal } from './common/Modal';
+import { EdIcon, type EdIconName } from './common/icons';
 import { InfoTab } from './tabs/InfoTab';
 import { TableTab } from './tabs/TableTab';
 import { TypesTab } from './tabs/TypesTab';
@@ -41,16 +42,16 @@ export interface GameEditorPageProps {
 }
 
 const SECTIONS = [
-  { id: 'info', label: 'Info', icon: 'ⓘ' },
-  { id: 'cards', label: 'Cards', icon: '▧' },
-  { id: 'types', label: 'Types', icon: '◆' },
-  { id: 'zones', label: 'Zones', icon: '▦' },
-  { id: 'variables', label: 'Vars', icon: '＃' },
-  { id: 'flow', label: 'Flow', icon: '⟳' },
-  { id: 'actions', label: 'Actions', icon: '▸' },
-  { id: 'rules', label: 'Rules', icon: '§' },
-  { id: 'filters', label: 'Filters', icon: '▽' },
-] as const;
+  { id: 'info', label: 'Info', icon: 'info' },
+  { id: 'cards', label: 'Cards', icon: 'cards' },
+  { id: 'types', label: 'Types', icon: 'types' },
+  { id: 'zones', label: 'Zones', icon: 'zone' },
+  { id: 'variables', label: 'Vars', icon: 'variable' },
+  { id: 'flow', label: 'Flow', icon: 'flow' },
+  { id: 'actions', label: 'Actions', icon: 'actions' },
+  { id: 'rules', label: 'Rules', icon: 'rules' },
+  { id: 'filters', label: 'Filters', icon: 'filters' },
+] as const satisfies readonly { id: string; label: string; icon: EdIconName }[];
 
 type SectionId = (typeof SECTIONS)[number]['id'];
 
@@ -193,7 +194,7 @@ export function GameEditorPage({ gameId, navigate, readOnly: forcedReadOnly, rea
                 aria-pressed={panel === s.id}
                 title={panel === s.id ? `Close ${s.label}` : s.label}
               >
-                <span className="ed-rail-icon" aria-hidden="true">{s.icon}</span>
+                <span className="ed-rail-icon"><EdIcon name={s.icon} size={19} /></span>
                 <span className="ed-rail-label">{s.label}</span>
               </button>
             ))}

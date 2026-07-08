@@ -854,6 +854,43 @@
 }
 .tt-tray-empty { margin: 0 0 6px; font-size: 0.82rem; }
 
+/* Deckhand-style icon tiles: stroke pictogram over a tiny uppercase label.
+   Gold strokes on the crimson theme; hover lifts both to full accent. */
+.tt-pal-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+  margin-bottom: 10px;
+}
+.tt-pal {
+  appearance: none;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 7px 2px 5px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  color: var(--accent-2);
+  -webkit-tap-highlight-color: transparent;
+}
+.tt-pal:hover:not(:disabled) { background: var(--bg-raised); border-color: var(--border); }
+.tt-pal:disabled { opacity: 0.4; cursor: default; }
+.tt-pal span {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tt-pal:hover:not(:disabled) span { color: var(--accent-2); }
+
 /* ---------- layers panel ---------- */
 
 .tt-layers { display: flex; flex-direction: column; gap: 2px; }

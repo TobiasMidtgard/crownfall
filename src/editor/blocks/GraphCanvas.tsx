@@ -375,15 +375,22 @@ export function GraphCanvas({ def, value, onChange, bindings }: {
   const renderNode = (node: GraphNode) => {
     const nodeBindings = withChoice(node.bindings);
     const host = (node.block ?? node.expr) as unknown as Record<string, unknown> | undefined;
+    // The WHEN / IF / DO reading line (Deckhand's visual-scripting language):
+    // the entry node is WHEN this script runs, `if` gates are IF, every other
+    // step is DO. Data nodes stay untagged — they are values, not steps.
+    const tag = node.role === 'start' ? 'when'
+      : node.role === 'exec' ? (node.block?.kind === 'if' ? 'if' : 'do')
+        : null;
     return (
       <div
         key={node.id}
-        className={`gr-node gr-node-${node.role}`}
+        className={`gr-node gr-node-${node.role}${tag !== null ? ` gr-tagged-${tag}` : ''}`}
         style={{ left: node.x, top: node.y, width: node.w, height: node.h, '--node-c': node.color } as CSSProperties}
       >
         <div className="gr-head">
           {node.role === 'exec' && pin(node.id, 'execIn', 'l', { exec: true })}
-          <span className="gr-title">{node.role === 'start' ? '▶ Start' : node.label}</span>
+          {tag !== null && <span className={`gr-tag gr-tag-${tag}`}>{tag.toUpperCase()}</span>}
+          <span className="gr-title">{node.role === 'start' ? 'this runs' : node.label}</span>
           {node.role !== 'start' && (
             <button
               type="button"

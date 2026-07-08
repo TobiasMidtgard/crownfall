@@ -94,7 +94,17 @@
 }
 .ed-rail button:hover { color: var(--text); background: rgba(255, 255, 255, 0.05); }
 .ed-rail button.active { color: var(--text); background: rgba(200, 16, 46, 0.18); }
-.ed-rail-icon { font-size: 15px; line-height: 1; }
+/* Editor stroke icons (EdIcon) — Deckhand style, colored by currentColor. */
+.ed-icon {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  flex: none;
+}
+.ed-rail-icon { font-size: 15px; line-height: 1; display: flex; }
+.ed-rail .ed-icon { width: 19px; height: 19px; }
 .ed-rail-label {
   font-size: 9px;
   font-weight: 700;

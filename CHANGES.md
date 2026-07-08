@@ -26,7 +26,13 @@
 
 ---
 
+## 🔥 Open — Deckhand follow-ups (from the pasted table-builder)
+- **Card tray** — Deckhand's bottom card strip: drag a card from the tray onto any holder on the canvas to seed its starting contents (writes deck entries). Big authoring win, needs canvas drop→DeckDef wiring.
+- **Snap-in combos** — drop a label onto a button to set its text, a button onto an element to give it tap actions, anything into a panel to auto-stack.
+- **More Deckhand elements** — counter (variable + ± buttons as one element), dice, token — need engine-backed equivalents to stay honest with play.
+
 ## ✅ Done (delete once confirmed shipped)
+- **Deckhand UX merge** (`c734268`): stroke icon set across the section rail + palette; Deckhand-style icon tiles; one-click **Deck / Pile / Hand / Slot / Grid / Carousel** holders (each drops a ready game zone — def + element in one tap); block graphs now read as **WHEN / IF / DO** with color-coded tags and node spines. Crimson theme kept; real engine underneath.
 - **#14 — ONE game-engine screen** (`0a91cd1`): the tab bar is gone. The WYSIWYG canvas is the editor; Info/Cards/Types/Zones/Vars/Flow/Actions/Rules/Filters slide over it as panels from a left section rail (heavy sections open wide, ⇤/⤢ toggles width, rail button or ✕ closes). Edit rules and watch the screen side by side.
 - **#3 — drill-in selection** (`b56d03b`): click selects the top-level element; double-click steps into the group (repeat to reach the item); single clicks then pick siblings at that depth; Ctrl+click deep-selects instantly.
 - **#4 — full keyboard set** (`b56d03b`): Ctrl+Z/Ctrl+Shift+Z/Ctrl+Y undo-redo (real history with burst coalescing + toolbar ↶↷ buttons), Ctrl+C/X/V clipboard (works across variants/tabs), Ctrl+D duplicate, Ctrl+G/Ctrl+Shift+G group/ungroup — joining the existing Esc/Delete/arrow-nudge.

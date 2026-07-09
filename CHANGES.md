@@ -32,6 +32,8 @@
 - **More Deckhand elements** — counter (variable + ± buttons as one element), dice, token — need engine-backed equivalents to stay honest with play.
 
 ## ✅ Done (delete once confirmed shipped)
+- **Mockup shell** (`817617f`): one top bar — "Projects › name" breadcrumb, the canvas tools (Desktop/Mobile · aspect · undo/redo · zoom · Fit · fullscreen) portaled up from the canvas, save hint, ▶ Play, and a ⚙ gear that opens Info (Info left the rail). Right rail gained **SCREEN | INSPECTOR** tabs over the properties box. Board-state bar sits below the canvas. Crimson kept.
+- **Deckhand card designer** (`b199210`): tool rail (Text/Stat/Image/Box/Circle/Line one-click), card canvas + element chip strip, ONE context-sensitive inspector — the four stacked side panels and the add-element modal are gone.
 - **Deckhand UX merge** (`c734268`): stroke icon set across the section rail + palette; Deckhand-style icon tiles; one-click **Deck / Pile / Hand / Slot / Grid / Carousel** holders (each drops a ready game zone — def + element in one tap); block graphs now read as **WHEN / IF / DO** with color-coded tags and node spines. Crimson theme kept; real engine underneath.
 - **#14 — ONE game-engine screen** (`0a91cd1`): the tab bar is gone. The WYSIWYG canvas is the editor; Info/Cards/Types/Zones/Vars/Flow/Actions/Rules/Filters slide over it as panels from a left section rail (heavy sections open wide, ⇤/⤢ toggles width, rail button or ✕ closes). Edit rules and watch the screen side by side.
 - **#3 — drill-in selection** (`b56d03b`): click selects the top-level element; double-click steps into the group (repeat to reach the item); single clicks then pick siblings at that depth; Ctrl+click deep-selects instantly.

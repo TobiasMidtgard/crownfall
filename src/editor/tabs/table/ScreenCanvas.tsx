@@ -37,6 +37,7 @@
  * wave-3 selector work composes its gating into the same visibility path.
  */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { createPortal } from 'react-dom';
 import type { FlowLayout, GameDef, GameState, Id, LayoutStyle, ScreenElement, ScreenLayout } from '../../../shared/types';
 import { exprToText } from '../../blocks/exprToText';
 import {
@@ -186,6 +187,14 @@ export function ScreenCanvas({
   const viewportRef = useRef<HTMLDivElement>(null);
   const screenRef = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<ViewState>({ x: 12, y: 12, z: 0.5 });
+
+  // ONE top bar (mockup-style): the canvas tools portal into the editor
+  // topbar's slot. Fullscreen covers the topbar, so tools render inline then.
+  const [toolsSlot, setToolsSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    setToolsSlot(document.getElementById('ed-tools-slot'));
+  }, []);
+  const toolsInTopbar = toolsSlot !== null && !fullscreen;
 
   // ----- live preview (headless sample game) ---------------------------------
   // The canvas ALWAYS renders the real game (one WYSIWYG view = the game screen);
@@ -1276,7 +1285,9 @@ export function ScreenCanvas({
         </div>
       </div>
 
-      <div className="tt-toolbar">
+      {(() => {
+        const bar = (
+      <div className={toolsInTopbar ? 'tt-toolbar tt-toolbar-top' : 'tt-toolbar'}>
         <div className="tt-seg tt-seg-small tt-variant-seg" role="group" aria-label="Layout variant">
           <button
             type="button"
@@ -1374,6 +1385,9 @@ export function ScreenCanvas({
           {fullscreen ? '✕ Exit full screen' : '⛶ Full screen'}
         </button>
       </div>
+        );
+        return toolsInTopbar ? createPortal(bar, toolsSlot) : bar;
+      })()}
 
       {pvState !== null && (
         <div className="tt-context-bar" role="group" aria-label="Board state — design each state of the screen">

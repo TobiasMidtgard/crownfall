@@ -42,6 +42,7 @@ export interface GameEditorPageProps {
 }
 
 const SECTIONS = [
+  // 'info' opens from the topbar gear (the mockup's settings slot), not the rail.
   { id: 'info', label: 'Info', icon: 'info' },
   { id: 'cards', label: 'Cards', icon: 'cards' },
   { id: 'types', label: 'Types', icon: 'types' },
@@ -150,9 +151,15 @@ export function GameEditorPage({ gameId, navigate, readOnly: forcedReadOnly, rea
   return (
     <>
       <header className="app-topbar ed-topbar">
-        <button type="button" className="btn btn-ghost ed-back" onClick={() => { flushSave(); navigate('#/'); }} aria-label="Back to home">
-          ←
+        <button
+          type="button"
+          className="ed-crumb"
+          onClick={() => { flushSave(); navigate('#/'); }}
+          title="Back to your games"
+        >
+          Projects
         </button>
+        <span className="ed-crumb-sep" aria-hidden="true">›</span>
         <input
           type="text"
           className="ed-name"
@@ -161,6 +168,9 @@ export function GameEditorPage({ gameId, navigate, readOnly: forcedReadOnly, rea
           aria-label="Game name"
           onChange={(e) => onChange({ ...draft, meta: { ...draft.meta, name: e.target.value } })}
         />
+        {/* The canvas tools (variant, aspect, undo/redo, zoom, fit, fullscreen)
+            portal in here from ScreenCanvas — one top bar, mockup-style. */}
+        <div id="ed-tools-slot" className="ed-tools-slot" />
         {issues.length > 0 && (
           <button
             type="button"
@@ -180,12 +190,21 @@ export function GameEditorPage({ gameId, navigate, readOnly: forcedReadOnly, rea
         >
           ▶ Play
         </button>
+        <button
+          type="button"
+          className="btn btn-ghost ed-gear"
+          aria-label="Game info & settings"
+          title="Game info & settings"
+          onClick={() => openPanel('info')}
+        >
+          <EdIcon name="gear" size={18} />
+        </button>
       </header>
 
       <main className="app-main ed-single-main">
         <div className="ed-shell">
           <nav className="ed-rail" aria-label="Game sections">
-            {SECTIONS.map((s) => (
+            {SECTIONS.filter((s) => s.id !== 'info').map((s) => (
               <button
                 key={s.id}
                 type="button"

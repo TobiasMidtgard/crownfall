@@ -40,6 +40,7 @@ const PATHS = {
   actions: '<path d="M8 5.5l10.5 6.5L8 18.5z"/>',
   rules: '<path d="M5 5a2 2 0 0 1 2-2h12v16H7a2 2 0 0 0-2 2z"/><path d="M5 19a2 2 0 0 1 2-2h12"/>',
   filters: '<path d="M4 5h16l-6.2 7v6l-3.6 2v-8z"/>',
+  gear: '<circle cx="12" cy="12" r="3.2"/><path d="M12 3.2v2.6M12 18.2V20.8M3.2 12h2.6M18.2 12h2.6M5.8 5.8l1.8 1.8M16.4 16.4l1.8 1.8M18.2 5.8l-1.8 1.8M7.6 16.4l-1.8 1.8"/>',
 } as const;
 
 export function EdIcon({ name, size = 22 }: { name: EdIconName; size?: number }) {

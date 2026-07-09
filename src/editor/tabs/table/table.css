@@ -249,6 +249,26 @@
   backdrop-filter: blur(3px);
   z-index: 5;
 }
+/* Portaled into the editor topbar (one top bar, mockup-style): shed the
+   floating-overlay chrome and sit flush among the header controls. */
+.tt-toolbar-top {
+  position: static;
+  background: transparent;
+  border: none;
+  padding: 0;
+  backdrop-filter: none;
+  flex-wrap: nowrap;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tt-toolbar-top::-webkit-scrollbar { display: none; }
+
+/* SCREEN | INSPECTOR tabs over the properties box: "Screen" clears the
+   selection (screen-level settings), "Inspector" reflects it. */
+.tt-insp-tabs { width: 100%; margin-bottom: 8px; display: flex; }
+.tt-insp-tabs button { flex: 1; }
+
 .tt-aspect {
   min-height: 36px;
   max-width: 150px;

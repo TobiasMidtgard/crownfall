@@ -5,13 +5,40 @@
 
 /* ---------- Topbar ---------- */
 
-.ed-topbar { gap: 8px; }
+.ed-topbar { gap: 8px; flex-wrap: wrap; }
 
 .ed-back { min-width: 44px; padding: 8px; font-size: 1.15rem; }
 
-.ed-name {
+/* Breadcrumb (mockup: "Projects › <name>") — the back affordance. */
+.ed-crumb {
+  appearance: none;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 8px 2px 8px 4px;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+.ed-crumb:hover { color: var(--text); }
+.ed-crumb-sep { color: var(--muted); flex: none; }
+
+/* The canvas tools portal in here (ScreenCanvas) — centered, one top bar. */
+.ed-tools-slot {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ed-gear { min-width: 42px; padding: 8px; display: inline-flex; }
+
+.ed-name {
+  flex: 0 1 260px;
+  min-width: 90px;
   min-height: 44px;
   padding: 8px 10px;
   font: inherit;

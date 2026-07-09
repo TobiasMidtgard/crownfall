@@ -649,6 +649,27 @@ function Workspace({ def, layout, onChange }: {
           {layersPanel}
         </div>
         <div className="tt-rail-box tt-rail-props">
+          <div className="tt-seg tt-seg-small tt-insp-tabs" role="tablist" aria-label="Inspector scope">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={sel.length === 0}
+              className={sel.length === 0 ? 'tt-active' : ''}
+              onClick={() => setSel([])}
+            >
+              Screen
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={sel.length > 0}
+              className={sel.length > 0 ? 'tt-active' : ''}
+              disabled={sel.length === 0}
+              title={sel.length === 0 ? 'Select an element on the canvas' : undefined}
+            >
+              Inspector
+            </button>
+          </div>
           {propsPanel}
         </div>
       </aside>

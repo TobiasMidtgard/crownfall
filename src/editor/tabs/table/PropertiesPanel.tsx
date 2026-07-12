@@ -637,7 +637,7 @@ function ElementProps(props: PropertiesPanelProps & { el: ScreenElement }) {
       </button>
       <p className="faint tt-prop-hint">
         {el.kind === 'zone'
-          ? 'The game zone itself stays (Zones tab) — only this element goes.'
+          ? 'The game zone itself stays (Systems page) — only this element goes.'
           : el.kind === 'group'
             ? 'Removes the group AND everything inside it. Ungroup first to keep the contents.'
             : childCount > 0
@@ -2505,7 +2505,7 @@ function NewVariableModal({ onClose, onCreate }: {
         />
       </label>
       <p className="faint" style={{ margin: '4px 0 0' }}>
-        Creates a real game variable (it appears in the Variables tab too) and binds this readout to it.
+        Creates a real game variable (it appears on the Systems page too) and binds this readout to it.
       </p>
     </Modal>
   );

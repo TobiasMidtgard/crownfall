@@ -20,9 +20,7 @@ import { EdIcon, type EdIconName } from './common/icons';
 import { InfoTab } from './tabs/InfoTab';
 import { TableTab } from './tabs/TableTab';
 import { TypesTab } from './tabs/TypesTab';
-import { ZonesTab } from './tabs/ZonesTab';
-import { VariablesTab } from './tabs/VariablesTab';
-import { FlowTab } from './tabs/FlowTab';
+import { SystemsTab } from './tabs/SystemsTab';
 import { ActionsTab } from './tabs/ActionsTab';
 import { RulesTab } from './tabs/RulesTab';
 import { FiltersTab } from './tabs/FiltersTab';
@@ -46,9 +44,8 @@ const SECTIONS = [
   { id: 'info', label: 'Info', icon: 'info' },
   { id: 'cards', label: 'Cards', icon: 'cards' },
   { id: 'types', label: 'Types', icon: 'types' },
-  { id: 'zones', label: 'Zones', icon: 'zone' },
-  { id: 'variables', label: 'Vars', icon: 'variable' },
-  { id: 'flow', label: 'Flow', icon: 'flow' },
+  // Phases + zones + variables live together on one addable-lists page.
+  { id: 'systems', label: 'Systems', icon: 'flow' },
   { id: 'actions', label: 'Actions', icon: 'actions' },
   { id: 'rules', label: 'Rules', icon: 'rules' },
   { id: 'filters', label: 'Filters', icon: 'filters' },
@@ -57,7 +54,7 @@ const SECTIONS = [
 type SectionId = (typeof SECTIONS)[number]['id'];
 
 /** Sections that host big surfaces (card grids, node graphs) open wide. */
-const WIDE_BY_DEFAULT: ReadonlySet<SectionId> = new Set(['cards', 'flow', 'actions', 'rules']);
+const WIDE_BY_DEFAULT: ReadonlySet<SectionId> = new Set(['cards', 'systems', 'actions', 'rules']);
 
 const SAVE_DEBOUNCE_MS = 400;
 
@@ -271,9 +268,7 @@ export function GameEditorPage({ gameId, navigate, readOnly: forcedReadOnly, rea
                 {panel === 'info' && <InfoTab def={draft} onChange={onChange} />}
                 {panel === 'cards' && <CardsTab def={draft} onChange={onChange} />}
                 {panel === 'types' && <TypesTab def={draft} onChange={onChange} />}
-                {panel === 'zones' && <ZonesTab def={draft} onChange={onChange} />}
-                {panel === 'variables' && <VariablesTab def={draft} onChange={onChange} />}
-                {panel === 'flow' && <FlowTab def={draft} onChange={onChange} />}
+                {panel === 'systems' && <SystemsTab def={draft} onChange={onChange} />}
                 {panel === 'actions' && <ActionsTab def={draft} onChange={onChange} />}
                 {panel === 'rules' && <RulesTab def={draft} onChange={onChange} />}
                 {panel === 'filters' && <FiltersTab def={draft} onChange={onChange} />}

@@ -234,6 +234,40 @@
   align-items: end;
 }
 
+/* Systems page — phases / zones / variables as side-by-side addable lists.
+   auto-fit keys the column count off the PANEL's width (it can be toggled
+   narrow while the viewport stays wide), not off a viewport media query. */
+.ed-systems-grid {
+  display: grid;
+  /* 340px = the narrowest a column can go before phase rows (chip + name +
+     three 44px touch buttons) stop being usable; min(…, 100%) keeps tiny
+     panels from overflowing — they get one full-width column instead. */
+  grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
+  gap: 14px;
+  align-items: start;
+}
+.ed-sys-col { padding: 14px; }
+.ed-sys-col .ed-item { padding: 10px; }
+.ed-sys-head { margin-bottom: 6px; }
+.ed-sys-setup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+.ed-sys-setup-name { flex: 1; font-weight: 600; }
+.ed-sys-detail-btn { width: 100%; justify-content: flex-start; text-align: left; }
+.ed-sys-open { border-color: var(--accent-2); }
+.ed-sys-detail { margin-top: 14px; }
+
 .ed-mini-label {
   display: block;
   font-size: 0.8rem;

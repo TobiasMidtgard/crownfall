@@ -89,8 +89,8 @@ export function validateGameDef(def: GameDef): ValidationIssue[] {
   if (!def.meta.name.trim()) warn('Game info', 'The game has no name.');
   if (def.meta.minPlayers < 1) err('Game info', 'Minimum players must be at least 1.');
   if (def.meta.maxPlayers < def.meta.minPlayers) err('Game info', 'Max players is below min players.');
-  if (def.phases.length === 0) err('Flow', 'A game needs at least one phase.');
-  if (def.zones.length === 0) err('Zones', 'A game needs at least one zone.');
+  if (def.phases.length === 0) err('Systems', 'A game needs at least one phase.');
+  if (def.zones.length === 0) err('Systems', 'A game needs at least one zone.');
 
   for (const deck of def.decks) {
     const where = `Deck "${deck.name}"`;
@@ -418,7 +418,7 @@ export function validateGameDef(def: GameDef): ValidationIssue[] {
     def.actions.forEach((a) => scan(a.script));
     def.triggers.forEach((t) => scan(t.script));
     def.cards.forEach((c) => c.abilities.forEach((a) => scan(a.script)));
-    if (!endsGame) warn('Flow', 'No end conditions and no "end game" block anywhere — the game can never finish.');
+    if (!endsGame) warn('Systems', 'No end conditions and no "end game" block anywhere — the game can never finish.');
   }
 
   // Named filters: their conditions get the normal expression walk, and the

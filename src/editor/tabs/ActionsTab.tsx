@@ -21,7 +21,7 @@ export function ActionsTab({ def, onChange }: { def: GameDef; onChange: (def: Ga
         </button>
       </div>
       <p className="faint">
-        The moves a player can make. Enable them per phase in the Flow tab. The engine offers an action
+        The moves a player can make. Enable them per phase on the Systems page. The engine offers an action
         only where its legality check passes — that also powers the AI.
       </p>
 

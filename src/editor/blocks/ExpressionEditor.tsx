@@ -245,7 +245,7 @@ function ExprFields({ def, draft, setDraft, bindings }: {
           <label className="field">
             <span>Variable</span>
             {def.variables.length === 0 ? (
-              <span className="faint">No variables yet — add some in the Variables tab.</span>
+              <span className="faint">No variables yet — add some on the Systems page.</span>
             ) : (
               <select
                 className="select"

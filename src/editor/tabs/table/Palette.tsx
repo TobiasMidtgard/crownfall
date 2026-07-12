@@ -123,12 +123,12 @@ export function Palette({
       <section className="tt-pal-grid">
         {tile('zone', 'Zone…', 'Show an existing game zone (or create one with full options)', () => setZoneModal(true))}
         {tile('text', 'Text', 'A static label', () => onInsert(newTextElement()))}
-        {tile('variable', 'Variable', hasVars ? 'A live variable readout' : 'Add a variable first (Vars panel)', () => {
+        {tile('variable', 'Variable', hasVars ? 'A live variable readout' : 'Add a variable first (Systems page)', () => {
           const el = newVarTextElement(def);
           if (el) onInsert(el);
         }, !hasVars)}
         {tile('button', 'Button', 'Performs a plain action (or Pass)', () => onInsert(newButtonElement(def)))}
-        {tile('stat', 'Counter', hasVars ? 'A variable with −/＋ steppers — every tick is a real action' : 'Add a variable first (Vars panel)', () => {
+        {tile('stat', 'Counter', hasVars ? 'A variable with −/＋ steppers — every tick is a real action' : 'Add a variable first (Systems page)', () => {
           const el = newCounterElement(def);
           if (el) onInsert(el);
         }, !hasVars)}
@@ -140,7 +140,7 @@ export function Palette({
           'Phases',
           hasPhases
             ? 'Ready-made circles + lines that follow the turn phases'
-            : 'Add phases first (Flow panel)',
+            : 'Add phases first (Systems page)',
           () => {
             const el = newPhaseTrackElement(def);
             if (el) onInsert(el);
@@ -449,7 +449,7 @@ function ZoneInsertModal({ def, onClose, onPlace, onCreate }: {
             </select>
           </label>
           <p className="faint" style={{ margin: '4px 0 0' }}>
-            Creates a real game zone (it appears in the Zones tab too) and drops it on the screen.
+            Creates a real game zone (it appears on the Systems page too) and drops it on the screen.
           </p>
         </>
       )}

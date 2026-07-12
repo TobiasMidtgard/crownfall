@@ -86,7 +86,7 @@ export function ZoneIdChip({ def, value, onChange, perPlayerOnly = false, title 
           <span>Zone</span>
           {zones.length === 0 ? (
             <span className="faint">
-              {perPlayerOnly ? 'No per-player zones yet — create one in the Zones tab.' : 'No zones yet.'}
+              {perPlayerOnly ? 'No per-player zones yet — create one on the Systems page.' : 'No zones yet.'}
             </span>
           ) : (
             <select className="select" value={value} onChange={(e) => onChange(e.target.value)}>
@@ -267,7 +267,7 @@ export function VarTargetChip({ def, varId, target, onChange, bindings }: {
           <label className="field">
             <span>Variable</span>
             {def.variables.length === 0 ? (
-              <span className="faint">No variables yet — add some in the Variables tab.</span>
+              <span className="faint">No variables yet — add some on the Systems page.</span>
             ) : (
               <select
                 className="select"
@@ -560,7 +560,7 @@ export function WinnerSpecFields({ def, value, onChange, bindings }: {
         <label className="field">
           <span>Variable (per player, number)</span>
           {def.variables.length === 0 ? (
-            <span className="faint">No variables yet — add one in the Variables tab.</span>
+            <span className="faint">No variables yet — add one on the Systems page.</span>
           ) : (
             <select
               className="select"

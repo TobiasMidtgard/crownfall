@@ -38,6 +38,10 @@
 - **More interactive elements** — toggle (boolean variable switch), slider, order-list (drag to set resolution order), card-select battery (min/max + eligibility Expr + confirm) as engine-honest choice surfaces; roster (players/AI) belongs to the setup screen instead.
 - **Sentence view for WHEN/zones** — the rule header (event + condition) already reads as a sentence; zone routes ("hand-moves: only to Discard of the owner") and per-phase action whitelists could adopt the same inline-blank prose.
 
+## ✅ Done — Supply chrome inside the card + real size levers in focus
+- **Cost badges and × counts now live INSIDE the card face**: the round cost badge sits in the top-left corner and the × N pill in the bottom-left (bottom-right belongs to the keyboard digit badge) — nothing hangs off the edge, nothing gets clipped by the zone bounds, and the type line ("ACTION – ATTACK") stays readable. Editor mocks mirror the same geometry (the DGT diamond on compact tiles keeps its signature overhang — skins reserve room for it).
+- **The Card chrome panel grew six steppers** — Card size, Gap, Columns, Rows, Box width, Box height — so you can resize and space the cards without leaving focus. Honest physics note included: cards never overflow the element's box (that's what killed the scrollbars), so past the fit limit the size levers are the box itself and fewer columns/rows — both now one click away in the same panel.
+
 ## ✅ Done — Systems page: everything addable on one screen
 - **Phases + Zones + Variables now live together** on one wide "Systems" page (the Card-Forge style you pasted): three side-by-side panels, each with an **+ Add** in the header and compact inline-editable items with × delete — no more opening Zones, Vars, and Flow one at a time. The rail shrank from 9 sections to 7.
 - Phase **scripts and allowed-action lists need width**, so phase rows stay compact (number, name, mode, reorder, delete) and an "N actions · N script blocks — edit ›" button opens a **full-width detail panel below the grid** with the block-script editor and action checkboxes. The **Setup script** is a pinned row at the top of the phases column and opens the same way.

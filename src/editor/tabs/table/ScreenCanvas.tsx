@@ -1297,6 +1297,9 @@ export function ScreenCanvas({
             partSel={partSel}
             onPartSel={onPartSel}
             onEditCardTemplate={onEditCardTemplate}
+            onPatchEl={onPatchEl}
+            gridKnobs={focusEl.display === 'piles'
+              || def.zones.find((z) => z.id === focusEl.zoneId)?.layout === 'grid'}
           />
         )}
       </div>
@@ -1737,12 +1740,15 @@ function SlotPreview({ zone, el, abs, screenH, screenW, real }: {
  * re-selected and un-hidden. The card FACE itself is designed in the Cards
  * panel — the footer button jumps there.
  */
-function ZoneAnatomy({ el, zoneName, partSel, onPartSel, onEditCardTemplate }: {
+function ZoneAnatomy({ el, zoneName, partSel, onPartSel, onEditCardTemplate, onPatchEl, gridKnobs }: {
   el: ZoneEl;
   zoneName: string;
   partSel: ZonePartSel | null;
   onPartSel?: (p: ZonePartSel | null) => void;
   onEditCardTemplate?: (zoneElId: Id) => void;
+  onPatchEl: (id: Id, fn: (el: ScreenElement) => ScreenElement) => void;
+  /** Columns/Rows only render where the runner honors them (piles / grid). */
+  gridKnobs: boolean;
 }) {
   // Fixed mock size (docked editor chrome, not stage content); part fontSize
   // overrides preview at their zoom-1 stage size (% of SCREEN_W — textStyle).
@@ -1754,6 +1760,28 @@ function ZoneAnatomy({ el, zoneName, partSel, onPartSel, onEditCardTemplate }: {
     : undefined;
   const countCls = `tt-slot-count${el.countBadge === 'bottom' ? ' tt-slot-count-bc' : ''}`;
   const badgeCls = `tt-slot-badge${el.badgeShape === 'round' ? ' tt-slot-badge-round' : ''}`;
+
+  /** −/＋ stepper writing one numeric zone knob (card size, columns, gap).
+   *  Clamps like the inspector's steppers and skips no-op writes so boundary
+   *  clicks never dirty the def or pollute undo history. */
+  const knob = (
+    label: string, value: number, min: number, max: number, step: number,
+    write: (el: ZoneEl, v: number) => ScreenElement, display?: string,
+  ) => {
+    const set = (v: number) => {
+      const next = Math.round(Math.min(max, Math.max(min, v)) * 10) / 10;
+      if (next === value) return;
+      onPatchEl(el.id, (p) => (p.kind === 'zone' ? write(p, next) : p));
+    };
+    return (
+      <div className="tt-anat-knob" key={label}>
+        <span className="tt-anat-knob-label">{label}</span>
+        <button type="button" className="btn btn-small" aria-label={`${label} smaller`} disabled={value <= min} onClick={() => set(value - step)}>−</button>
+        <span className="tt-anat-knob-val">{display ?? value}</span>
+        <button type="button" className="btn btn-small" aria-label={`${label} larger`} disabled={value >= max} onClick={() => set(value + step)}>＋</button>
+      </div>
+    );
+  };
 
   /** button.tt-part — the mock chrome classes paint the button itself. */
   const partBtn = (part: ZonePartKey, cls: string, body: React.ReactNode) => {
@@ -1803,6 +1831,28 @@ function ZoneAnatomy({ el, zoneName, partSel, onPartSel, onEditCardTemplate }: {
           </>
         ))}
         {partBtn('empty', 'tt-empty-note', el.emptyText ?? 'Empty')}
+      </div>
+      <div className="tt-anat-knobs">
+        {knob('Card size', el.cardScale ?? 8, 3, 40, 0.5, (z, v) => ({ ...z, cardScale: v }))}
+        {/* Unset gap mirrors the inspector's base (0); ranges match its steppers. */}
+        {knob('Gap', el.gap ?? 0, 0, 10, 0.1, (z, v) => ({ ...z, gap: v }))}
+        {gridKnobs && knob(
+          'Columns', el.columns ?? 0, 0, 12, 1,
+          (z, v) => ({ ...z, columns: v === 0 ? null : Math.round(v) }),
+          el.columns == null ? 'auto' : String(el.columns),
+        )}
+        {gridKnobs && knob(
+          'Rows', el.rows ?? 0, 0, 12, 1,
+          (z, v) => ({ ...z, rows: v === 0 ? null : Math.round(v) }),
+          el.rows == null ? 'auto' : String(el.rows),
+        )}
+        {/* The box stays on the screen: x + w ≤ 100 like every other rect editor. */}
+        {knob('Box width', Math.round(el.rect.w * 10) / 10, 4, Math.max(4, Math.round((100 - el.rect.x) * 10) / 10), 1, (z, v) => ({ ...z, rect: { ...z.rect, w: v } }))}
+        {knob('Box height', Math.round(el.rect.h * 10) / 10, 4, Math.max(4, Math.round((100 - el.rect.y) * 10) / 10), 1, (z, v) => ({ ...z, rect: { ...z.rect, h: v } }))}
+        <span className="tt-anat-note">
+          Cards never overflow the element's box — for bigger cards, grow the
+          box{gridKnobs ? ' or use fewer columns/rows' : ''}.
+        </span>
       </div>
       <button
         type="button"

@@ -1696,21 +1696,27 @@ button.rn-ptile:hover { translate: 0 -3px; }
 .rn-ct-btn:disabled { opacity: 0.35; cursor: default; }
 
 /* --- authored badge placement + empty notes (zone presentation controls) -------
-   .rn-badge-bc: the × N count as a pill centered under the card's bottom edge
-   (zone countBadge 'bottom'); .rn-pilecost-round / .rn-ptile-cost-round: the
-   field badge as a circle instead of the DGT diamond (zone badgeShape
-   'round'); .rn-empty-note: authored emptyText as free-flowing italic copy;
-   .rn-ptile-count-off: tile count hidden (countBadge 'none'). */
+   .rn-badge-bc: the × N count tucked INSIDE the card's lower-right corner
+   (zone countBadge 'bottom' — straddling the edge got clipped by zone bounds
+   and covered the face's centered type line; the DGT straddle stays the
+   'corner' variant's look); .rn-pilecost-round / .rn-ptile-cost-round: the
+   field badge as a circle INSIDE the top-left corner instead of the DGT
+   overhanging diamond (zone badgeShape 'round'); .rn-empty-note: authored
+   emptyText as free-flowing italic copy; .rn-ptile-count-off: tile count
+   hidden (countBadge 'none'). */
 
 .rn-badge.rn-badge-bc {
+  /* Bottom-LEFT: the lower-right corner belongs to the keyboard digit badge
+     (.rn-keybadge) — sharing it stacked the two chips under Shift/Ctrl. */
   right: auto;
-  left: 50%;
-  bottom: -10px;
-  transform: translateX(-50%);
+  left: 5px;
+  bottom: 5px;
 }
 .rn-pilecost.rn-pilecost-round {
   transform: none;
   border-radius: 999px;
+  left: 5px;
+  top: 5px;
 }
 .rn-pilecost.rn-pilecost-round > span { transform: none; }
 .rn-ptile-cost.rn-ptile-cost-round::before {

@@ -414,10 +414,11 @@
   white-space: nowrap;
 }
 .tt-slot-count.tt-slot-count-bc {
+  /* Mirrors the runner: 'bottom' counts tuck inside the lower-LEFT corner
+     (lower-right belongs to the keyboard digit badge). */
   right: auto;
-  left: 50%;
-  bottom: -7px;
-  transform: translateX(-50%);
+  left: 4px;
+  bottom: 4px;
 }
 .tt-slot-badge {
   position: absolute;
@@ -447,6 +448,11 @@
 .tt-slot-badge.tt-slot-badge-round::before {
   transform: none;
   border-radius: 999px;
+}
+/* Mirrors the runner: round cost badges sit inside the top-left corner. */
+.tt-slot-badge.tt-slot-badge-round {
+  left: 3px;
+  top: 3px;
 }
 .tt-empty-note {
   align-self: center;
@@ -1627,6 +1633,36 @@
   flex-direction: column;
   align-items: center;
   gap: 2px;
+}
+/* Card size / gap steppers — resize and space the cards without leaving focus. */
+.tt-anat-knobs {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--border);
+}
+.tt-anat-knob {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tt-anat-knob-label {
+  flex: 1;
+  font-size: 11px;
+  color: var(--muted);
+}
+.tt-anat-knob-val {
+  min-width: 30px;
+  text-align: center;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.tt-anat-note {
+  font-size: 10px;
+  line-height: 1.35;
+  color: var(--muted);
 }
 .tt-anatomy-edit { width: 100%; }
 

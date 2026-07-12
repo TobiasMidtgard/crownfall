@@ -22,7 +22,7 @@
 - **#7 — Cards of type Treasure (and Victory) don't render.** ❓ **Could not reproduce** (2026-07-06): checked the Codex, the editor card list, a NEW card created with type Treasure, the designer canvas piles, and a live game — every type renders. Most likely your local Dominion was the stale seed-v8 copy; the seed bump shipping now replaces it. **If it still fails after this deploy, note exactly where you see it (which screen + which card).** The "more refined card layout control" half stays open (folds into #14's card editor work).
 
 ### Game runner / setup
-- **#2 — Create the supply from the game's main menu.** Assemble the supply (which kingdom piles are in play) at game launch — pick from existing cards **and** build brand-new piles. Surface options wherever possible (pile size, cost, which set, random vs hand-picked).
+- **#2 leftovers** — the kingdom picker shipped (see Done). Still open from the original ask: building **brand-new piles** at launch and per-pile options (pile size, cost overrides) — those are card-authoring features and fold into the Forge editor rather than the setup screen.
 
 ---
 
@@ -37,6 +37,9 @@
 - **Hold-to-inspect card info panel** — hold a card at the table → pinned info panel (name/type/keywords/rules/flavor from template fields), with the progress ring. No card-inspect affordance exists today.
 - **More interactive elements** — toggle (boolean variable switch), slider, order-list (drag to set resolution order), card-select battery (min/max + eligibility Expr + confirm) as engine-honest choice surfaces; roster (players/AI) belongs to the setup screen instead.
 - **Sentence view for WHEN/zones** — the rule header (event + condition) already reads as a sentence; zone routes ("hand-moves: only to Discard of the owner") and per-phase action whitelists could adopt the same inline-blank prose.
+
+## ✅ Done — #2: Kingdom picker on the game setup screen
+- The Dominion setup menu now has a **Kingdom panel**: all 7 preset sets as one-click chips (active set highlighted), a **🎲 Random 10** roll, a search box (matches name *or* type line, e.g. "attack"), and a browsable grid of **all 54 kingdom cards** (cost badge + type line) — toggle tiles to hand-pick exactly 10. A count chip tracks progress; **Start** and **Host a room** stay disabled until the kingdom is complete, and the host's picked kingdom is what both online players get (the host def is authoritative). Unpicked piles wait in the reserve, so the Black Market keeps its stock. Works for any def whose setup swaps kingdom piles — custom Forge games that follow the pattern get the picker for free.
 
 ## ✅ Done — Dominion catalog wave 1: complete Base 2E + Intrigue 2E (54 kingdom piles)
 - **36 new cards** (SEED_VERSION → 12): the ten missing Base 2E cards (Harbinger, Merchant, Vassal, Bureaucrat, Moneylender, Poacher, Bandit, Library, Sentry, Artisan) and ALL 26 Intrigue 2E cards (Courtyard → Upgrade, incl. Bridge's cost reduction, Duke's per-Duchy VP, Diplomat's own reaction, Minion/Torturer/Swindler/Replace attacks). Four new lobby kingdom sets: **Deck Top**, **Underlings**, **The Grand Scheme**, **Masters of Deceit**. Every set proves itself in a seeded full-game playthrough with card conservation + from-scratch VP recount; 76 new deterministic per-card probe tests.

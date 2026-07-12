@@ -1736,3 +1736,62 @@ button.rn-ptile:hover { translate: 0 -3px; }
   padding-right: 12px;
   justify-content: center;
 }
+
+/* --- the setup screen's Kingdom picker ------------------------------------ */
+
+.rn-kchips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.rn-kset.rn-kset-on {
+  border-color: var(--accent-2);
+  color: var(--accent-2);
+  background: color-mix(in srgb, var(--accent-2) 10%, transparent);
+}
+.rn-kgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 2px;
+}
+.rn-kcard {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-raised);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.12s, background 0.12s;
+}
+.rn-kcard:hover:not(:disabled) { border-color: var(--accent-2); }
+.rn-kcard:disabled { opacity: 0.45; cursor: default; }
+.rn-kcard.rn-kcard-on {
+  border-color: var(--accent-2);
+  background: color-mix(in srgb, var(--accent-2) 12%, var(--bg-raised));
+}
+.rn-kcost {
+  grid-row: 1 / span 2;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-2) 22%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-2) 55%, transparent);
+  color: var(--accent-2);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+.rn-kname { font-size: 0.82rem; font-weight: 700; line-height: 1.15; }
+.rn-kkind {
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}

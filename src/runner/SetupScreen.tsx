@@ -5,8 +5,23 @@
  */
 import { useState } from 'react';
 import type { GameDef, ValidationIssue } from '../shared/types';
+import type { KingdomSet } from '../shared/kingdoms';
 import { rollSeed } from './layout';
 import type { SeatSetup } from './session';
+
+/** The setup screen's Kingdom picker: catalog + presets, injected by the
+ *  host page (PlayPage) for defs whose setup supports kingdom swapping. */
+export interface KingdomPicker {
+  /** Every pickable card: name + printed cost + type line, cost-sorted. */
+  catalog: { name: string; cost: number; kind: string }[];
+  /** Preset sets (exactly ten names each). */
+  sets: KingdomSet[];
+  /** How many cards a kingdom needs (Dominion: 10). */
+  size: number;
+  /** The currently selected names. */
+  value: string[];
+  onChange: (cards: string[]) => void;
+}
 
 function makeSeats(count: number, prev: SeatSetup[] = []): SeatSetup[] {
   // Seat 0 defaults to the (presumably present) human; extra seats to AI.
@@ -19,7 +34,7 @@ export type OnlineStatus =
   | { mode: 'joining' }
   | { mode: 'error'; message: string };
 
-export function SetupScreen({ def, issues, navigate, onStart, online, onHost, onJoin, onCancelOnline }: {
+export function SetupScreen({ def, issues, navigate, onStart, online, onHost, onJoin, onCancelOnline, kingdom }: {
   def: GameDef;
   issues: ValidationIssue[];
   navigate: (hash: string) => void;
@@ -31,6 +46,8 @@ export function SetupScreen({ def, issues, navigate, onStart, online, onHost, on
   /** Join a room by its code. */
   onJoin?: (code: string, guestName: string) => void;
   onCancelOnline?: () => void;
+  /** Kingdom picker data (null/absent = the def has no swappable supply). */
+  kingdom?: KingdomPicker | null;
 }) {
   const errors = issues.filter((i) => i.severity === 'error');
   const warnings = issues.filter((i) => i.severity === 'warning');
@@ -40,10 +57,12 @@ export function SetupScreen({ def, issues, navigate, onStart, online, onHost, on
   const [seed, setSeed] = useState(rollSeed);
   const [showWarnings, setShowWarnings] = useState(false);
   const [joinCode, setJoinCode] = useState('');
+  const [cardSearch, setCardSearch] = useState('');
   const allAI = seats.every((s) => s.isAI);
   const myName = (seats[0]?.name ?? '').trim() || 'Player 1';
   const onlineCapable = onHost !== undefined && onJoin !== undefined
     && errors.length === 0 && minP <= 2 && maxP >= 2;
+  const kingdomReady = kingdom == null || kingdom.value.length === kingdom.size;
 
   const setCount = (n: number) => {
     const next = Math.min(maxP, Math.max(minP, n));
@@ -146,6 +165,87 @@ export function SetupScreen({ def, issues, navigate, onStart, online, onHost, on
           )}
         </div>
 
+        {kingdom != null && (() => {
+          const picked = new Set(kingdom.value);
+          const activeSet = kingdom.sets.find((s) =>
+            s.cards.length === kingdom.value.length && s.cards.every((c) => picked.has(c)));
+          const toggle = (name: string) => {
+            if (picked.has(name)) kingdom.onChange(kingdom.value.filter((n) => n !== name));
+            else if (kingdom.value.length < kingdom.size) kingdom.onChange([...kingdom.value, name]);
+          };
+          const randomTen = () => {
+            const pool = kingdom.catalog.map((c) => c.name);
+            for (let i = pool.length - 1; i > 0; i--) {
+              const j = Math.floor(Math.random() * (i + 1));
+              [pool[i], pool[j]] = [pool[j], pool[i]];
+            }
+            kingdom.onChange(pool.slice(0, kingdom.size).sort());
+          };
+          const q = cardSearch.trim().toLowerCase();
+          const shown = q === ''
+            ? kingdom.catalog
+            : kingdom.catalog.filter((c) =>
+              c.name.toLowerCase().includes(q) || c.kind.toLowerCase().includes(q));
+          return (
+            <div className="panel" style={{ marginBottom: 14 }}>
+              <div className="row" style={{ alignItems: 'baseline', gap: 10 }}>
+                <label className="field" style={{ marginBottom: 4 }}><span>Kingdom</span></label>
+                <span className={`chip${kingdomReady ? '' : ' warn'}`}>
+                  {kingdom.value.length} of {kingdom.size} piles
+                </span>
+                <div className="spacer" />
+                <button className="btn" onClick={randomTen}>🎲 Random {kingdom.size}</button>
+              </div>
+              <div className="rn-kchips">
+                {kingdom.sets.map((s) => (
+                  <button
+                    key={s.id}
+                    className={`btn rn-kset${activeSet?.id === s.id ? ' rn-kset-on' : ''}`}
+                    title={s.motto}
+                    onClick={() => kingdom.onChange([...s.cards])}
+                  >
+                    {s.name}
+                  </button>
+                ))}
+              </div>
+              <input
+                className="input"
+                style={{ margin: '8px 0' }}
+                type="search"
+                placeholder={`Search ${kingdom.catalog.length} cards…`}
+                aria-label="Search kingdom cards"
+                value={cardSearch}
+                onChange={(e) => setCardSearch(e.target.value)}
+              />
+              <div className="rn-kgrid" role="group" aria-label="Kingdom cards">
+                {shown.map((c) => {
+                  const on = picked.has(c.name);
+                  const full = !on && kingdom.value.length >= kingdom.size;
+                  return (
+                    <button
+                      key={c.name}
+                      className={`rn-kcard${on ? ' rn-kcard-on' : ''}`}
+                      aria-pressed={on}
+                      disabled={full}
+                      title={full ? `The kingdom already holds ${kingdom.size} piles — remove one first.` : c.kind}
+                      onClick={() => toggle(c.name)}
+                    >
+                      <span className="rn-kcost">{c.cost}</span>
+                      <span className="rn-kname">{c.name}</span>
+                      <span className="rn-kkind">{c.kind}</span>
+                    </button>
+                  );
+                })}
+                {shown.length === 0 && <p className="faint">Nothing matches “{cardSearch}”.</p>}
+              </div>
+              <p className="faint" style={{ margin: '8px 0 0' }}>
+                Pick a preset or build your own supply — exactly {kingdom.size} piles take the
+                table. Unpicked cards wait in the reserve (the Black Market's stock).
+              </p>
+            </div>
+          );
+        })()}
+
         <div className="panel" style={{ marginBottom: 14 }}>
           <label className="field" style={{ marginBottom: 4 }}><span>Random seed</span></label>
           <div className="row">
@@ -156,7 +256,12 @@ export function SetupScreen({ def, issues, navigate, onStart, online, onHost, on
           <p className="faint" style={{ margin: '6px 0 0' }}>Same seed, same shuffles — handy for replays.</p>
         </div>
 
-        <button className="btn btn-primary rn-start" disabled={errors.length > 0} onClick={start}>
+        <button
+          className="btn btn-primary rn-start"
+          disabled={errors.length > 0 || !kingdomReady}
+          title={kingdomReady ? undefined : `Pick exactly ${kingdom!.size} kingdom piles first.`}
+          onClick={start}
+        >
           {allAI ? '▶ Watch the AIs play' : '▶ Start game'}
         </button>
 
@@ -171,7 +276,12 @@ export function SetupScreen({ def, issues, navigate, onStart, online, onHost, on
                   no account, no server.
                 </p>
                 <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
-                  <button className="btn btn-primary" onClick={() => onHost!(myName, seed)}>
+                  <button
+                    className="btn btn-primary"
+                    disabled={!kingdomReady}
+                    title={kingdomReady ? undefined : 'Finish the kingdom first — the host\'s supply is what both players get.'}
+                    onClick={() => onHost!(myName, seed)}
+                  >
                     🌐 Host a room
                   </button>
                   <div className="spacer" />

@@ -1215,6 +1215,40 @@ export function kingdomCardNames(def: GameDef): string[] {
 }
 
 /**
+ * True when the def's setup swaps kingdom piles (the pickKingdom shape) —
+ * the game setup screen shows its Kingdom picker exactly then.
+ */
+export function supportsKingdomPicking(def: GameDef): boolean {
+  return def.setup.some((b) => kingdomPileBlockName(b) !== null);
+}
+
+/** The card names the def's setup currently promotes into the supply. */
+export function activeKingdomCards(def: GameDef): string[] {
+  return def.setup
+    .map(kingdomPileBlockName)
+    .filter((n): n is string => n !== null);
+}
+
+/** One picker row per pickable kingdom card: name + printed cost + type line. */
+export interface KingdomCatalogEntry {
+  name: string;
+  cost: number;
+  /** The display type line ("Action – Attack"). */
+  kind: string;
+}
+
+export function kingdomCatalog(def: GameDef): KingdomCatalogEntry[] {
+  return def.cards
+    .filter((c) => !BASIC_NAME_SET.has(c.name))
+    .map((c) => ({
+      name: c.name,
+      cost: Number(c.fields[COST] ?? 0),
+      kind: String(c.fields[KIND_F] ?? ''),
+    }))
+    .sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
+}
+
+/**
  * Build the hall's Dominion def: the Cardsmith example, extended, with the
  * DEFAULT lobby kingdom (First Game) active. Apply pickKingdom for others.
  */

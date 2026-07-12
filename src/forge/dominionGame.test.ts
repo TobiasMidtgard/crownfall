@@ -35,7 +35,10 @@ import { createEngine, isDisplayVisible } from '../engine';
 import { playThrough, totalCards } from '../examples/testHarness';
 import { renderTextParts } from '../runner/layout';
 import { filterDisplayCards } from '../runner/layoutGeometry';
-import { buildDominionDef, kingdomCardNames, pickKingdom } from './dominionGame';
+import {
+  activeKingdomCards, buildDominionDef, kingdomCardNames, kingdomCatalog, pickKingdom,
+  supportsKingdomPicking,
+} from './dominionGame';
 
 const BASIC_NAMES = ['Copper', 'Silver', 'Gold', 'Estate', 'Duchy', 'Province', 'Curse'];
 /** Basics 46+40+30+8+8+8+10, kingdom stock 54 piles of 10 (18 core + 10 Base
@@ -864,6 +867,31 @@ describe('the TURN ticker counts rounds, not per-seat turns', () => {
     expect(shown()).toBe('TURN 2'); // back to p0 — round 2
     expect(renderTextParts(def, engine.getState(), mobile, 'p0')).toBe('TURN 2');
     expect(errors).toEqual([]);
+  });
+});
+
+describe('kingdom picker helpers (the setup screen surface)', () => {
+  const def = buildDominionDef();
+
+  it('detects swappable-supply defs and reads the active ten', () => {
+    expect(supportsKingdomPicking(def)).toBe(true);
+    expect([...activeKingdomCards(def)].sort()).toEqual([...KINGDOM_SETS[0].cards].sort());
+    // A def without kingdom-pile setup blocks offers no picker.
+    expect(supportsKingdomPicking({ ...def, setup: [] })).toBe(false);
+  });
+
+  it('catalogs every kingdom card with printed cost + type line, cost-sorted', () => {
+    const cat = kingdomCatalog(def);
+    expect(cat.map((c) => c.name).sort()).toEqual(kingdomCardNames(def).sort());
+    expect(cat.some((c) => c.name === 'Bridge' && c.cost === 4 && c.kind === 'Action')).toBe(true);
+    expect(cat.some((c) => c.name === 'Witch' && c.kind === 'Action – Attack')).toBe(true);
+    expect(cat.every((c, i, a) => i === 0 || a[i - 1].cost <= c.cost)).toBe(true);
+  });
+
+  it('a hand-picked ten round-trips through pickKingdom', () => {
+    const ten = kingdomCatalog(def).slice(0, 10).map((c) => c.name);
+    const picked = pickKingdom(def, ten);
+    expect([...activeKingdomCards(picked)].sort()).toEqual([...ten].sort());
   });
 });
 

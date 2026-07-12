@@ -10,7 +10,11 @@
  */
 import { useEffect, useMemo, useState } from 'react';
 import { validateGameDef } from '../shared/validate';
+import { KINGDOM_SETS } from '../shared/kingdoms';
 import { getGameById } from '../state/store';
+import {
+  activeKingdomCards, kingdomCatalog, pickKingdom, supportsKingdomPicking,
+} from '../forge/dominionGame';
 import { rollSeed } from './layout';
 import { hostGame, joinGame, type MatchStart } from './net';
 import { FatalScreen } from './overlays';
@@ -18,6 +22,9 @@ import type { SeatSetup } from './session';
 import { SetupScreen, type OnlineStatus } from './SetupScreen';
 import { TableScreen } from './TableScreen';
 import './runner.css';
+
+/** How many piles a kingdom takes (the preset sets are the source of truth). */
+const KINGDOM_SIZE = 10;
 
 export interface PlayPageProps {
   gameId: string;
@@ -43,6 +50,31 @@ export function PlayPage({ gameId, navigate }: PlayPageProps) {
   const [online, setOnline] = useState<OnlinePending | null>(null);
   const [netMatch, setNetMatch] = useState<MatchStart | null>(null);
 
+  // ----- the Kingdom picker (defs whose setup swaps supply piles) -----
+  const kingdomable = useMemo(() => (def ? supportsKingdomPicking(def) : false), [def]);
+  const [kingdomCards, setKingdomCards] = useState<string[] | null>(null); // null = def's own
+  const pickerData = useMemo(() => {
+    if (!def || !kingdomable) return null;
+    return {
+      catalog: kingdomCatalog(def),
+      sets: KINGDOM_SETS,
+      size: KINGDOM_SIZE,
+      value: kingdomCards ?? activeKingdomCards(def),
+    };
+  }, [def, kingdomable, kingdomCards]);
+  /** The def the TABLE runs: the stored def with the chosen kingdom applied. */
+  const runDef = useMemo(() => {
+    if (!def || !kingdomable || kingdomCards === null) return def;
+    const active = activeKingdomCards(def);
+    const same = active.length === kingdomCards.length
+      && kingdomCards.every((n) => active.includes(n));
+    try {
+      return same ? def : pickKingdom(def, kingdomCards);
+    } catch {
+      return def; // an unknown name (keeper deleted a card) — fall back
+    }
+  }, [def, kingdomable, kingdomCards]);
+
   // Leaving an online table (or the page) hangs up the link.
   useEffect(() => () => {
     netMatch?.link.close();
@@ -66,7 +98,8 @@ export function PlayPage({ gameId, navigate }: PlayPageProps) {
   };
 
   const startHost = (hostName: string, seed: number) => {
-    const h = hostGame(def, seed, hostName);
+    // The HOST's def is authoritative online — ship the chosen kingdom.
+    const h = hostGame(runDef ?? def, seed, hostName);
     setOnline({ status: { mode: 'hosting', code: h.code }, cancel: h.cancel });
     h.match.then((m) => {
       setOnline(null);
@@ -120,6 +153,7 @@ export function PlayPage({ gameId, navigate }: PlayPageProps) {
           online?.cancel();
           setOnline(null);
         }}
+        kingdom={pickerData === null ? null : { ...pickerData, onChange: setKingdomCards }}
       />
     );
   }
@@ -127,7 +161,7 @@ export function PlayPage({ gameId, navigate }: PlayPageProps) {
   return (
     <TableScreen
       key={run.runId}
-      def={def}
+      def={runDef ?? def}
       seats={run.seats}
       seed={run.seed}
       navigate={navigate}

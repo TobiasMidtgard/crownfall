@@ -38,6 +38,26 @@
 - **More interactive elements** — toggle (boolean variable switch), slider, order-list (drag to set resolution order), card-select battery (min/max + eligibility Expr + confirm) as engine-honest choice surfaces; roster (players/AI) belongs to the setup screen instead.
 - **Sentence view for WHEN/zones** — the rule header (event + condition) already reads as a sentence; zone routes ("hand-moves: only to Discard of the owner") and per-phase action whitelists could adopt the same inline-blank prose.
 
+## ✅ Done — Dominion catalog wave 1: complete Base 2E + Intrigue 2E (54 kingdom piles)
+- **36 new cards** (SEED_VERSION → 12): the ten missing Base 2E cards (Harbinger, Merchant, Vassal, Bureaucrat, Moneylender, Poacher, Bandit, Library, Sentry, Artisan) and ALL 26 Intrigue 2E cards (Courtyard → Upgrade, incl. Bridge's cost reduction, Duke's per-Duchy VP, Diplomat's own reaction, Minion/Torturer/Swindler/Replace attacks). Four new lobby kingdom sets: **Deck Top**, **Underlings**, **The Grand Scheme**, **Masters of Deceit**. Every set proves itself in a seeded full-game playthrough with card conservation + from-scratch VP recount; 76 new deterministic per-card probe tests.
+- **Architecture**: cards now live in per-expansion modules (`src/forge/dominion/*.ts`) coding against a typed CardKit — new expansions plug in without touching the core def builder. Engine gained `repeatWhile` (Library) plus shared infrastructure: a hidden look/set-aside staging zone and turn-scoped **cost-discount** wiring (buy legality, payment clamped at $0, gain caps, cleanup reset).
+- **Known deviations** (documented per card in the modules): single primary type per card (Nobles/Mill are Action-typed, Harem Treasure-typed — their printed VP still scores; type-sensitive effects see the primary type), Masquerade passes sequentially rather than simultaneously, "put back in any order" is fixed-order, Wishing Well names supply piles only, Courtier may repeat bonus picks, Throne-Roomed Merchant/Minion/Replace have small multi-play quirks, Secret Passage inserts top/bottom only.
+
+## 🔥 Open — the remaining Dominion expansions (engine roadmap)
+Each set below needs the named engine mechanic before its cards can be faithful; everything else in it is already expressible:
+- **Seaside / all Duration cards** — persistent next-turn effects (cards staying in play + start-of-next-turn triggers scoped to the play).
+- **Prosperity** — Platinum/Colony are trivial once the supply builder (#2) lets sets swap basics; VP tokens = a per-player variable (expressible today); Trade Route needs a supply-mat watcher.
+- **Alchemy** — Potion as a second cost currency in buy legality.
+- **Hinterlands** — mostly expressible now (on-gain abilities via tagFilter 'gain').
+- **Dark Ages** — on-trash triggers work today; Ruins/Shelters/Knights need mixed/randomized piles.
+- **Guilds/Cornucopia** — overpay at buy time; Coffers as a banked variable (expressible).
+- **Adventures** — Tavern mat (a reserve-with-call zone) + Events (buyable non-cards) + tokens.
+- **Empires** — Debt (negative-coin buys), Landmarks, split piles.
+- **Nocturne** — Night as a fourth phase (PhaseDef works today); Boons/Hexes decks; Heirlooms.
+- **Renaissance** — Villagers/Coffers (variables), Projects (persistent buys), Artifacts.
+- **Menagerie** — Exile mat, Horses (non-supply gains work — the Reserve pattern), Ways.
+- **Allies / Plunder / Rising Sun** — favors/allies, Loot, prophecies (furthest out).
+
 ## ✅ Done — auto-resolve, centered carousels, ONLINE MULTIPLAYER
 - **Forced choices resolve themselves**: any request with exactly ONE valid answer (single mandatory card/pile candidate, a lone option, a lone player target, min = max = every candidate) never opens a sheet — the engine answers it with a log line ("… only one option; resolved automatically"). Revealed choices are exempt (the sheet is the reveal), optional picks and yes/no always ask. Phases where the current player has zero legal moves already auto-skipped; response windows already auto-passed — the table now never waits on a non-decision.
 - **Mobile supply carousels center properly**: a row that fits the frame centers as a group; an overflowing row snap-centers every pile (the skin's old left-anchor override is gone).

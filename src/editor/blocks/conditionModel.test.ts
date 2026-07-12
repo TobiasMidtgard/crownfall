@@ -391,11 +391,18 @@ function collectConditions(def: GameDef): Named[] {
  *    clauses compare against numbers or text only).
  */
 function isDocumentedAdvanced(e: Expr): boolean {
+  // Type/tag checks against the STACK TOP (Diplomat's "the pending effect is
+  // an Attack") — the guided clauses only inspect $card-family bindings.
+  if ((e.kind === 'cardHasTag' || e.kind === 'cardTypeIs') && e.card.kind === 'stackTopCard') return true;
   if (e.kind !== 'compare') return false;
   const kinds = [e.left.kind, e.right.kind];
   if (kinds.includes('stackSize')) return true;
   if (kinds.includes('currentPlayer') || kinds.includes('nextPlayer')) return true;
   if (e.right.kind === 'getVar' || e.right.kind === 'zoneCount' || e.right.kind === 'cardField') return true;
+  // Arithmetic inside a comparison (the Bridge-aware buy legality's
+  // "cost ≤ coins + discount", expansion cards' cost-window checks) has no
+  // guided clause shape — documented advanced.
+  if (kinds.includes('math')) return true;
   return false;
 }
 

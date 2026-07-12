@@ -66,6 +66,8 @@ import {
 } from '../examples/dsl';
 import { DEFAULT_KINGDOM_ID, kingdomById } from '../shared/kingdoms';
 import { DOMINION_GAME_ID } from './seedDominion';
+import type { CardKit, PileSpec } from './dominion/kit';
+import { EXPANSIONS } from './dominion/expansions';
 
 // --- ids (dom_* ids are cloned from the example, new ones join the family) ---
 
@@ -77,6 +79,8 @@ const DISCARD = 'dom_zone_discard';
 const INPLAY = 'dom_zone_inplay';
 /** Unpicked kingdom piles wait here; doubles as the Black Market's stock. */
 const RESERVE = 'dom_zone_reserve';
+/** Shared staging for look-at / set-aside effects (Sentry, Bandit, Library). */
+const LOOK = 'dom_zone_look';
 
 const ACTIONS = 'dom_var_actions';
 const BUYS = 'dom_var_buys';
@@ -86,6 +90,8 @@ const IMMUNE = 'dom_var_immune';
 const EMPTY_PILES = 'dom_var_empty_piles';
 /** Per-player scratch number (Cellar's discard count, Remodel/Mine's cost cap). */
 const SCRATCH = 'dom_var_scratch';
+/** Global cost reduction this turn (Bridge); reset at cleanup. Costs floor at 0. */
+const DISCOUNT = 'dom_var_cost_discount';
 /** Set at turn end when the supply says the game is over (see buildDominionDef). */
 const GAME_OVER = 'dom_var_game_over';
 
@@ -218,14 +224,7 @@ const IS_ACTION_CARD = isA(CARD, TYPE_ACTION);
 const IS_TREASURE_CARD = isA(CARD, TYPE_TREASURE);
 
 // --- the supply catalogue (build-time truth for counts / watcher) -------------
-
-interface PileSpec {
-  name: string;
-  cost: number;
-  treasure?: boolean;
-  /** Cards per pile (basics use the original table's 2-player counts). */
-  count: number;
-}
+// PileSpec now lives in dominion/kit.ts (expansion modules speak it too).
 
 const BASIC_PILES: PileSpec[] = [
   { name: 'Copper', cost: 0, treasure: true, count: 46 },
@@ -261,6 +260,8 @@ const KINGDOM_PILES: PileSpec[] = [
   { name: 'Gardens', cost: 4, count: 10 },
   { name: 'Mine', cost: 5, count: 10 },
   { name: 'Witch', cost: 5, count: 10 },
+  // Expansion modules contribute the rest (Base 2E remainder, Intrigue 2E…).
+  ...EXPANSIONS.flatMap((x) => x.piles),
 ];
 /** Card-def ids for the cards this module adds (example ids stay as they are). */
 const NEW_CARD_ID: Record<string, string> = {
@@ -295,7 +296,10 @@ const EXAMPLE_CARD_ID: Record<string, string> = {
   Moat: 'dom_card_moat',
 };
 
-const cardIdFor = (name: string): string => NEW_CARD_ID[name] ?? EXAMPLE_CARD_ID[name];
+const EXPANSION_CARD_ID: Record<string, string> = Object.assign({}, ...EXPANSIONS.map((x) => x.ids));
+
+const cardIdFor = (name: string): string =>
+  NEW_CARD_ID[name] ?? EXAMPLE_CARD_ID[name] ?? EXPANSION_CARD_ID[name];
 
 // --- per-card type lines (typeId + tags, built from the pile catalogues) -------
 
@@ -314,11 +318,23 @@ for (const p of BASIC_PILES) {
     tags: [TAG_BASIC],
   };
 }
+// Type-line membership: the module's own attacks/reactions plus expansion
+// contributions. Primary types default to Action; Gardens-style victory
+// cards and Harem-style treasures are named explicitly.
+const ATTACK_NAMES = new Set(['Militia', 'Witch', ...EXPANSIONS.flatMap((x) => x.attackNames ?? [])]);
+const REACTION_NAMES = new Set(['Moat', ...EXPANSIONS.flatMap((x) => x.reactionNames ?? [])]);
+const VICTORY_NAMES = new Set(['Gardens', ...EXPANSIONS.flatMap((x) => x.victoryNames ?? [])]);
+const TREASURE_NAMES = new Set(EXPANSIONS.flatMap((x) => x.treasureNames ?? []));
 for (const p of KINGDOM_PILES) {
   const tags = [TAG_KINGDOM];
-  if (p.name === 'Militia' || p.name === 'Witch') tags.push(TAG_ATTACK);
-  if (p.name === 'Moat') tags.push(TAG_REACTION);
-  TYPE_LINE[p.name] = { typeId: p.name === 'Gardens' ? TYPE_VICTORY : TYPE_ACTION, tags };
+  if (ATTACK_NAMES.has(p.name)) tags.push(TAG_ATTACK);
+  if (REACTION_NAMES.has(p.name)) tags.push(TAG_REACTION);
+  TYPE_LINE[p.name] = {
+    typeId: VICTORY_NAMES.has(p.name) ? TYPE_VICTORY
+      : TREASURE_NAMES.has(p.name) ? TYPE_TREASURE
+        : TYPE_ACTION,
+    tags,
+  };
 }
 
 /** The pretty display line for KIND_F: "Treasure", "Action – Attack"… */
@@ -368,12 +384,11 @@ const gardensTotal: Expr = OWNED_ZONES
 const ownedVpTotal: Expr = OWNED_ZONES
   .map((z) => sumCards(zone(z, PLAYER), VP_F))
   .reduce((a, b) => add(a, b));
-const RECOUNT_VP: Block[] = [
-  forEachPlayer([
-    setVar(VP, ownedVpTotal, PLAYER),
-    // floor(total / 10) as (total - total % 10) / 10 — exact integer math.
-    changeVar(VP, mul(gardensTotal, div(sub(ownedTotal, mod(ownedTotal, num(10))), num(10))), PLAYER),
-  ]),
+/** The per-player recount body; expansions append Duke-style terms. */
+const RECOUNT_VP_BODY: Block[] = [
+  setVar(VP, ownedVpTotal, PLAYER),
+  // floor(total / 10) as (total - total % 10) / 10 — exact integer math.
+  changeVar(VP, mul(gardensTotal, div(sub(ownedTotal, mod(ownedTotal, num(10))), num(10))), PLAYER),
 ];
 
 /**
@@ -388,9 +403,12 @@ function gainFromSupply(opts: {
   prompt: string;
   whiff: Block[];
 }): Block[] {
+  // Bridge-aware: a discount lowers every card's cost this turn, so
+  // "cost ≤ limit" becomes "cost ≤ limit + discount" (floors at the check).
+  const cap = add(opts.limit, getVar(DISCOUNT));
   const filter = opts.treasureOnly
-    ? allOf(IS_TREASURE_CARD, lte(field(CARD, COST), opts.limit))
-    : lte(field(CARD, COST), opts.limit);
+    ? allOf(IS_TREASURE_CARD, lte(field(CARD, COST), cap))
+    : lte(field(CARD, COST), cap);
   return [
     iff(gt(countCards(zone(SUPPLY), filter), num(0)), [
       choosePileBlock({
@@ -403,6 +421,25 @@ function gainFromSupply(opts: {
     ], opts.whiff),
   ];
 }
+
+// --- the expansion kit: hands the private plumbing to dominion/ modules --------
+
+const KIT: CardKit = {
+  zones: { SUPPLY, TRASH, DECK, HAND, DISCARD, INPLAY, RESERVE, LOOK },
+  vars: { ACTIONS, BUYS, COINS, VP, IMMUNE, EMPTY_PILES, SCRATCH, DISCOUNT },
+  fields: { COST, COINS_F, VP_F, TEXT },
+  types: { ACTION: TYPE_ACTION, TREASURE: TYPE_TREASURE, VICTORY: TYPE_VICTORY, CURSE: TYPE_CURSE },
+  tags: { ATTACK: TAG_ATTACK, REACTION: TAG_REACTION, KINGDOM: TAG_KINGDOM },
+  OWNER, CARD, CHOICE, PLAYER,
+  nameIs, isA, hasTag, IS_ACTION_CARD, IS_TREASURE_CARD, div, mod, sumCards,
+  tmove, drawN, draw, choosePileBlock, playAgain, onPlay,
+  cardDef: (id, name, cost, coins, vp, text, abilities = []) => ({
+    id, name, templateId: 'dom_tpl_kingdom',
+    fields: { [COST]: cost, [COINS_F]: coins, [VP_F]: vp, [TEXT]: text },
+    abilities,
+  }),
+  gainFromSupply,
+};
 
 // --- the added cards ----------------------------------------------------------
 
@@ -1204,18 +1241,23 @@ export function buildDominionDef(): GameDef {
   // gone — choosePile asks straight off the live supply/stock.
   def.zones.push(
     { id: RESERVE, name: 'Reserve', owner: 'shared', visibility: 'none', layout: 'stack', area: 'center' },
+    // Look-at staging (Sentry/Bandit/Library): cards visit briefly during a
+    // revealed choice, then leave — no screen element shows the zone itself.
+    { id: LOOK, name: 'Aside', owner: 'shared', visibility: 'none', layout: 'stack', area: 'center' },
   );
 
   def.variables.push(
     { id: SCRATCH, name: 'Scratch counter', scope: 'perPlayer', type: 'number', initial: 0 },
     { id: GAME_OVER, name: 'Game over pending', scope: 'global', type: 'number', initial: 0, hidden: true },
+    { id: DISCOUNT, name: 'Cost discount', scope: 'global', type: 'number', initial: 0, hidden: true },
+    ...EXPANSIONS.flatMap((x) => x.variables ?? []),
   );
   // The empty-pile counter (inherited from the example) is bookkeeping too —
   // the table's supply already shows the piles themselves.
   const emptyPilesVar = def.variables.find((v) => v.id === EMPTY_PILES);
   if (emptyPilesVar) emptyPilesVar.hidden = true;
 
-  def.cards.push(...EXTRA_CARDS);
+  def.cards.push(...EXTRA_CARDS, ...EXPANSIONS.flatMap((x) => x.buildCards(KIT)));
 
   // The type/tag vocabulary + the one named filter (spec A §Dominion
   // migration). Deep-cloned: the def is keeper-editable stored data and must
@@ -1307,7 +1349,12 @@ export function buildDominionDef(): GameDef {
   }
   const revealMoat = def.actions.find((a) => a.id === 'dom_action_reveal_moat');
   if (revealMoat) {
+    // Moat's blanket immunity belongs to MOAT alone: reactions with their own
+    // effects (Diplomat) carry the Reaction tag for display/warnings but ship
+    // their own response-speed actions — without the name check, "reveal
+    // Moat" could target a Diplomat and grant immunity it doesn't offer.
     revealMoat.legality = allOf(
+      nameIs('Moat'),
       hasTag(CARD, TAG_REACTION),
       gt(STACK_SIZE, num(0)),
       eq(getVar(IMMUNE, bnd('$player')), num(0)),
@@ -1315,8 +1362,17 @@ export function buildDominionDef(): GameDef {
   }
   const buy = def.actions.find((a) => a.id === 'dom_action_buy');
   if (buy) {
+    // Bridge-aware: "reduced cost ≤ coins" checked as "cost ≤ coins +
+    // discount" (no clamping needed on the check side); the PAY side clamps
+    // at 0 via SCRATCH — Dominion costs never drop below zero.
+    buy.legality = allOf(
+      gt(getVar(BUYS), num(0)),
+      lte(field(CARD, COST), add(getVar(COINS), getVar(DISCOUNT))),
+    );
     buy.script = [
-      changeVar(COINS, neg(field(CARD, COST))),
+      setVar(SCRATCH, sub(field(CARD, COST), getVar(DISCOUNT))),
+      iff(lte(getVar(SCRATCH), num(0)), [setVar(SCRATCH, num(0))]),
+      changeVar(COINS, neg(getVar(SCRATCH))),
       changeVar(BUYS, num(-1)),
       announce(CURRENT, ' buys ', CARD, '.'),
       tmove(specific(CARD), zone(SUPPLY), zone(DISCARD), 'buy', { faceUp: true }),
@@ -1349,8 +1405,17 @@ export function buildDominionDef(): GameDef {
     name: 'Clean up',
     target: { kind: 'none' },
     legality: null,
-    script: [...cleanupSweep, END_PHASE],
+    script: [
+      ...cleanupSweep,
+      // Per-turn state fades with the turn: the Bridge discount + whatever
+      // the expansion cards track (Merchant's first-Silver flag, Conspirator's
+      // actions-played counter, Minion's stashed choice…).
+      setVar(DISCOUNT, num(0)),
+      ...EXPANSIONS.flatMap((x) => x.buildCleanupResets?.(KIT) ?? []),
+      END_PHASE,
+    ],
   });
+  def.actions.push(...EXPANSIONS.flatMap((x) => x.buildActions?.(KIT) ?? []));
 
   // Triggers: the Gardens-aware recount runs at turn end AND on every
   // tagged 'gain' (Workshop / Remodel / Mine / Witch's Curse) — the old
@@ -1359,8 +1424,12 @@ export function buildDominionDef(): GameDef {
   // after EVERY attack resolves (effectResolved), so immunity is per-attack
   // without per-card boilerplate. The pile watcher and the end-of-turn
   // judgement keep their exact original timing.
+  const recountVpScript: Block[] = [forEachPlayer([
+    ...RECOUNT_VP_BODY,
+    ...EXPANSIONS.flatMap((x) => x.buildVpTerms?.(KIT) ?? []),
+  ])];
   const recount = def.triggers.find((t) => t.id === 'dom_trigger_vp');
-  if (recount) recount.script = deepClone(RECOUNT_VP);
+  if (recount) recount.script = deepClone(recountVpScript);
   const watcher = def.triggers.find((t) => t.id === 'dom_trigger_piles');
   if (watcher) watcher.script = pileWatcherScript(defaultSet.cards);
   def.triggers = [
@@ -1370,7 +1439,7 @@ export function buildDominionDef(): GameDef {
       name: 'Recount victory points on a gain',
       event: { kind: 'cardEnterZone', zoneId: null, tag: 'gain' },
       condition: null,
-      script: deepClone(RECOUNT_VP),
+      script: deepClone(recountVpScript),
     },
     // End-of-turn timing, matching the original table: engine.js checks the
     // supply only inside endTurn (after cleanup + redraw), never mid-turn.
@@ -1397,6 +1466,7 @@ export function buildDominionDef(): GameDef {
       condition: null,
       script: [forEachPlayer([setVar(IMMUNE, num(0), PLAYER)])],
     },
+    ...EXPANSIONS.flatMap((x) => x.buildTriggers?.(KIT) ?? []),
   ];
   def.endConditions = def.endConditions.map((ec) => ({
     ...ec,

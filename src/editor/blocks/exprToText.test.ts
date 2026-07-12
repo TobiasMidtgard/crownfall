@@ -38,7 +38,7 @@ function fixture(): GameDef {
 
 const ALL_BLOCK_KINDS: Block['kind'][] = [
   'moveCards', 'draw', 'shuffle', 'deal', 'setVar', 'changeVar', 'if', 'repeat',
-  'forEachPlayer', 'forEachCard', 'choose', 'chooseCards', 'choosePile',
+  'repeatWhile', 'forEachPlayer', 'forEachCard', 'choose', 'chooseCards', 'choosePile',
   'triggerAbilities', 'announce', 'flipCards', 'cancelTopEffect', 'endPhase',
   'endTurn', 'setNextPlayer', 'endGame',
 ];

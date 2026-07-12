@@ -38,8 +38,9 @@ import { filterDisplayCards } from '../runner/layoutGeometry';
 import { buildDominionDef, kingdomCardNames, pickKingdom } from './dominionGame';
 
 const BASIC_NAMES = ['Copper', 'Silver', 'Gold', 'Estate', 'Duchy', 'Province', 'Curse'];
-/** Basics 46+40+30+8+8+8+10, kingdom stock 18 piles of 10, starters 2 × 10. */
-const TOTAL_CARDS = 150 + 180 + 20;
+/** Basics 46+40+30+8+8+8+10, kingdom stock 54 piles of 10 (18 core + 10 Base
+ *  2E + 26 Intrigue 2E), starters 2 × 10. */
+const TOTAL_CARDS = 150 + 540 + 20;
 
 const errorsOf = (def: GameDef) =>
   validateGameDef(def).filter((i) => i.severity === 'error');
@@ -495,8 +496,19 @@ describe('rebuilt card semantics (deterministic probes)', () => {
     // The stock zone is visibility 'none': the request must reveal the
     // representatives' faces or the human buys blind at a hidden price.
     expect(req.revealed).toBe(true);
-    // 8 kingdom piles wait in the stock; all cost ≤ 5 (3 coins + the 2 gained).
-    expect(req.cardIds).toHaveLength(8);
+    // Every unpicked kingdom pile costing ≤ 5 (3 coins + the 2 gained) waits
+    // in the stock: 54 piles − the 10 active − the 3 costing 6 (Artisan,
+    // Harem, Nobles) = 41. Recomputed from the pile catalogue so the pin
+    // survives future expansions.
+    const state2 = engine.getState();
+    const affordableStock = new Set(
+      state2.zones['dom_zone_reserve'].cardIds
+        .map((id) => state2.cards[id])
+        .filter((c) => Number(c.fields['dom_field_cost']) <= 5)
+        .map((c) => c.name),
+    );
+    expect(req.cardIds).toHaveLength(affordableStock.size);
+    expect(affordableStock.size).toBeGreaterThanOrEqual(41);
     expect(req.counts.every((n) => n === 10)).toBe(true);
     // Paid 3 of the 5 coins; the Workshop landed in the discard as a buy.
     expect(state.players[0].vars['dom_var_coins']).toBe(2);
@@ -856,20 +868,25 @@ describe('the TURN ticker counts rounds, not per-seat turns', () => {
 });
 
 describe('every lobby set plays to completion (invariant parity)', () => {
-  /** Recompute a player's VP from the final zones: fields + the Gardens rule. */
+  /** Recompute a player's VP from the final zones: fields + the formula
+   *  cards (Gardens: 1 per 10 owned; Duke: 1 per Duchy). */
   function computeVp(state: GameState, pid: string): number {
     let vp = 0;
     let owned = 0;
     let gardens = 0;
+    let dukes = 0;
+    let duchies = 0;
     for (const z of ['dom_zone_deck', 'dom_zone_hand', 'dom_zone_discard', 'dom_zone_inplay']) {
       for (const cid of state.zones[`${z}:${pid}`].cardIds) {
         const card = state.cards[cid];
         owned += 1;
         vp += Number(card.fields['dom_field_vp'] ?? 0);
         if (card.name === 'Gardens') gardens += 1;
+        if (card.name === 'Duke') dukes += 1;
+        if (card.name === 'Duchy') duchies += 1;
       }
     }
-    return vp + gardens * Math.floor(owned / 10);
+    return vp + gardens * Math.floor(owned / 10) + dukes * duchies;
   }
 
   // One seed per set to keep the suite quick; the stack games run long
@@ -879,6 +896,10 @@ describe('every lobby set plays to completion (invariant parity)', () => {
     { set: KINGDOM_SETS[0], seed: 41 },
     { set: KINGDOM_SETS[1], seed: 42 },
     { set: KINGDOM_SETS[2], seed: 43 },
+    { set: KINGDOM_SETS[3], seed: 44 }, // Deck Top (Base 2E remainder)
+    { set: KINGDOM_SETS[4], seed: 45 }, // Underlings (Intrigue 2E)
+    { set: KINGDOM_SETS[5], seed: 46 }, // The Grand Scheme (Intrigue 2E)
+    { set: KINGDOM_SETS[6], seed: 47 }, // Masters of Deceit (Intrigue 2E)
   ])('$set.name (seed $seed) finishes cleanly with every card accounted for', async ({ set, seed }) => {
     const def = pickKingdom(buildDominionDef(), set.cards);
     const r = await playThrough(def, { seed, stepCap: 8000 });

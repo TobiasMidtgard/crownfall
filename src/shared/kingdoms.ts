@@ -30,6 +30,26 @@ export const KINGDOM_SETS: KingdomSet[] = [
     motto: 'Curses, dealt at midnight.',
     cards: ['Witch', 'Moat', 'Chapel', 'Cellar', 'Village', 'Laboratory', 'Throne Room', 'Council Room', 'Remodel', 'Black Market'],
   },
+  {
+    id: 'deck-top', name: 'Deck Top', icon: 'crest-dominion',
+    motto: 'The crown watches every draw.',
+    cards: ['Harbinger', 'Merchant', 'Vassal', 'Bureaucrat', 'Moneylender', 'Poacher', 'Bandit', 'Library', 'Sentry', 'Artisan'],
+  },
+  {
+    id: 'underlings', name: 'Underlings', icon: 'glyph-coin',
+    motto: 'Every court needs its schemers.',
+    cards: ['Courtyard', 'Lurker', 'Pawn', 'Masquerade', 'Shanty Town', 'Steward', 'Swindler', 'Wishing Well', 'Baron', 'Bridge'],
+  },
+  {
+    id: 'grand-scheme', name: 'The Grand Scheme', icon: 'crest-veil',
+    motto: 'Plans within plans within plans.',
+    cards: ['Conspirator', 'Diplomat', 'Ironworks', 'Mill', 'Mining Village', 'Secret Passage', 'Courtier', 'Duke', 'Harem', 'Minion'],
+  },
+  {
+    id: 'deceit', name: 'Masters of Deceit', icon: 'crest-veil',
+    motto: 'Smile, trade, replace.',
+    cards: ['Nobles', 'Patrol', 'Replace', 'Torturer', 'Trading Post', 'Upgrade', 'Village', 'Smithy', 'Moat', 'Market'],
+  },
 ];
 
 export const DEFAULT_KINGDOM_ID = 'first-game';

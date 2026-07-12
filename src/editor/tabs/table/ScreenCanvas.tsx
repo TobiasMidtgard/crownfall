@@ -1452,6 +1452,7 @@ export function ScreenCanvas({
 type ZoneEl = Extract<ScreenElement, { kind: 'zone' }>;
 type TextEl = Extract<ScreenElement, { kind: 'text' }>;
 type VarTextEl = Extract<ScreenElement, { kind: 'varText' }>;
+type CounterEl = Extract<ScreenElement, { kind: 'counter' }>;
 type ButtonEl = Extract<ScreenElement, { kind: 'button' }>;
 type ShapeEl = Extract<ScreenElement, { kind: 'shape' }>;
 type LineEl = Extract<ScreenElement, { kind: 'line' }>;
@@ -1477,6 +1478,7 @@ function ElementBody({ def, el, abs, screenH, screenW, style, sample }: {
     case 'zone': return <ZoneBody def={def} el={el} abs={abs} screenH={screenH} screenW={screenW} sample={sample} />;
     case 'text': return <TextBody def={def} el={el} screenW={screenW} sample={sample} />;
     case 'varText': return <VarTextBody def={def} el={el} screenW={screenW} sample={sample} />;
+    case 'counter': return <CounterBody def={def} el={el} screenW={screenW} sample={sample} />;
     case 'button': return <ButtonBody el={el} screenW={screenW} />;
     case 'shape': return <ShapeBody el={el} style={style} screenW={screenW} />;
     case 'line': return <LineBody el={el} abs={abs} screenH={screenH} style={style} />;
@@ -1730,6 +1732,39 @@ function VarTextBody({ def, el, screenW, sample }: {
   return (
     <span className="tt-el-body tt-text-body" style={{ justifyContent: JUSTIFY[el.align] }}>
       <span style={textStyle(el, screenW)}>{`${el.label ?? ''}${value}`}</span>
+    </span>
+  );
+}
+
+/** Counter preview: label, sample value, and −/＋ steppers (dim = unbound). */
+function CounterBody({ def, el, screenW, sample }: {
+  def: GameDef;
+  el: CounterEl;
+  screenW: number;
+  sample: GameState | null;
+}) {
+  const v = def.variables.find((x) => x.id === el.varId);
+  const value = sample !== null
+    ? formatVarValue(varTextValue(def, sample, el, SAMPLE_VIEWER_ID))
+    : v ? String(v.initial) : '⚠';
+  const label = el.label ?? v?.name ?? '';
+  return (
+    <span className="tt-el-body tt-counter-body">
+      {label !== '' && <span className="tt-ct-label">{label}</span>}
+      <span className="tt-ct-row">
+        <span className={el.decActionId === null ? 'tt-ct-btn tt-ct-unbound' : 'tt-ct-btn'}>−</span>
+        <span
+          className="tt-ct-val"
+          style={{
+            fontSize: (screenW * (el.fontSize ?? 2.2)) / 100,
+            fontWeight: el.fontWeight ?? (el.bold ? 800 : 700),
+            color: el.color,
+          }}
+        >
+          {value}
+        </span>
+        <span className={el.incActionId === null ? 'tt-ct-btn tt-ct-unbound' : 'tt-ct-btn'}>＋</span>
+      </span>
     </span>
   );
 }

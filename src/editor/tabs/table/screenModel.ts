@@ -720,6 +720,66 @@ export function newVarTextElement(def: GameDef): ScreenElement | null {
   };
 }
 
+/**
+ * Null when the def has no shown-able variable. Steppers start unbound —
+ * the Counter section binds them (or one-click-creates ±1 actions).
+ */
+export function newCounterElement(def: GameDef): ScreenElement | null {
+  const v = def.variables.find((x) => x.scope !== 'perCard' && x.type === 'number')
+    ?? def.variables.find((x) => x.scope !== 'perCard');
+  if (!v) return null;
+  return {
+    kind: 'counter', id: uid('el'), name: `${v.name} counter`,
+    rect: { x: 42, y: 44, w: 16, h: 12 },
+    varId: v.id, seat: 'viewer',
+    incActionId: null, decActionId: null,
+    fontSize: 2.2,
+  };
+}
+
+/**
+ * The one-click "make this counter work" pair: two none-target ActionDefs
+ * ("<Var> +1" / "<Var> −1", each a single changeVar block). The caller
+ * appends them to def.actions and binds the counter in ONE def update.
+ */
+export function makeCounterActions(v: VariableDef): { inc: ActionDef; dec: ActionDef } {
+  const step = (name: string, by: number): ActionDef => ({
+    ...newAction(),
+    name,
+    script: [{ kind: 'changeVar', varId: v.id, target: null, by: { kind: 'num', value: by } }],
+  });
+  return { inc: step(`${v.name} +1`, 1), dec: step(`${v.name} −1`, -1) };
+}
+
+/**
+ * The Counter section's ⚡ one-click, as ONE def update: create the ±1
+ * actions, bind the counter's steppers, and — because phases whitelist their
+ * legal actions — register both in every MANUAL phase ('auto' never offers
+ * moves; 'oneAction' would let a counter tick consume the phase's single
+ * action). Null when the element isn't a counter with a live variable.
+ */
+export function bindCounterStepActions(
+  def: GameDef, layout: ScreenLayout, variant: VariantKey, elId: Id,
+): GameDef | null {
+  const el = findEl(variantElements(layout, variant), elId);
+  if (!el || el.kind !== 'counter') return null;
+  const v = def.variables.find((x) => x.id === el.varId);
+  if (!v) return null;
+  const { inc, dec } = makeCounterActions(v);
+  return {
+    ...def,
+    actions: [...def.actions, inc, dec],
+    phases: def.phases.map((p) => (
+      p.mode === 'manual' ? { ...p, actionIds: [...p.actionIds, inc.id, dec.id] } : p
+    )),
+    screenLayout: withVariantElements(
+      layout, variant,
+      updateEl(variantElements(layout, variant), elId, (c) =>
+        c.kind === 'counter' ? { ...c, incActionId: inc.id, decActionId: dec.id } : c),
+    ),
+  };
+}
+
 export function newButtonElement(def: GameDef): ScreenElement {
   const a = def.actions.find((x) => x.target.kind === 'none');
   return {
@@ -1132,7 +1192,7 @@ export function previewElementVisible(
       if (el.seat === 'shared') return false;
       if (resolveSeat(playerIds, viewerId, el.seat, state.currentPlayerIdx) === null) return false;
     }
-  } else if (el.kind === 'varText') {
+  } else if (el.kind === 'varText' || el.kind === 'counter') {
     const vd = def.variables.find((v) => v.id === el.varId);
     if (!vd || vd.scope === 'perCard') return false;
     if (vd.scope === 'perPlayer') {

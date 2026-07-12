@@ -19,7 +19,7 @@ import {
   PANEL_SWITCHER_MAX, PANEL_SWITCHER_MIN, SCREEN_PRESETS, panelName, panelSwitcherPreset,
 } from './presets';
 import {
-  makeZoneDef, newButtonElement, newGroupElement, newImageElement, newLineElement, newLogElement,
+  makeZoneDef, newButtonElement, newCounterElement, newGroupElement, newImageElement, newLineElement, newLogElement,
   newPhaseTrackElement, newShapeElement, newTextElement, newVarTextElement, newZoneElement,
 } from './screenModel';
 
@@ -127,6 +127,10 @@ export function Palette({
           if (el) onInsert(el);
         }, !hasVars)}
         {tile('button', 'Button', 'Performs a plain action (or Pass)', () => onInsert(newButtonElement(def)))}
+        {tile('stat', 'Counter', hasVars ? 'A variable with −/＋ steppers — every tick is a real action' : 'Add a variable first (Vars panel)', () => {
+          const el = newCounterElement(def);
+          if (el) onInsert(el);
+        }, !hasVars)}
         {tile('shape', 'Shape', 'A styled shape — states change it with the game', () => onInsert(newShapeElement()))}
         {tile('line', 'Line', 'A connector line (dashes, arrows, diagonals)', () => onInsert(newLineElement()))}
         {tile('log', 'Log', 'The chronicle — every move scrolls in, with turn separators', () => onInsert(newLogElement()))}

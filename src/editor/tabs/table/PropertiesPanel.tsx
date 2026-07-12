@@ -37,10 +37,11 @@ import { removeAt, updateAt } from '../../lib';
 import { ColorPicker } from './ColorPicker';
 import { defaultGradient, gradientToCss, parseGradient, type Gradient } from './gradient';
 import {
-  GROUP_MIN, MIN_H, MIN_W, MOTION_DEFAULTS, PHONE_ASPECT, addElementState, deckCardCount,
-  findEl, makeActionDef, makeVariableDef, moveElementState, newCustomDeckAt, newElementState,
-  patchMobileVariant, patchMotion, removeElementState, selectorButtonOptions, setTextDynamic,
-  snapStep, templateFieldOptions, updateEl, updateElementState, variantElements,
+  GROUP_MIN, MIN_H, MIN_W, MOTION_DEFAULTS, PHONE_ASPECT, addElementState, bindCounterStepActions,
+  deckCardCount,
+  findEl, makeActionDef, makeVariableDef, moveElementState, newCustomDeckAt,
+  newElementState, patchMobileVariant, patchMotion, removeElementState, selectorButtonOptions,
+  setTextDynamic, snapStep, templateFieldOptions, updateEl, updateElementState, variantElements,
   withVariantElements, writeSelection, type AlignOp, type VariantKey,
 } from './screenModel';
 
@@ -51,13 +52,14 @@ const RANK_LABELS: [number, string][] = [
 
 const KIND_LABELS: Record<ScreenElement['kind'], string> = {
   zone: 'zone', text: 'text', varText: 'variable', button: 'button',
-  shape: 'shape', line: 'line', log: 'log', group: 'group',
+  counter: 'counter', shape: 'shape', line: 'line', log: 'log', group: 'group',
   panelSwitcher: 'panel switcher', image: 'image',
 };
 
 type ZoneEl = Extract<ScreenElement, { kind: 'zone' }>;
 type TextEl = Extract<ScreenElement, { kind: 'text' }>;
 type VarTextEl = Extract<ScreenElement, { kind: 'varText' }>;
+type CounterEl = Extract<ScreenElement, { kind: 'counter' }>;
 type ButtonEl = Extract<ScreenElement, { kind: 'button' }>;
 type ShapeEl = Extract<ScreenElement, { kind: 'shape' }>;
 type LineEl = Extract<ScreenElement, { kind: 'line' }>;
@@ -409,6 +411,7 @@ function ElementProps(props: PropertiesPanelProps & { el: ScreenElement }) {
       {el.kind === 'zone' && <ZoneSection {...props} el={el} />}
       {el.kind === 'text' && <TextSection def={def} el={el} onPatchEl={onPatchEl} />}
       {el.kind === 'varText' && <VarTextSection {...props} el={el} />}
+      {el.kind === 'counter' && <CounterSection {...props} el={el} />}
       {el.kind === 'button' && <ButtonSection {...props} el={el} />}
       {el.kind === 'shape' && <ShapeSection el={el} onPatchEl={onPatchEl} />}
       {el.kind === 'line' && <LineSection el={el} onPatchEl={onPatchEl} />}
@@ -1039,6 +1042,136 @@ function VarTextSection(props: PropertiesPanelProps & { el: VarTextEl }) {
 }
 
 // ---------------------------------------------------------------------------
+// Counter (interactive variable stepper: −/＋ perform REAL plain actions)
+// ---------------------------------------------------------------------------
+
+function CounterSection(props: PropertiesPanelProps & { el: CounterEl }) {
+  const { def, layout, variant, el, onPatchEl, onChangeDef } = props;
+  const [creating, setCreating] = useState(false);
+  const patch = (p: Partial<CounterEl>) =>
+    onPatchEl(el.id, (c) => (c.kind === 'counter' ? { ...c, ...p } : c));
+  const vars = def.variables.filter((v) => v.scope !== 'perCard');
+  const vd = def.variables.find((v) => v.id === el.varId);
+  const plainActions = def.actions.filter((a) => a.target.kind === 'none');
+
+  /** ONE def update: append the variable AND bind this counter to it. */
+  const createVariable = (v: VariableDef) => {
+    setCreating(false);
+    onChangeDef({
+      ...def,
+      variables: [...def.variables, v],
+      screenLayout: withVariantElements(
+        layout, variant,
+        updateEl(variantElements(layout, variant), el.id, (c) =>
+          c.kind === 'counter' ? { ...c, varId: v.id } : c),
+      ),
+    });
+  };
+
+  /**
+   * ONE def update: append "<Var> +1"/"<Var> −1" actions, bind both steppers,
+   * and register the actions in every manual phase (phases whitelist moves).
+   */
+  const createStepActions = () => {
+    const next = bindCounterStepActions(def, layout, variant, el.id);
+    if (next !== null) onChangeDef(next);
+  };
+
+  const stepPicker = (side: 'incActionId' | 'decActionId', label: string) => (
+    <label className="field">
+      <span>{label}</span>
+      <select
+        className="select"
+        value={el[side] ?? ''}
+        onChange={(e) => patch({ [side]: e.target.value === '' ? null : e.target.value } as Partial<CounterEl>)}
+      >
+        <option value="">No button</option>
+        {el[side] !== null && !plainActions.some((a) => a.id === el[side])
+          && <option value={el[side]!}>⚠ missing action</option>}
+        {plainActions.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+      </select>
+    </label>
+  );
+
+  return (
+    <section className="tt-prop-section">
+      <h4>Counter</h4>
+      <label className="field">
+        <span>Variable</span>
+        <div className="tt-inline-add">
+          <select className="select" value={el.varId} onChange={(e) => patch({ varId: e.target.value })}>
+            {!vars.some((v) => v.id === el.varId) && <option value={el.varId}>⚠ missing variable</option>}
+            {vars.map((v) => (
+              <option key={v.id} value={v.id}>{v.name}{v.scope === 'perPlayer' ? ' (per player)' : ''}</option>
+            ))}
+          </select>
+          <button type="button" className="btn" onClick={() => setCreating(true)}>
+            ＋ New variable
+          </button>
+        </div>
+      </label>
+      {creating && (
+        <NewVariableModal onClose={() => setCreating(false)} onCreate={createVariable} />
+      )}
+      {vd?.scope === 'perPlayer' && (
+        <label className="field">
+          <span>Whose value</span>
+          <select
+            className="select"
+            value={el.seat === 'shared' ? 'viewer' : el.seat}
+            onChange={(e) => patch({ seat: e.target.value as SeatRef })}
+          >
+            {seatOptions(def).map((s) => <option key={s} value={s}>{SEAT_LABELS[s]}</option>)}
+          </select>
+        </label>
+      )}
+      <label className="field">
+        <span>Label</span>
+        <input
+          type="text"
+          className="input"
+          placeholder={vd?.name ?? ''}
+          value={el.label ?? ''}
+          onChange={(e) => patch({ label: e.target.value || undefined })}
+        />
+      </label>
+      {stepPicker('incActionId', '＋ performs')}
+      {stepPicker('decActionId', '− performs')}
+      {vd !== undefined && el.incActionId === null && el.decActionId === null && (
+        <button type="button" className="btn" onClick={createStepActions}>
+          ⚡ Create ±1 actions &amp; bind
+        </button>
+      )}
+      <p className="faint tt-prop-hint">
+        Every tick is a REAL plain action — it runs through the engine (rules can react,
+        "variable changed" triggers fire), and the buttons disable while the action isn't
+        legal. Edit the scripts in the Actions panel (add costs, caps, side effects).
+      </p>
+      <label className="field">
+        <span>Enabled when <span className="tt-unit">requires…</span></span>
+        <ConditionBuilder
+          def={def}
+          value={el.enabledWhen ?? null}
+          onChange={(enabledWhen) => patch({ enabledWhen })}
+          bindings={['$viewer']}
+          allowNull
+          nullLabel="Always (legality only)"
+        />
+      </label>
+      <p className="faint tt-prop-hint">
+        While the condition fails the steppers disable and players see a
+        "requires …" tag naming it.
+      </p>
+      <div className="tt-grid">
+        <Stepper label="Value size" value={el.fontSize ?? 2.2} min={0.8} max={8} step={0.1} onChange={(fontSize) => patch({ fontSize })} />
+      </div>
+      <ColorRow label="Color" value={el.color} placeholder="Default text" onChange={(color) => patch({ color })} />
+      <TextStyleControls el={el} patch={patch} />
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // "Show only for [selector button]" (every element kind)
 // ---------------------------------------------------------------------------
 
@@ -1174,6 +1307,21 @@ function ButtonSection(props: PropertiesPanelProps & { el: ButtonEl }) {
               ⚙ Edit script… <span className="tt-script-hint">({bound.script.length} block{bound.script.length === 1 ? '' : 's'})</span>
             </button>
           )}
+          <label className="field">
+            <span>Enabled when <span className="tt-unit">requires…</span></span>
+            <ConditionBuilder
+              def={def}
+              value={el.enabledWhen ?? null}
+              onChange={(enabledWhen) => patch({ enabledWhen })}
+              bindings={['$viewer']}
+              allowNull
+              nullLabel="Always (legality only)"
+            />
+          </label>
+          <p className="faint tt-prop-hint">
+            On top of move legality: while this condition fails the button disables and
+            players see a "requires …" tag naming it.
+          </p>
         </>
       )}
       <label className="field">

@@ -25,7 +25,7 @@ import {
   applyExternalSelection, burnZoneKeys, buttonMoves, elementContentSig, logRows,
   noneTargetMoveByAction, readSelection, renderDisplayValue, renderTextParts, selStorageKey,
   selectionVersion, selectorContextFrom, selectorGateOpen, subscribeSelection,
-  visibleButtonActionIds, writeSelection, zoneInstKey,
+  varTextValue, visibleButtonActionIds, writeSelection, zoneInstKey,
 } from './layout';
 import { filterDisplayCards, resolveElementAppearance, resolveSeat } from './layoutGeometry';
 
@@ -772,5 +772,64 @@ describe('panelSwitcher is walked by visibleButtonActionIds + burnZoneKeys', () 
     const state = h.state();
     expect(burnZoneKeys(def, state, def.screenLayout!.elements, 'p0'))
       .toEqual(new Set(['trash']));
+  });
+});
+
+describe('counter elements (interactive variable steppers)', () => {
+  function counterDef(): GameDef {
+    const counter: ScreenElement = {
+      kind: 'counter', id: 'el_ct', name: 'LP counter', rect,
+      varId: 'lp', seat: 'viewer',
+      incActionId: 'heal', decActionId: 'hurt',
+    };
+    return makeDef({
+      variables: [vdef('lp', 'perPlayer', 'number', 8000)],
+      zones: [zone('deck')],
+      phases: [phaseDef('main', 'manual', ['heal', 'hurt'])],
+      actions: [actionDef('heal'), actionDef('hurt')],
+      screenLayout: { aspect: null, elements: [counter] },
+    });
+  }
+
+  it('registers both stepper actions as visible screen controls (bar dedupe)', async () => {
+    const def = counterDef();
+    const h = harness(def);
+    await h.engine.start();
+    expect(visibleButtonActionIds(def, h.state(), def.screenLayout!.elements, 'p0'))
+      .toEqual(new Set(['heal', 'hurt']));
+  });
+
+  it('reads the viewer seat value like varText and re-signs on change', async () => {
+    const def = counterDef();
+    const h = harness(def);
+    await h.engine.start();
+    const state = h.state();
+    const el = def.screenLayout!.elements[0] as Extract<ScreenElement, { kind: 'counter' }>;
+    expect(varTextValue(def, state, el, 'p0')).toBe(8000);
+    const before = elementContentSig(def, state, el, 'p0', null);
+    const drained: GameState = {
+      ...state,
+      players: state.players.map((p) => (
+        p.id === 'p0' ? { ...p, vars: { ...p.vars, lp: 7500 } } : p
+      )),
+    };
+    expect(varTextValue(def, drained, el, 'p0')).toBe(7500);
+    expect(elementContentSig(def, drained, el, 'p0', null)).not.toBe(before);
+    // The opponent's copy is untouched — viewer-relative like varText.
+    expect(varTextValue(def, drained, el, 'p1')).toBe(8000);
+  });
+
+  it('an unbound side stays out of the visible-control set', async () => {
+    const def = counterDef();
+    const layout = def.screenLayout!;
+    const el = layout.elements[0] as Extract<ScreenElement, { kind: 'counter' }>;
+    const halfBound: GameDef = {
+      ...def,
+      screenLayout: { ...layout, elements: [{ ...el, decActionId: null }] },
+    };
+    const h = harness(halfBound);
+    await h.engine.start();
+    expect(visibleButtonActionIds(halfBound, h.state(), halfBound.screenLayout!.elements, 'p0'))
+      .toEqual(new Set(['heal']));
   });
 });

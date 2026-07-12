@@ -29,7 +29,19 @@
 ## 🔥 Open — Deckhand follow-ups (from the pasted table-builder)
 - **Card tray** — Deckhand's bottom card strip: drag a card from the tray onto any holder on the canvas to seed its starting contents (writes deck entries). Big authoring win, needs canvas drop→DeckDef wiring.
 - **Snap-in combos** — drop a label onto a button to set its text, a button onto an element to give it tap actions, anything into a panel to auto-stack.
-- **More Deckhand elements** — counter (variable + ± buttons as one element), dice, token — need engine-backed equivalents to stay honest with play.
+- **More Deckhand elements** — dice, token — need engine-backed equivalents to stay honest with play. (Counter shipped — see Done.)
+
+## 🔥 Open — Tablewright / Card-UI-Designer follow-ups (from the two pasted prototypes)
+- **Guard rules ("before" timing)** — Tablewright's killer mechanic: a rule that runs while a move is PENDING and can **veto** it (with a log reason) or **redirect** the card elsewhere (Possession-style). Our stack/response system covers reactions; a declarative before-gate on `cardEnterZone` would replace hand-rolled legality in many defs and power "illegal play bounces back with a reason".
+- **Scenes / overlay screens** — Card UI Designer's start screen & popovers: authorable overlay panels (own scene vs on-card popover, open on start / from a script block), on top of today's selector-switching. Pairs with a `openScene` block.
+- **Hold-to-inspect card info panel** — hold a card at the table → pinned info panel (name/type/keywords/rules/flavor from template fields), with the progress ring. No card-inspect affordance exists today.
+- **More interactive elements** — toggle (boolean variable switch), slider, order-list (drag to set resolution order), card-select battery (min/max + eligibility Expr + confirm) as engine-honest choice surfaces; roster (players/AI) belongs to the setup screen instead.
+- **Sentence view for WHEN/zones** — the rule header (event + condition) already reads as a sentence; zone routes ("hand-moves: only to Discard of the owner") and per-phase action whitelists could adopt the same inline-blank prose.
+
+## ✅ Done — Tablewright + Card UI Designer wave 1
+- **Sentence scripts**: every script editor (Rules, Actions, Flow, card Abilities, button scripts) now opens as Tablewright-style PROSE — "then move cards [1] from [Deck] to [Hand]" with tap-to-edit blanks, gold keywords, indented then/else/do lanes, ↑↓/✕ row tools and "＋ effect" pickers. It's a second lossless projection of the same Block[] tree; the **Graph** view is one toggle away (choice remembered per device).
+- **"Requires …" gates**: buttons (and counters) take an **Enabled when** condition on top of engine legality — while it fails the control disables and players see a `requires <condition>` tag naming it (e.g. "requires Coins of $viewer ≥ 5").
+- **Counter element**: a live variable readout with −/＋ steppers where **every tick is a real engine action** (triggers fire, legality applies). The inspector's ⚡ one-click creates "<Var> +1/−1" actions, binds both steppers AND registers them in every manual phase (phases whitelist their moves).
 
 ## ✅ Done (delete once confirmed shipped)
 - **Mockup shell** (`817617f`): one top bar — "Projects › name" breadcrumb, the canvas tools (Desktop/Mobile · aspect · undo/redo · zoom · Fit · fullscreen) portaled up from the canvas, save hint, ▶ Play, and a ⚙ gear that opens Info (Info left the rail). Right rail gained **SCREEN | INSPECTOR** tabs over the properties box. Board-state bar sits below the canvas. Crimson kept.

@@ -348,3 +348,123 @@
 @media (max-width: 640px) {
   .gr-canvas { height: clamp(280px, 52vh, 420px); }
 }
+
+/* --- sentence view (Tablewright-style prose scripts) ---------------------------
+   Same tree as the graph, read as language: "then move cards [1] from [Deck]
+   to [Hand]". Keywords glow gold; container lanes indent under a spine. */
+
+.bse-root { display: flex; flex-direction: column; gap: 8px; }
+.bse-viewbar {
+  display: flex;
+  gap: 2px;
+  align-self: flex-end;
+  padding: 2px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.bse-view {
+  min-height: 26px;
+  padding: 2px 12px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.bse-view:hover { color: var(--text); }
+.bse-view.on { background: var(--panel); color: var(--accent-2); }
+
+.sn-script {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 2;
+}
+.sn-block { display: flex; flex-direction: column; gap: 2px; }
+.sn-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 7px;
+  padding: 2px 4px;
+  border-radius: 8px;
+}
+.sn-line:hover { background: color-mix(in srgb, var(--panel) 70%, transparent); }
+.sn-kw {
+  flex-shrink: 0;
+  color: var(--accent-2);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+}
+.sn-verb { color: var(--text); font-weight: 600; white-space: nowrap; }
+.sn-word, .sn-line .gr-flabel { color: var(--muted); font-size: 0.74rem; }
+.sn-bit { display: inline-flex; align-items: center; gap: 5px; min-width: 0; }
+
+/* compact controls inside sentence lines (mirror of the .gr-node scoping) */
+.sn-line .blk-chip,
+.sn-line .xp-chip {
+  min-height: 24px;
+  padding: 2px 8px;
+  font-size: 0.72rem;
+  max-width: 34ch;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sn-line .input.gr-inline-num { width: 58px; min-height: 24px; padding: 2px 6px; font-size: 0.74rem; border-radius: 6px; }
+.sn-line .input.gr-inline-text { width: 13ch; flex: 0 1 auto; min-height: 24px; padding: 2px 6px; font-size: 0.74rem; border-radius: 6px; }
+
+.sn-tools {
+  display: inline-flex;
+  gap: 2px;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.sn-line:hover .sn-tools, .sn-line:focus-within .sn-tools { opacity: 1; }
+.sn-mini {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 0 4px;
+  border: none;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.sn-mini:hover:not(:disabled) { background: var(--panel); color: var(--text); }
+.sn-mini:disabled { opacity: 0.35; cursor: default; }
+.sn-mini-del:hover:not(:disabled) { color: var(--danger); }
+
+.sn-lane {
+  display: flex;
+  gap: 8px;
+  margin-left: 14px;
+  padding-left: 12px;
+  border-left: 1px solid color-mix(in srgb, var(--accent-2) 35%, transparent);
+}
+.sn-lane-word {
+  flex-shrink: 0;
+  padding-top: 4px;
+  color: var(--accent-2);
+  font-weight: 600;
+  font-size: 0.74rem;
+}
+.sn-lane-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+
+.sn-addline { padding: 1px 4px; }
+.sn-addline .btn { font-size: 0.72rem; }
+
+@media (pointer: coarse) {
+  .sn-tools { opacity: 1; }
+}

@@ -240,6 +240,9 @@ export function validateGameDef(def: GameDef): ValidationIssue[] {
           if (seen.has(el.id)) err(here, 'Duplicate element id.');
           seen.add(el.id);
           if (el.visible) walkExpr(el.visible, `${here} > visible when`);
+          if ((el.kind === 'button' || el.kind === 'counter') && el.enabledWhen) {
+            walkExpr(el.enabledWhen, `${here} > enabled when`);
+          }
           for (const st of el.states ?? []) {
             walkExpr(st.when, `${here} > state "${st.name}"`);
           }
@@ -317,6 +320,28 @@ export function validateGameDef(def: GameDef): ValidationIssue[] {
                 }
               }
               break;
+            case 'counter': {
+              const vd = def.variables.find((v) => v.id === el.varId);
+              if (!vd) err(here, 'Steps a variable that no longer exists.');
+              else if (vd.scope === 'perCard') err(here, 'Per-card variables cannot be shown as a counter.');
+              else if (vd.scope === 'perPlayer' && el.seat === 'shared') {
+                err(here, `"${vd.name}" is per-player — pick whose value to show.`);
+              }
+              for (const [aid, side] of [[el.incActionId, '＋'], [el.decActionId, '−']] as const) {
+                if (aid === null) continue;
+                if (!actionIds.has(aid)) err(here, `The ${side} button triggers an action that no longer exists.`);
+                else {
+                  const a = def.actions.find((x) => x.id === aid)!;
+                  if (a.target.kind !== 'none') {
+                    err(here, `"${a.name}" needs a card/zone target — counter buttons can only trigger plain actions.`);
+                  }
+                }
+              }
+              if (el.incActionId === null && el.decActionId === null) {
+                warn(here, 'Neither stepper is bound — this counter is display-only (a varText also works).');
+              }
+              break;
+            }
             case 'text':
               for (const part of el.parts ?? []) {
                 if (typeof part !== 'string') walkExpr(part, `${here} > text`);

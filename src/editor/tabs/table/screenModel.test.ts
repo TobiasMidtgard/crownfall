@@ -15,11 +15,13 @@ import { newGameDef } from '../../../shared/defaults';
 import { harness, makeDef, zone } from '../../../engine/testkit';
 import {
   MOTION_DEFAULTS, PHONE_ASPECT, addElementState, alignElements, applyElementState,
+  bindCounterStepActions,
   canDropInto, containerCanFlow, isFlowChild, newFlowGroup, newImageElement, slotChildrenOf,
   buildStarterLayout, cloneElementsWithNewIds, createMobileVariant, deckCardCount,
   deepestGroupAt, deleteMobileVariant, distributeElements, duplicateEls, findEl, groupSiblings,
-  indexElements, insertIntoFocusedChildren, makeActionDef, makeVariableDef, makeZoneDef,
-  moveElementState, newCustomDeckAt, newElementState, newLineElement, newLogElement,
+  indexElements, insertIntoFocusedChildren, makeActionDef, makeCounterActions, makeVariableDef,
+  makeZoneDef,
+  moveElementState, newCounterElement, newCustomDeckAt, newElementState, newLineElement, newLogElement,
   newPhaseTrackElement, newShapeElement, patchMobileVariant, patchMotion, pathToEl,
   placeRelativeEl, previewShownMap, pruneNested, removeElementState, removeEls,
   reorderSibling, reparentEl, resolveDropParent, selectorButtonOptions, selectorHiddenIds, setTextDynamic,
@@ -1283,5 +1285,67 @@ describe('canDropInto + reparent slot binding', () => {
     const grouped = groupSiblings([flowKid, other], [flowKid.id, other.id]);
     const innerAfter = grouped && findEl(grouped.elements, flowKid.id);
     expect(innerAfter?.layout?.mode).toBe('grid');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Counter element factory + one-click ±1 actions
+// ---------------------------------------------------------------------------
+
+describe('counter element (newCounterElement + makeCounterActions)', () => {
+  it('binds the first shown-able NUMBER variable, steppers unbound', () => {
+    const def = richDef(); // v1 Score (perPlayer number) is first
+    const el2 = newCounterElement(def);
+    expect(el2).not.toBeNull();
+    if (el2?.kind !== 'counter') throw new Error('expected a counter');
+    expect(el2.varId).toBe('v1');
+    expect(el2.seat).toBe('viewer');
+    expect(el2.incActionId).toBeNull();
+    expect(el2.decActionId).toBeNull();
+  });
+
+  it('returns null when the def has no shown-able variable', () => {
+    const def = { ...richDef(), variables: [] };
+    expect(newCounterElement(def)).toBeNull();
+  });
+
+  it('makeCounterActions builds two none-target ±1 changeVar actions', () => {
+    const v: VariableDef = { id: 'v1', name: 'Score', scope: 'perPlayer', type: 'number', initial: 0 };
+    const { inc, dec } = makeCounterActions(v);
+    expect(inc.target).toEqual({ kind: 'none' });
+    expect(dec.target).toEqual({ kind: 'none' });
+    expect(inc.script).toEqual([{ kind: 'changeVar', varId: 'v1', target: null, by: { kind: 'num', value: 1 } }]);
+    expect(dec.script).toEqual([{ kind: 'changeVar', varId: 'v1', target: null, by: { kind: 'num', value: -1 } }]);
+    expect(inc.id).not.toBe(dec.id);
+    expect(inc.name).toContain('Score');
+  });
+
+  it('bindCounterStepActions binds the steppers AND registers the actions in manual phases only', () => {
+    const base = richDef();
+    const counter = newCounterElement(base);
+    if (counter?.kind !== 'counter') throw new Error('expected a counter');
+    const phases: PhaseDef[] = [
+      { id: 'ph_a', name: 'Action', onEnter: [], actionIds: ['a1'], mode: 'manual' },
+      { id: 'ph_b', name: 'Draw', onEnter: [], actionIds: [], mode: 'oneAction' },
+      { id: 'ph_c', name: 'Upkeep', onEnter: [], actionIds: [], mode: 'auto' },
+    ];
+    const layout: ScreenLayout = { aspect: null, elements: [counter] };
+    const def: GameDef = { ...base, phases, screenLayout: layout };
+
+    const next = bindCounterStepActions(def, layout, 'desktop', counter.id);
+    expect(next).not.toBeNull();
+    const bound = findEl(next!.screenLayout!.elements, counter.id);
+    if (bound?.kind !== 'counter') throw new Error('expected the bound counter');
+    expect(bound.incActionId).not.toBeNull();
+    expect(bound.decActionId).not.toBeNull();
+    // Two new none-target actions exist…
+    expect(next!.actions.map((a) => a.id)).toEqual(
+      expect.arrayContaining([bound.incActionId, bound.decActionId]),
+    );
+    // …reachable in the MANUAL phase (phases whitelist their legal moves)…
+    expect(next!.phases[0].actionIds).toEqual(['a1', bound.incActionId, bound.decActionId]);
+    // …but NOT in oneAction (a tick would consume the phase) or auto phases.
+    expect(next!.phases[1].actionIds).toEqual([]);
+    expect(next!.phases[2].actionIds).toEqual([]);
   });
 });

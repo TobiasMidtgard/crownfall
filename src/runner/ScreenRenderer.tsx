@@ -50,15 +50,16 @@
  *     are decorative.
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
-import type { FlowLayout, Id, LayoutStyle, Move, ScreenElement } from '../shared/types';
+import type { Expr, FlowLayout, Id, LayoutStyle, Move, ScreenElement } from '../shared/types';
 import { PASS_ACTION_ID } from '../shared/types';
 import { isDisplayVisible } from '../engine';
+import { exprToText } from '../editor/blocks/exprToText';
 import { prefersReducedMotion } from './flip';
 import { subtreeHasKeyGroup } from './keyboard';
 import {
   cardPxFromScale, collapseStorageKey, elementContentSig, formatVarValue, logRows,
   renderTextParts, selectionVersion, selectorContext, selectorGateOpen, subscribeSelection,
-  writeSelection, zoneInstKey, type SelectorContext,
+  varTextValue, writeSelection, zoneInstKey, type SelectorContext,
 } from './layout';
 import {
   filterDisplayCards, flowChildCss, flowLayoutCss, layoutStyleCss, lineColor, lineEndpoints,
@@ -288,7 +289,8 @@ function elementRenders(ctx: TableCtx, el: ScreenElement): boolean {
       if (el.seat === 'shared') return false;
       return resolveSeat(playerIds, ctx.viewerId, el.seat, ctx.state.currentPlayerIdx) !== null;
     }
-    case 'varText': {
+    case 'varText':
+    case 'counter': {
       const vd = ctx.def.variables.find((v) => v.id === el.varId);
       if (!vd || vd.scope === 'perCard') return false;
       if (vd.scope === 'global') return true;
@@ -298,6 +300,21 @@ function elementRenders(ctx: TableCtx, el: ScreenElement): boolean {
     default:
       return true;
   }
+}
+
+/**
+ * An element's authored enable gate (button/counter `enabledWhen`): null when
+ * always enabled, else the failing Expr — the caller disables the control and
+ * shows a "requires <condition>" tag naming it, Card-UI-Designer style.
+ */
+function failedGate(ctx: TableCtx, expr: Expr | null | undefined): Expr | null {
+  if (expr == null) return null;
+  return isDisplayVisible(ctx.def, ctx.state, expr, ctx.viewerId) ? null : expr;
+}
+
+/** The "requires …" tag pinned under a gated control while its gate fails. */
+function RequiresTag({ ctx, expr }: { ctx: TableCtx; expr: Expr }) {
+  return <span className="rn-req-tag">requires {exprToText(ctx.def, expr)}</span>;
 }
 
 /**
@@ -540,6 +557,72 @@ function VarTextView({ ctx, el, screenW }: {
   );
 }
 
+/**
+ * The counter element: label, live value (ticker bump like varText) and −/＋
+ * steppers that perform REAL none-target actions — every tick flows through
+ * the engine (legality, triggers, varChanged). A stepper disables while its
+ * action has no legal move or the authored `enabledWhen` gate fails; a
+ * failing gate also shows the "requires …" tag.
+ */
+function CounterView({ ctx, el, screenW, buttonMove, onMove }: {
+  ctx: TableCtx;
+  el: Extract<ScreenElement, { kind: 'counter' }>;
+  screenW: number;
+  buttonMove: ReadonlyMap<Id, Move>;
+  onMove: (m: Move) => void;
+}) {
+  const { def, state } = ctx;
+  const value = varTextValue(def, state, el, ctx.viewerId);
+  const text = formatVarValue(value);
+  const prev = useRef(text);
+  const [n, setN] = useState(0);
+  useEffect(() => {
+    if (prev.current !== text) {
+      prev.current = text;
+      setN((v) => v + 1);
+    }
+  }, [text]);
+  if (value === undefined && def.variables.every((v) => v.id !== el.varId)) return null;
+  const gate = failedGate(ctx, el.enabledWhen);
+  const vd = def.variables.find((v) => v.id === el.varId);
+  const label = el.label ?? vd?.name ?? '';
+  const step = (actionId: Id | null, glyph: string, what: string) => {
+    if (actionId === null) return null;
+    const move = gate === null ? buttonMove.get(actionId) : undefined;
+    return (
+      <button
+        type="button"
+        className="rn-ct-btn"
+        disabled={move === undefined}
+        aria-label={`${what} ${label || 'counter'}`}
+        onClick={move !== undefined ? () => onMove(move) : undefined}
+      >
+        {glyph}
+      </button>
+    );
+  };
+  return (
+    <div className="rn-sl-counter" style={{ color: el.color, ...textStyleCss(el) }}>
+      {label !== '' && <span className="rn-ct-label">{label}</span>}
+      <span className="rn-ct-row">
+        {step(el.decActionId, '−', 'Decrease')}
+        <span
+          key={n}
+          className={`rn-ct-val${n > 0 ? ' rn-ticker-bump' : ''}`}
+          style={{
+            fontSize: Math.max(9, (screenW * (el.fontSize ?? 2.2)) / 100),
+            fontWeight: el.fontWeight ?? (el.bold ? 800 : 700),
+          }}
+        >
+          {text}
+        </span>
+        {step(el.incActionId, '＋', 'Increase')}
+      </span>
+      {gate !== null && <RequiresTag ctx={ctx} expr={gate} />}
+    </div>
+  );
+}
+
 /** The chronicle: bottom-anchored scrolling log with turn separators. */
 function LogView({ ctx, el, screenW }: {
   ctx: TableCtx;
@@ -778,20 +861,37 @@ function ElementBody({ ctx, el, selCtx, style, screenW, buttonMove, onMove }: {
       if (el.actionId === null) {
         return <div className="rn-sl-btn rn-sl-deco" style={btnStyle}>{el.label}</div>;
       }
-      const move = buttonMove.get(el.actionId);
+      // Authored gate on top of engine legality: while `enabledWhen` fails the
+      // button disables and names its condition (the "requires …" tag).
+      const gate = failedGate(ctx, el.enabledWhen);
+      const move = gate === null ? buttonMove.get(el.actionId) : undefined;
       const isPass = el.actionId === PASS_ACTION_ID;
       return (
-        <button
-          type="button"
-          className={`rn-sl-btn${isPass && move ? ' rn-sl-pass' : ''}`}
-          style={btnStyle}
-          disabled={move === undefined}
-          onClick={move !== undefined ? () => onMove(move) : undefined}
-        >
-          {el.label}
-        </button>
+        <>
+          <button
+            type="button"
+            className={`rn-sl-btn${isPass && move ? ' rn-sl-pass' : ''}`}
+            style={btnStyle}
+            disabled={move === undefined}
+            onClick={move !== undefined ? () => onMove(move) : undefined}
+          >
+            {el.label}
+          </button>
+          {gate !== null && <RequiresTag ctx={ctx} expr={gate} />}
+        </>
       );
     }
+
+    case 'counter':
+      return (
+        <CounterView
+          ctx={ctx}
+          el={el}
+          screenW={screenW}
+          buttonMove={buttonMove}
+          onMove={onMove}
+        />
+      );
 
     case 'shape': {
       const css = layoutStyleCss(style) as React.CSSProperties;

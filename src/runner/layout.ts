@@ -8,7 +8,7 @@
  */
 import type {
   CardInstance, CardTemplate, Expr, GameDef, GameState, Id, LogEntry, Move, PlayerState,
-  RuntimeValue, ScreenElement, ZoneDef,
+  RuntimeValue, ScreenElement, SeatRef, ZoneDef,
 } from '../shared/types';
 import { PASS_ACTION_ID } from '../shared/types';
 import { evalDisplayExpr, isDisplayVisible } from '../engine';
@@ -298,6 +298,10 @@ export function visibleButtonActionIds(
       if (el.kind === 'button' && el.actionId !== null && el.role !== 'selector') {
         out.add(el.actionId);
       }
+      if (el.kind === 'counter') {
+        if (el.incActionId !== null) out.add(el.incActionId);
+        if (el.decActionId !== null) out.add(el.decActionId);
+      }
       // Descend into ANY container (group, panelSwitcher, or overlay children),
       // not just groups — else buttons inside a panelSwitcher panel are missed
       // and their move double-renders in the auto action bar.
@@ -378,11 +382,14 @@ export function renderTextParts(
     .join('');
 }
 
-/** A varText element's current value (undefined = element renders nothing). */
+/**
+ * A variable readout's current value (undefined = element renders nothing).
+ * Shared by varText and counter elements — anything with a varId + seat.
+ */
 export function varTextValue(
   def: GameDef,
   state: GameState,
-  el: Extract<ScreenElement, { kind: 'varText' }>,
+  el: { varId: Id; seat: SeatRef },
   viewerId: Id,
 ): RuntimeValue | undefined {
   const vd = def.variables.find((v) => v.id === el.varId);
@@ -415,6 +422,7 @@ export function elementContentSig(
       return `${st}|${text}`;
     }
     case 'varText':
+    case 'counter':
       return `${st}|${formatVarValue(varTextValue(def, state, el, viewerId))}`;
     case 'shape':
       return `${st}|${el.label ?? ''}`;

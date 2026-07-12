@@ -386,6 +386,12 @@ export type ScreenElement =
       actionId: Id | null;
       label: string;
       fontSize?: number;
+      /**
+       * Authored enable gate on top of engine legality: while this display
+       * expression ($viewer bound) is falsy the button renders disabled with
+       * a "requires …" tag naming the condition. null/absent = legality only.
+       */
+      enabledWhen?: Expr | null;
       /** Custom silhouette (clips fill + label). Absent = a rounded rect. */
       shape?: ShapeKind;
       /**
@@ -399,6 +405,30 @@ export type ScreenElement =
       role?: 'action' | 'selector';
       /** The radio-set name this selector button belongs to (role 'selector'). */
       selectorGroup?: string;
+    })
+  /**
+   * An interactive variable stepper: label, live value, and −/＋ buttons that
+   * perform REAL none-target actions (usually one changeVar each), so every
+   * tick flows through the engine — legality, triggers, varChanged events.
+   * A null side hides that button (a display-plus-increment-only counter).
+   */
+  | (ScreenElementBase & TextStyle & {
+      kind: 'counter';
+      varId: Id;
+      /** Whose value (perPlayer vars); ignored for globals. */
+      seat: SeatRef;
+      /** Small-caps caption above the value; defaults to the variable name. */
+      label?: string;
+      /** Value size, % of screen width. */
+      fontSize?: number;
+      color?: string;
+      bold?: boolean;
+      /** Action performed by ＋ (a none-target ActionDef id). null = no button. */
+      incActionId: Id | null;
+      /** Action performed by − (a none-target ActionDef id). null = no button. */
+      decActionId: Id | null;
+      /** Authored enable gate (like button.enabledWhen): falsy ⇒ steppers disable with a "requires …" tag. */
+      enabledWhen?: Expr | null;
     })
   /** A styled shape; states drive its fill/border (indicators, slots, markers). */
   | (ScreenElementBase & {

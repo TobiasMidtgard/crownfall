@@ -527,6 +527,7 @@ export function validateGameDef(def: GameDef): ValidationIssue[] {
       case 'if':
         walkExpr(b.cond, where); walkBlocks(b.then, `${where} > then`); walkBlocks(b.else, `${where} > else`); break;
       case 'repeat': walkExpr(b.times, where); walkBlocks(b.body, where); break;
+      case 'repeatWhile': walkExpr(b.cond, where); walkBlocks(b.body, where); break;
       case 'forEachPlayer': walkBlocks(b.body, where); break;
       case 'forEachCard':
         checkZoneRef(b.zone, where);

@@ -1107,8 +1107,9 @@ button.rn-ptile:hover { translate: 0 -3px; }
 /* ---------- carousel (zone display 'carousel') ---------- */
 
 /* One horizontally scroll-snapping row of supply piles (the DGT mobile
-   supply pattern). The inline padding centers the snapped pile:
-   50% - half the rendered card width (--rn-carousel-half, set inline). */
+   supply pattern). Modest inline padding: MIDDLE piles snap to the frame's
+   center while the first/last clamp near their edge — the old 50%-half
+   padding let the row over-scroll into half-empty frames at both ends. */
 .rn-carousel {
   display: flex;
   align-items: center;
@@ -1117,7 +1118,7 @@ button.rn-ptile:hover { translate: 0 -3px; }
   max-height: 100%;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 10px calc(50% - var(--rn-carousel-half, 40px)) 12px;
+  padding: 10px 14px 12px;
   scroll-snap-type: x mandatory;
   scroll-behavior: smooth;
   -webkit-overflow-scrolling: touch;

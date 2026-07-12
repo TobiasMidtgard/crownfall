@@ -176,6 +176,11 @@ const BLOCK_ENTRIES: { [K in Block['kind']]: BlockEntry } = {
     description: 'Run blocks a number of times.',
     make: () => ({ kind: 'repeat', times: num(2), body: [] }),
   },
+  repeatWhile: {
+    category: 'control', label: 'Repeat while',
+    description: 'Run blocks as long as a condition holds (re-checked each pass) — "draw until you have 7 cards". Loops are capped, so a never-false condition stops safely.',
+    make: (def) => ({ kind: 'repeatWhile', cond: defaultCompare(def), body: [] }),
+  },
   forEachPlayer: {
     category: 'control', label: 'For each player',
     description: 'Run blocks once per player ($player), from the current player. Flip the chip to "each opponent" to skip the current player (attacks).',
@@ -267,7 +272,7 @@ const BLOCK_ENTRIES: { [K in Block['kind']]: BlockEntry } = {
 const BLOCK_ORDER: Block['kind'][] = [
   'moveCards', 'draw', 'deal', 'shuffle', 'flipCards', 'triggerAbilities',
   'setVar', 'changeVar',
-  'if', 'repeat', 'forEachPlayer', 'forEachCard',
+  'if', 'repeat', 'repeatWhile', 'forEachPlayer', 'forEachCard',
   'choose', 'chooseCards', 'choosePile', 'setNextPlayer',
   'announce', 'cancelTopEffect', 'endPhase', 'endTurn', 'endGame',
 ];

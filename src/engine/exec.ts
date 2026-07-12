@@ -557,6 +557,22 @@ async function execBlock(ctx: ExecCtx, b: Block): Promise<void> {
       }
       return;
     }
+    case 'repeatWhile': {
+      // Re-evaluated before every pass; a body that never flips the
+      // condition (or an empty one) stops at the cap with a report instead
+      // of hanging the game. The per-iteration budget charge still applies.
+      const CAP = 500;
+      let spins = 0;
+      while (truthy(evalExpr(e, b.cond))) {
+        if (++spins > CAP) {
+          report(core, `Repeat-while looped ${CAP} times without its condition turning false — stopped.`);
+          return;
+        }
+        if (--core.budget < 0) throw new BudgetExceeded();
+        await execBlocks(ctx, b.body);
+      }
+      return;
+    }
     case 'forEachPlayer': {
       const n = core.state.players.length;
       for (let i = 0; i < n; i++) {

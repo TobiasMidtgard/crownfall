@@ -38,6 +38,7 @@ const SLOT_WORDS: Partial<Record<Block['kind'], Record<string, string>>> = {
   deal: { count: '×' },
   if: { cond: '' },
   repeat: { times: '×' },
+  repeatWhile: { cond: '' },
   forEachCard: { filter: 'where' },
   chooseCards: { who: 'who', filter: 'where', min: 'min', max: 'max' },
   choosePile: { who: 'who', filter: 'where' },

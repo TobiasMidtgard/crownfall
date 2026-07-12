@@ -935,6 +935,13 @@ export type Block =
   | { kind: 'if'; cond: Expr; then: Block[]; else: Block[] }
   | { kind: 'repeat'; times: Expr; body: Block[] }
   /**
+   * Runs `body` while `cond` holds, re-evaluated before every pass. Bounded
+   * by the engine's loop cap (and the shared block budget), so a condition
+   * that never turns false stops with a report instead of hanging — the
+   * "draw until you have 7 cards" / "reveal until you hit a Treasure" loop.
+   */
+  | { kind: 'repeatWhile'; cond: Expr; body: Block[] }
+  /**
    * Binds $player. Iterates in seating order starting from the current player.
    * scope 'others' skips the current player (each OPPONENT); absent/'all' = all.
    */

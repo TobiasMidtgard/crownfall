@@ -51,6 +51,7 @@ export function blockLanes(block: Block): { lane: LaneName; label: string }[] {
   switch (block.kind) {
     case 'if': return [{ lane: 'then', label: 'Then' }, { lane: 'else', label: 'Else' }];
     case 'repeat':
+    case 'repeatWhile':
     case 'forEachPlayer':
     case 'forEachCard':
     case 'chooseCards':
@@ -62,8 +63,8 @@ export function blockLanes(block: Block): { lane: LaneName; label: string }[] {
 
 export function getLaneOf(block: Block, lane: LaneName): Block[] {
   if (block.kind === 'if') return lane === 'then' ? block.then : lane === 'else' ? block.else : [];
-  if (block.kind === 'repeat' || block.kind === 'forEachPlayer' || block.kind === 'forEachCard'
-    || block.kind === 'chooseCards' || block.kind === 'choosePile') {
+  if (block.kind === 'repeat' || block.kind === 'repeatWhile' || block.kind === 'forEachPlayer'
+    || block.kind === 'forEachCard' || block.kind === 'chooseCards' || block.kind === 'choosePile') {
     return lane === 'body' ? block.body : [];
   }
   return [];
@@ -73,8 +74,8 @@ function setLaneOf(block: Block, lane: LaneName, blocks: Block[]): Block {
   if (block.kind === 'if') {
     return lane === 'then' ? { ...block, then: blocks } : { ...block, else: blocks };
   }
-  if (block.kind === 'repeat' || block.kind === 'forEachPlayer' || block.kind === 'forEachCard'
-    || block.kind === 'chooseCards' || block.kind === 'choosePile') {
+  if (block.kind === 'repeat' || block.kind === 'repeatWhile' || block.kind === 'forEachPlayer'
+    || block.kind === 'forEachCard' || block.kind === 'chooseCards' || block.kind === 'choosePile') {
     return { ...block, body: blocks };
   }
   return block;
@@ -250,6 +251,7 @@ export function execNodeRows(def: GameDef, block: Block): NodeRow[] {
     case 'changeVar': return [field('varTarget'), data('by', 'By', 'number')];
     case 'if': return [data('cond', 'Condition', 'boolean'), ...lanes];
     case 'repeat': return [data('times', 'Times', 'number'), ...lanes];
+    case 'repeatWhile': return [data('cond', 'While', 'boolean'), ...lanes];
     case 'forEachPlayer': return [field('scope'), ...lanes];
     case 'forEachCard': return [
       field('zone'),

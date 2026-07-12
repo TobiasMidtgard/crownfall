@@ -362,11 +362,7 @@ export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, cus
     body = piles.length === 0 ? (custom?.emptyText !== undefined ? emptySlot : <></>) : isCarousel ? (
       <div
         className={`rn-carousel${carouselFits ? ' rn-carousel-fit' : ''}`}
-        style={{
-          // Centers the snapped pile: inline padding = 50% - half a card.
-          '--rn-carousel-half': `${Math.round(width / 2)}px`,
-          ...(gapPx !== undefined ? { gap: gapPx } : {}),
-        } as React.CSSProperties}
+        style={gapPx !== undefined ? { gap: gapPx } : undefined}
       >
         {piles.map((p) => (
           <div className="rn-carouselslot" key={p.key}>{pileEl(p)}</div>

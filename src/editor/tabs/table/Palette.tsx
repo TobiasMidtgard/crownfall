@@ -70,12 +70,13 @@ export interface PaletteProps {
   /** The author's saved reusable components (per-device library). */
   components?: SavedComponent[];
   onInsertComponent?: (comp: SavedComponent) => void;
+  onRenameComponent?: (id: string, name: string) => void;
   onDeleteComponent?: (id: string) => void;
 }
 
 export function Palette({
   def, onInsert, onCreateZone, focusName = null,
-  components = [], onInsertComponent, onDeleteComponent,
+  components = [], onInsertComponent, onRenameComponent, onDeleteComponent,
 }: PaletteProps) {
   const [zoneModal, setZoneModal] = useState(false);
   const [presetModal, setPresetModal] = useState<string | null>(null);
@@ -187,6 +188,20 @@ export function Palette({
                 >
                   ⬡ {c.name}
                 </button>
+                {onRenameComponent && (
+                  <button
+                    type="button"
+                    className="btn tt-comp-del"
+                    aria-label={`Rename component ${c.name}`}
+                    title="Rename"
+                    onClick={() => {
+                      const name = window.prompt('Rename component', c.name);
+                      if (name !== null) onRenameComponent(c.id, name);
+                    }}
+                  >
+                    ✎
+                  </button>
+                )}
                 {onDeleteComponent && (
                   <button
                     type="button"

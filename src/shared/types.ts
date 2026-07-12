@@ -303,6 +303,37 @@ export interface ScreenElementBase {
   slotId?: Id;
 }
 
+/**
+ * Style overrides for ONE piece of a zone's rendered card chrome (the cost
+ * lozenge, × count badge, tile name, caption row, empty note). Box chrome
+ * comes from `style`; the text knobs apply where the part carries text.
+ */
+export interface ZonePartStyle {
+  style?: LayoutStyle;
+  color?: string;
+  /** % of screen width (the text-element convention). */
+  fontSize?: number;
+  bold?: boolean;
+  /** Hide the part entirely. */
+  hidden?: boolean;
+}
+
+/** The pieces of zone card chrome that accept per-part overrides. */
+export interface ZonePartStyles {
+  /** Cost lozenge on piles (pileBadgeField's chip). */
+  pileBadge?: ZonePartStyle;
+  /** × N count badge / pill on piles and stacks. */
+  count?: ZonePartStyle;
+  /** Name line on compact pile tiles (pileFace 'tile'). */
+  tileName?: ZonePartStyle;
+  /** The zone's caption row (name + count chip). */
+  caption?: ZonePartStyle;
+  /** Empty-state note. */
+  empty?: ZonePartStyle;
+}
+
+export type ZonePartKey = keyof ZonePartStyles;
+
 export type ScreenElement =
   | (ScreenElementBase & {
       kind: 'zone';
@@ -374,6 +405,12 @@ export type ScreenElement =
        * face) instead of the card template. Default 'card'.
        */
       pileFace?: 'card' | 'tile';
+      /**
+       * Fine-grained overrides for the chrome painted around this zone's
+       * cards (cost lozenge, × count, tile name, caption, empty note) —
+       * the focus editor's "card parts". Each part merges over the skin.
+       */
+      partStyles?: ZonePartStyles;
     })
   | (ScreenElementBase & TextStyle & {
       kind: 'text';

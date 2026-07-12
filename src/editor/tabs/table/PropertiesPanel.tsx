@@ -4,26 +4,31 @@
  *   1 element -> ⛶ Focus button (edit the elements ON TOP of it, any kind)
  *                + child-element count, name, x/y/w/h (% of parent),
  *                per-kind settings (zone seat/
- *                cardScale/spacing/rows×columns + DECK COMPOSITION, text/
+ *                cardScale/spacing/rows×columns + DECK COMPOSITION + CARD
+ *                PARTS (per-part chrome overrides, canvas part-clicks force-
+ *                open the matching row), text/
  *                varText typography + INLINE "+ New variable", button binding
  *                + INLINE "+ New action" and "Edit script…" (node graph in a
- *                modal), shape/line options, group ungroup), style chrome,
+ *                modal), shape/line options, group children list/ungroup),
+ *                style chrome,
  *                reactive STATES (ordered, first match wins — name, when,
  *                style overrides, rect capture, canvas preview control),
  *                reveal transition, and VISIBLE WHEN via the
  *                ExpressionEditor ($viewer bound)
- *   2+        -> Group selection + webpage-builder alignment essentials
- *                (align left/center/right/top/middle/bottom, distribute H/V)
+ *   2+        -> Group selection + save-as-component (siblings only) +
+ *                webpage-builder alignment essentials (align left/center/
+ *                right/top/middle/bottom, distribute H/V)
  *
  * PRESENTATION: on ≤720px viewports (the runner's narrow breakpoint) the
  * panel switches to bottom-sheet dress (`tt-props-narrow`) — the workspace
  * already hosts it inside the mobile bottom-sheet drawer (`tt-sheet`); the
  * class widens touch targets to ≥44px and relaxes the control grid.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   ActionDef, DeckDef, ElementState, FlowLayout, GameDef, Id, LayoutStyle, MotionSpec, RevealAnim,
   ScreenElement, ScreenLayout, SeatRef, ShadowSpec, ShapeKind, TextStyle, VariableDef, ZoneDef,
+  ZonePartKey, ZonePartStyle,
 } from '../../../shared/types';
 import { SHAPE_KINDS, shapeBorderRadius, shapeClipPath } from '../../../runner/layoutGeometry';
 import { PASS_ACTION_ID } from '../../../shared/types';
@@ -44,6 +49,7 @@ import {
   setTextDynamic, snapStep, templateFieldOptions, updateEl, updateElementState, variantElements,
   withVariantElements, writeSelection, type AlignOp, type VariantKey,
 } from './screenModel';
+import { ZONE_PARTS, getPartStyle, withPartStyle, type ZonePartSel } from './zoneParts';
 
 const RANK_LABELS: [number, string][] = [
   [2, '2'], [3, '3'], [4, '4'], [5, '5'], [6, '6'], [7, '7'], [8, '8'],
@@ -54,6 +60,12 @@ const KIND_LABELS: Record<ScreenElement['kind'], string> = {
   zone: 'zone', text: 'text', varText: 'variable', button: 'button',
   counter: 'counter', shape: 'shape', line: 'line', log: 'log', group: 'group',
   panelSwitcher: 'panel switcher', image: 'image',
+};
+
+/** Kind glyphs for the group-children list — mirrors the Layers panel's ICONS. */
+const KIND_ICONS: Record<ScreenElement['kind'], string> = {
+  zone: '▭', text: 'T', varText: '#', button: '▸', counter: '±', shape: '◯', line: '╱', log: '☰',
+  group: '▦', panelSwitcher: '⧉', image: '🖼',
 };
 
 type ZoneEl = Extract<ScreenElement, { kind: 'zone' }>;
@@ -93,6 +105,13 @@ export interface PropertiesPanelProps {
   /** Editor-only canvas preview: which of the selected element's states shows (null = base). */
   statePreviewId: Id | null;
   onStatePreview: (stateId: Id | null) => void;
+  /** The canvas-selected card-chrome part of a zone — its row force-opens. */
+  partSel?: ZonePartSel | null;
+  onPartSel?: (p: ZonePartSel | null) => void;
+  /** Replace the canvas selection (the group-children list rows). */
+  onSelect?: (ids: Id[]) => void;
+  /** Save the whole multi-selection as ONE reusable component. */
+  onSaveComponentMulti?: (name: string) => void;
 }
 
 /** The runner's narrow breakpoint (ScreenRenderer's NARROW_QUERY pattern). */
@@ -292,7 +311,7 @@ function PageHeightStepper({ value, onChange }: {
 // Multi-selection
 // ---------------------------------------------------------------------------
 
-function MultiProps({ sel, canGroup, onGroup, onAlign, onDistribute, onRemove }: PropertiesPanelProps) {
+function MultiProps({ sel, canGroup, onGroup, onAlign, onDistribute, onRemove, onSaveComponentMulti }: PropertiesPanelProps) {
   const align = (op: AlignOp, label: string) => (
     <button type="button" className="btn btn-small" key={op} onClick={() => onAlign(op)}>
       {label}
@@ -308,6 +327,21 @@ function MultiProps({ sel, canGroup, onGroup, onAlign, onDistribute, onRemove }:
       </button>
       {!canGroup && (
         <p className="faint tt-prop-hint">Only siblings (same container) can be grouped.</p>
+      )}
+      <button
+        type="button"
+        className="btn"
+        disabled={!canGroup}
+        title="Save the selected elements together as one reusable component"
+        onClick={() => {
+          const name = window.prompt('Component name', 'Component');
+          if (name !== null) onSaveComponentMulti?.(name);
+        }}
+      >
+        ⬡ Save as component
+      </button>
+      {!canGroup && (
+        <p className="faint tt-prop-hint">Select siblings to save them as one component.</p>
       )}
       <section className="tt-prop-section">
         <h4>Align</h4>
@@ -345,7 +379,7 @@ function MultiProps({ sel, canGroup, onGroup, onAlign, onDistribute, onRemove }:
 // ---------------------------------------------------------------------------
 
 function ElementProps(props: PropertiesPanelProps & { el: ScreenElement }) {
-  const { def, el, onPatchEl, onRemove, onUngroup, onChangeDef, onFocus, onSaveComponent } = props;
+  const { def, el, onPatchEl, onRemove, onUngroup, onChangeDef, onFocus, onSaveComponent, onSelect } = props;
   const patchBase = (p: Partial<Pick<ScreenElement, 'name' | 'rect' | 'style' | 'rotation' | 'visible' | 'reveal' | 'onChangeAnim'>>) =>
     onPatchEl(el.id, (c) => ({ ...c, ...p } as ScreenElement));
   const rect = el.rect;
@@ -428,6 +462,44 @@ function ElementProps(props: PropertiesPanelProps & { el: ScreenElement }) {
             Want switchable panels? Insert the "Panel switcher" preset from the palette, or
             add selector buttons and bind panels via "Show only for" below.
           </p>
+          {el.children.length > 0 && (
+            // Front-to-back like the Layers panel (reverse of the array).
+            <div className="tt-layers" role="list" aria-label="Group children, front to back">
+              {el.children.slice().reverse().map((child) => (
+                <div
+                  key={child.id}
+                  className="tt-layer"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => onSelect?.([child.id])}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onSelect?.([child.id]);
+                    }
+                  }}
+                >
+                  <span className="tt-layer-icon" aria-hidden="true">{KIND_ICONS[child.kind]}</span>
+                  <span className="tt-layer-name">{child.name}</span>
+                  <span className="tt-layer-btns">
+                    <button
+                      type="button"
+                      className="tt-layer-btn"
+                      aria-label={`Focus the group and select ${child.name}`}
+                      title="Focus the group and select this element"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onFocus(el.id);
+                        onSelect?.([child.id]);
+                      }}
+                    >
+                      ⛶
+                    </button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
           {el.children.length > 0 && (
             <button type="button" className="btn" onClick={() => onUngroup(el.id)}>
               ⊟ Ungroup
@@ -595,7 +667,7 @@ const SEAT_LABELS: Record<SeatRef, string> = {
 };
 
 function ZoneSection(props: PropertiesPanelProps & { el: ZoneEl }) {
-  const { def, el, onPatchEl } = props;
+  const { def, el, onPatchEl, partSel, onPartSel } = props;
   const patch = (p: Partial<ZoneEl>) =>
     onPatchEl(el.id, (c) => (c.kind === 'zone' ? { ...c, ...p } : c));
   const zone = def.zones.find((z) => z.id === el.zoneId);
@@ -760,6 +832,8 @@ function ZoneSection(props: PropertiesPanelProps & { el: ZoneEl }) {
         onChange={(cardStyle) => patch({ cardStyle })}
       />
 
+      <ZonePartsEditor el={el} partSel={partSel} onPartSel={onPartSel} onPatchEl={onPatchEl} />
+
       <label className="field">
         <span>Card filter</span>
         <ConditionBuilder
@@ -814,6 +888,131 @@ function ZoneSection(props: PropertiesPanelProps & { el: ZoneEl }) {
 
       <Check label="Show zone name" checked={el.showName !== false} onChange={(showName) => patch({ showName })} />
       <Check label="Show card count" checked={el.showCount === true} onChange={(showCount) => patch({ showCount: showCount || undefined })} />
+    </section>
+  );
+}
+
+/**
+ * Card parts — per-part chrome overrides (cost badge, × count, tile name,
+ * caption, empty note). One expandable row per part; clicking a part on the
+ * focused canvas (partSel) force-opens its row. Cleared fields prune away so
+ * an all-default part collapses back to undefined (withPartStyle drops it).
+ */
+function ZonePartsEditor({ el, partSel, onPartSel, onPatchEl }: {
+  el: ZoneEl;
+  partSel: ZonePartSel | null | undefined;
+  onPartSel: PropertiesPanelProps['onPartSel'];
+  onPatchEl: PropertiesPanelProps['onPatchEl'];
+}) {
+  const [openParts, setOpenParts] = useState<ReadonlySet<ZonePartKey>>(new Set());
+  const rowRefs = useRef<Partial<Record<ZonePartKey, HTMLDivElement | null>>>({});
+
+  // Canvas part-clicks land here: force the row open and bring it into view.
+  useEffect(() => {
+    if (!partSel || partSel.elId !== el.id) return;
+    setOpenParts((prev) => (prev.has(partSel.part) ? prev : new Set(prev).add(partSel.part)));
+    rowRefs.current[partSel.part]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [partSel, el.id]);
+
+  const toggle = (part: ZonePartKey) => {
+    const next = new Set(openParts);
+    if (next.has(part)) {
+      next.delete(part);
+      // Collapsing the canvas-selected part's row deselects the part too.
+      if (partSel && partSel.elId === el.id && partSel.part === part) onPartSel?.(null);
+    } else {
+      next.add(part);
+    }
+    setOpenParts(next);
+  };
+
+  /** Merge one field into the part, pruning cleared (undefined) fields. */
+  const setPart = (part: ZonePartKey, patch: Partial<ZonePartStyle>) =>
+    onPatchEl(el.id, (e) => {
+      const next: ZonePartStyle = { ...getPartStyle(e, part), ...patch };
+      (Object.keys(next) as (keyof ZonePartStyle)[]).forEach((k) => {
+        if (next[k] === undefined) delete next[k];
+      });
+      return withPartStyle(e, part, next);
+    });
+
+  return (
+    <section className="tt-prop-section">
+      <h4>Card parts</h4>
+      <p className="faint tt-prop-hint">
+        Fine-tune each chrome piece this element paints around its cards — or click the
+        part right on the focused canvas. Empty fields keep the skin default.
+      </p>
+      {ZONE_PARTS.map((p) => {
+        const part = getPartStyle(el, p.key);
+        const open = openParts.has(p.key);
+        return (
+          <div key={p.key} className="tt-state" ref={(n) => { rowRefs.current[p.key] = n; }}>
+            <div className="tt-state-head">
+              <button
+                type="button"
+                className="tt-layer-btn tt-layer-chev"
+                aria-expanded={open}
+                aria-label={open ? `Collapse ${p.label}` : `Expand ${p.label}`}
+                onClick={() => toggle(p.key)}
+              >
+                {open ? '▾' : '▸'}
+              </button>
+              <span className="tt-layer-name" title={p.hint}>{p.label}</span>
+              {part !== undefined && (
+                <>
+                  <span className="chip" title="Has overrides">●</span>
+                  <button
+                    type="button"
+                    className="btn btn-small"
+                    aria-label={`Reset ${p.label} overrides`}
+                    title="Clear every override — back to the skin default"
+                    onClick={() => onPatchEl(el.id, (e) => withPartStyle(e, p.key, undefined))}
+                  >
+                    Reset
+                  </button>
+                </>
+              )}
+            </div>
+            {open && (
+              <>
+                <Check
+                  label="Hidden"
+                  checked={part?.hidden === true}
+                  onChange={(v) => setPart(p.key, { hidden: v || undefined })}
+                />
+                <ColorRow
+                  label="Text color"
+                  value={part?.color}
+                  placeholder="Skin default"
+                  onChange={(color) => setPart(p.key, { color })}
+                />
+                <div className="tt-grid">
+                  <InheritStepper
+                    label="Font size"
+                    value={part?.fontSize}
+                    min={0.5}
+                    max={8}
+                    step={0.1}
+                    clearLabel="Default"
+                    onChange={(fontSize) => setPart(p.key, { fontSize })}
+                  />
+                </div>
+                <Check
+                  label="Bold"
+                  checked={part?.bold === true}
+                  onChange={(v) => setPart(p.key, { bold: v || undefined })}
+                />
+                <StyleSection
+                  title={`${p.label} box`}
+                  style={part?.style}
+                  onChange={(style) => setPart(p.key, { style })}
+                />
+              </>
+            )}
+          </div>
+        );
+      })}
     </section>
   );
 }
@@ -2607,16 +2806,21 @@ function AutoStepper({ label, value, onChange }: {
 }
 
 /**
- * Stepper over Inherit,min..max (state style overrides). Decrementing past
- * `min` clears the override back to "Inherit"; + from Inherit starts at min.
+ * Stepper over Inherit,min..max (state style overrides, part font sizes).
+ * Decrementing past `min` clears the override back to `clearLabel`; + from
+ * cleared starts at min. Fractional steps round to 2 dp (0.1 font sizes).
  */
-function InheritStepper({ label, value, min, max, onChange }: {
+function InheritStepper({ label, value, min, max, step = 1, clearLabel = 'Inherit', onChange }: {
   label: string;
   value: number | undefined;
   min: number;
   max: number;
+  step?: number;
+  /** Read-out while no override is set. Default "Inherit". */
+  clearLabel?: string;
   onChange: (v: number | undefined) => void;
 }) {
+  const round = (v: number) => Math.round(v * 100) / 100;
   return (
     <label className="tt-step">
       <span>{label}</span>
@@ -2626,19 +2830,19 @@ function InheritStepper({ label, value, min, max, onChange }: {
           className="btn tt-step-btn"
           aria-label={`Decrease ${label}`}
           disabled={value === undefined}
-          onClick={() => onChange(value !== undefined && value > min ? value - 1 : undefined)}
+          onClick={() => onChange(value !== undefined && value > min ? Math.max(min, round(value - step)) : undefined)}
         >
           −
         </button>
         <span className="input tt-step-input tt-step-read" aria-live="polite">
-          {value === undefined ? 'Inherit' : value}
+          {value === undefined ? clearLabel : value}
         </span>
         <button
           type="button"
           className="btn tt-step-btn"
           aria-label={`Increase ${label}`}
           disabled={value !== undefined && value >= max}
-          onClick={() => onChange(value === undefined ? min : Math.min(max, value + 1))}
+          onClick={() => onChange(value === undefined ? min : Math.min(max, round(value + step)))}
         >
           ＋
         </button>

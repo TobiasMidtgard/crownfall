@@ -67,6 +67,7 @@ import {
   slotRect, textStyleCss, computeStage,
   type ActiveScreen,
 } from './layoutGeometry';
+import { zonePartCss } from './partStyles';
 import { ZoneBlock, type TableCtx } from './ZoneViews';
 
 /** How long exit reveal animations run before the element unmounts. */
@@ -760,6 +761,18 @@ function ElementBody({ ctx, el, selCtx, style, screenW, buttonMove, onMove }: {
       const sliceIds = el.cardFilter != null
         ? filterDisplayCards(def, state, inst.cardIds, el.cardFilter, ctx.viewerId)
         : undefined;
+      // Per-part chrome overrides (partStyles) resolved to inline CSS here;
+      // fontSize is % of screen width — the same conversion text elements use.
+      const fontPx = (pct: number) => Math.max(9, (screenW * pct) / 100);
+      const parts = el.partStyles !== undefined
+        ? {
+            pileBadge: zonePartCss(el.partStyles.pileBadge, fontPx),
+            count: zonePartCss(el.partStyles.count, fontPx),
+            tileName: zonePartCss(el.partStyles.tileName, fontPx),
+            caption: zonePartCss(el.partStyles.caption, fontPx),
+            empty: zonePartCss(el.partStyles.empty, fontPx),
+          }
+        : undefined;
       return (
         <ZoneBlock
           ctx={ctx}
@@ -784,6 +797,7 @@ function ElementBody({ ctx, el, selCtx, style, screenW, buttonMove, onMove }: {
             cardFrame: el.cardStyle !== undefined ? layoutStyleCss(el.cardStyle) : undefined,
             emptyText: el.emptyText,
             pileFace: el.pileFace,
+            parts,
             collapseDuplicates: el.collapseDuplicates,
             fanAngle: el.fanAngle,
             // Depleted-pile memory is per rendering element: slices of one

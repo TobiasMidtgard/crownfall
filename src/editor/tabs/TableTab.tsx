@@ -33,13 +33,16 @@ import { LayersPanel } from './table/LayersPanel';
 import { PropertiesPanel } from './table/PropertiesPanel';
 import { Palette } from './table/Palette';
 import {
-  addComponent, loadComponents, persistComponents, removeComponent, type SavedComponent,
+  addComponent, loadComponents, persistComponents, removeComponent, renameComponent,
+  updateComponentEl, type SavedComponent,
 } from './table/components';
+import { type ZonePartSel } from './table/zoneParts';
 import {
   ASPECT_VALUES, alignElements, buildStarterLayout, cloneElementsWithNewIds, createMobileVariant,
   deleteMobileVariant,
   distributeElements, duplicateEls, elChildren, findEl, groupSiblings, indexElements,
-  insertIntoFocusedChildren, pathToEl, placeRelativeEl, pruneNested, removeEls, reorderSibling,
+  insertIntoFocusedChildren, missingDefRefs, pathToEl, placeRelativeEl, pruneNested, removeEls,
+  reorderSibling,
   reparentEl, setAbsRect, siblingsOf, ungroupEl, updateEl, validFocusPath, variantElements,
   withElChildren, withVariantElements,
   type AlignOp, type AspectPreset, type VariantKey,
@@ -49,9 +52,11 @@ import './table/table.css';
 export interface TableTabProps {
   def: GameDef;
   onChange: (def: GameDef) => void;
+  /** Open the Cards side panel (the card faces are designed there). */
+  onOpenCards?: () => void;
 }
 
-export function TableTab({ def: rawDef, onChange }: TableTabProps) {
+export function TableTab({ def: rawDef, onChange, onOpenCards }: TableTabProps) {
   // Migrate-on-open: defs still on the deprecated v3 tableLayout get their
   // screenLayout once (and we render from the migrated copy immediately —
   // built-in examples never save, so they migrate in memory only).
@@ -133,7 +138,7 @@ export function TableTab({ def: rawDef, onChange }: TableTabProps) {
         <div className="spacer" />
         {modeToggle}
       </div>
-      <Workspace def={def} layout={layout} onChange={onChange} />
+      <Workspace def={def} layout={layout} onChange={onChange} onOpenCards={onOpenCards} />
       {resetModal}
     </div>
   );
@@ -157,10 +162,11 @@ let pasteSeq = 0;
 const HISTORY_BURST_MS = 400;
 const HISTORY_CAP = 100;
 
-function Workspace({ def, layout, onChange }: {
+function Workspace({ def, layout, onChange, onOpenCards }: {
   def: GameDef;
   layout: ScreenLayout;
   onChange: (def: GameDef) => void;
+  onOpenCards?: () => void;
 }) {
   const [sel, setSel] = useState<Id[]>([]);
   const [fullscreen, setFullscreen] = useState(false);
@@ -173,6 +179,9 @@ function Workspace({ def, layout, onChange }: {
   const [statePreview, setStatePreview] = useState<{ id: Id; stateId: Id } | null>(null);
   // FOCUS MODE (editor-only): id chain root → focused element ([] = screen).
   const [focusPath, setFocusPath] = useState<Id[]>([]);
+  // Card-chrome part picked in the focused zone's anatomy panel (editor-only):
+  // the inspector auto-opens that part's editor.
+  const [partSel, setPartSel] = useState<ZonePartSel | null>(null);
 
   // ----- undo/redo (#4): layout snapshots, coalesced per edit burst -----
   const historyRef = useRef<{ past: ScreenLayout[]; future: ScreenLayout[]; last: number }>(
@@ -286,6 +295,21 @@ function Workspace({ def, layout, onChange }: {
     if (alive.length !== sel.length) setSel(alive);
   }, [sel, index]);
 
+  // ----- part-selection sanity: only while its zone stays focused AND is the
+  // single selection (the inspector shows the part editor only then) -----
+  useEffect(() => {
+    if (!partSel) return;
+    const selOk = sel.length === 1 && sel[0] === partSel.elId;
+    if (!selOk || focusEl?.id !== partSel.elId) setPartSel(null);
+  }, [partSel, focusEl, sel]);
+
+  /** Picking a part also selects its zone — the inspector needs the element
+   *  open to show the part's editor. */
+  const selectPart = (p: ZonePartSel | null) => {
+    setPartSel(p);
+    if (p) setSel([p.elId]);
+  };
+
   // ----- state-preview sanity: only while its element is the single selection -----
   useEffect(() => {
     if (!statePreview) return;
@@ -347,10 +371,48 @@ function Workspace({ def, layout, onChange }: {
   const saveComponent = (el: ScreenElement, name: string) => {
     // Store a fresh-id clone so the saved copy never shares ids with the live tree.
     const stored = cloneElementsWithNewIds([el])[0];
-    persistLibrary(addComponent(components, `c_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`, name, stored));
+    // Compare with the NORMALIZED name (addComponent trims + falls back), so
+    // "Deck " vs "Deck" offers replace instead of silently duplicating; among
+    // same-name entries, replace the newest — the one the user last saved.
+    const clean = name.trim() || el.name || 'Component';
+    const dupes = components.filter((c) => c.name === clean);
+    const existing = dupes[dupes.length - 1];
+    if (existing && window.confirm(`Replace the saved component "${clean}"? Cancel keeps both.`)) {
+      persistLibrary(updateComponentEl(components, existing.id, stored));
+      return;
+    }
+    persistLibrary(addComponent(components, `c_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`, clean, stored));
   };
-  const insertComponent = (comp: SavedComponent) => insertElement(cloneElementsWithNewIds([comp.el])[0]);
+  /** Save a sibling multi-selection as ONE grouped component — the screen
+   *  itself is left untouched (the group exists only in the library). */
+  const saveComponentMulti = (name: string) => {
+    const grouped = groupSiblings(elements, sel);
+    if (!grouped) return;
+    const groupEl = findEl(grouped.elements, grouped.groupId);
+    if (groupEl) saveComponent({ ...groupEl, name }, name);
+  };
+  const insertComponent = (comp: SavedComponent) => {
+    // Components travel across games; warn when this def can't satisfy the
+    // saved tree's bindings (they'd render unbound and show ⚠ in pickers).
+    const missing = missingDefRefs(comp.el, def);
+    const n = (list: string[], word: string) =>
+      list.length > 0 ? `${list.length} ${word}${list.length === 1 ? '' : 's'}` : '';
+    const bits = [
+      n(missing.zones, 'zone'),
+      n(missing.actions, 'action'),
+      n(missing.vars, 'variable'),
+      n(missing.phases, 'phase'),
+      n(missing.types, 'card type'),
+      n(missing.tags, 'card tag'),
+      n(missing.filters, 'saved filter'),
+    ].filter(Boolean);
+    if (bits.length > 0 && !window.confirm(
+      `"${comp.name}" references ${bits.join(', ')} this game doesn't have — those bindings will show ⚠ in the inspector until you rewire them. Insert anyway?`,
+    )) return;
+    insertElement(cloneElementsWithNewIds([comp.el])[0]);
+  };
   const deleteComponent = (id: string) => persistLibrary(removeComponent(components, id));
+  const renameComponentEntry = (id: string, name: string) => persistLibrary(renameComponent(components, id, name));
 
   const createZone = (zone: GameDef['zones'][number], el: ScreenElement) => {
     const nextEls = focusEl
@@ -556,6 +618,7 @@ function Workspace({ def, layout, onChange }: {
       components={components}
       onInsertComponent={insertComponent}
       onDeleteComponent={deleteComponent}
+      onRenameComponent={renameComponentEntry}
     />
   );
 
@@ -588,7 +651,11 @@ function Workspace({ def, layout, onChange }: {
       onAlign={(op: AlignOp) => setScopeEls(alignElements(scopeEls, sel, op))}
       onDistribute={(axis) => setScopeEls(distributeElements(scopeEls, sel, axis))}
       onFocus={focusElement}
+      onSelect={setSel}
       onSaveComponent={saveComponent}
+      onSaveComponentMulti={saveComponentMulti}
+      partSel={partSel}
+      onPartSel={selectPart}
       onSetLayout={setLayout}
       onDeleteMobile={() => setConfirmDeleteMobile(true)}
       statePreviewId={sel.length === 1 && statePreview?.id === sel[0] ? statePreview.stateId : null}
@@ -615,6 +682,9 @@ function Workspace({ def, layout, onChange }: {
       statePreview={statePreview}
       focusPath={focusPath}
       onFocusPath={setFocus}
+      partSel={partSel}
+      onPartSel={selectPart}
+      onEditCardTemplate={() => onOpenCards?.()}
       onUndo={undo}
       onRedo={redo}
       canUndo={canUndo}

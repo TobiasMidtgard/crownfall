@@ -38,7 +38,7 @@
  */
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import type { FlowLayout, GameDef, GameState, Id, LayoutStyle, ScreenElement, ScreenLayout } from '../../../shared/types';
+import type { FlowLayout, GameDef, GameState, Id, LayoutStyle, ScreenElement, ScreenLayout, ZonePartKey } from '../../../shared/types';
 import { exprToText } from '../../blocks/exprToText';
 import {
   formatVarValue, readSelection, renderTextParts, selectionVersion, subscribeSelection,
@@ -51,6 +51,7 @@ import {
   sampleSignature, type PreviewContext,
 } from './sampleState';
 import { PreviewStage } from './PreviewStage';
+import { ZONE_PARTS, getPartStyle, type ZonePartSel } from './zoneParts';
 import {
   ASPECT_VALUES, GROUP_MIN, MIN_H, MIN_W, PHONE_ASPECT, absToGroupRel, applyElementState,
   aspectPresetOf, boundingRect, deepestGroupAt, fanMarginPx, fitCount, groupRelToAbs,
@@ -173,6 +174,12 @@ export interface ScreenCanvasProps {
   focusPath: Id[];
   /** Breadcrumb jumps / double-click descend / ✕ Exit focus. */
   onFocusPath: (path: Id[]) => void;
+  /** Focused zone: the anatomy panel's selected card-chrome part. */
+  partSel?: ZonePartSel | null;
+  /** Click a part in the anatomy panel (null = clear). */
+  onPartSel?: (p: ZonePartSel | null) => void;
+  /** Anatomy footer — the card face itself is designed in the Cards panel. */
+  onEditCardTemplate?: (zoneElId: Id) => void;
   onUndo: () => void;
   onRedo: () => void;
   canUndo: boolean;
@@ -182,7 +189,7 @@ export interface ScreenCanvasProps {
 export function ScreenCanvas({
   def, layout, variant, mobileExists, onVariant, sel, onSelect, onToggleSelect, onCommitDrag,
   onPatchEl, onAspect, fullscreen, onToggleFullscreen, statePreview = null, focusPath, onFocusPath,
-  onUndo, onRedo, canUndo, canRedo,
+  partSel = null, onPartSel, onEditCardTemplate, onUndo, onRedo, canUndo, canRedo,
 }: ScreenCanvasProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const screenRef = useRef<HTMLDivElement>(null);
@@ -790,7 +797,7 @@ export function ScreenCanvas({
 
   const isBackground = (target: EventTarget | null) =>
     spaceRef.current
-    || !(target instanceof Element && target.closest('.tt-el, .tt-handle, .tt-toolbar'));
+    || !(target instanceof Element && target.closest('.tt-el, .tt-handle, .tt-toolbar, .tt-anatomy'));
 
   const onCanvasDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (dragRef.current) return;
@@ -1283,6 +1290,15 @@ export function ScreenCanvas({
             ))}
           </div>
         </div>
+        {focusEl !== null && focusEl.kind === 'zone' && (
+          <ZoneAnatomy
+            el={focusEl}
+            zoneName={def.zones.find((z) => z.id === focusEl.zoneId)?.name ?? focusEl.name}
+            partSel={partSel}
+            onPartSel={onPartSel}
+            onEditCardTemplate={onEditCardTemplate}
+          />
+        )}
       </div>
 
       {(() => {
@@ -1510,6 +1526,27 @@ const SEAT_TAGS: Record<string, string | null> = {
   shared: null, viewer: 'you', opp1: 'opp 1', opp2: 'opp 2', opp3: 'opp 3',
 };
 
+/**
+ * Inline CSS for one card-chrome part override (zone partStyles): box chrome
+ * from `style`, plus color/bold and fontSize in % of SCREEN width — the
+ * text-element convention (see textStyle below).
+ */
+function zonePartCss(el: ZoneEl, part: ZonePartKey, screenW: number): React.CSSProperties | undefined {
+  const ps = getPartStyle(el, part);
+  if (ps === undefined) return undefined;
+  const css: React.CSSProperties = ps.style !== undefined
+    ? { ...(layoutStyleCss(ps.style) as React.CSSProperties) }
+    : {};
+  if (ps.color !== undefined) css.color = ps.color;
+  if (ps.fontSize !== undefined) css.fontSize = (screenW * ps.fontSize) / 100;
+  if (ps.bold !== undefined) css.fontWeight = ps.bold ? 700 : 500;
+  return css;
+}
+
+/** hidden:true parts disappear from the canvas mocks entirely. */
+const zonePartHidden = (el: ZoneEl, part: ZonePartKey): boolean =>
+  getPartStyle(el, part)?.hidden === true;
+
 function ZoneBody({ def, el, abs, screenH, screenW, sample }: {
   def: GameDef;
   el: ZoneEl;
@@ -1528,14 +1565,16 @@ function ZoneBody({ def, el, abs, screenH, screenW, sample }: {
   const seatTag = SEAT_TAGS[el.seat] ?? null;
   return (
     <span className="tt-el-body tt-zone-body">
-      <span className="tt-item-label">
-        {el.showName !== false && zone.name}
-        {seatTag && <span className="tt-seat-tag">{seatTag}</span>}
-        {el.cardFilter != null && <span className="tt-seat-tag">filtered</span>}
-        {el.showCount && (
-          <span className="tt-count-tag">×{real !== null ? real.count : zoneSampleCount(def, zone.id)}</span>
-        )}
-      </span>
+      {!zonePartHidden(el, 'caption') && (
+        <span className="tt-item-label" style={zonePartCss(el, 'caption', screenW)}>
+          {el.showName !== false && zone.name}
+          {seatTag && <span className="tt-seat-tag">{seatTag}</span>}
+          {el.cardFilter != null && <span className="tt-seat-tag">filtered</span>}
+          {el.showCount && (
+            <span className="tt-count-tag">×{real !== null ? real.count : zoneSampleCount(def, zone.id)}</span>
+          )}
+        </span>
+      )}
       <SlotPreview zone={zone} el={el} abs={abs} screenH={screenH} screenW={screenW} real={real} />
     </span>
   );
@@ -1574,14 +1613,19 @@ function SlotPreview({ zone, el, abs, screenH, screenW, real }: {
 
   // Per-element card chrome (zone cardStyle) + authored badge options —
   // mirrored from the runner so the canvas previews what players see.
+  // partStyles (the focus editor's card-chrome parts) merge over each mock.
   const cardCss = el.cardStyle !== undefined
     ? (layoutStyleCss(el.cardStyle) as React.CSSProperties)
     : undefined;
   const countCls = `tt-slot-count${el.countBadge === 'bottom' ? ' tt-slot-count-bc' : ''}`;
-  const showCountBadge = el.countBadge !== 'none';
+  const countCss = zonePartCss(el, 'count', screenW);
+  const countHidden = zonePartHidden(el, 'count');
+  const showCountBadge = el.countBadge !== 'none' && !countHidden;
   const badgeCls = `tt-slot-badge${el.badgeShape === 'round' ? ' tt-slot-badge-round' : ''}`;
-  const emptyNote = el.emptyText !== undefined
-    ? <span className="tt-empty-note">{el.emptyText}</span>
+  const badgeCss = zonePartCss(el, 'pileBadge', screenW);
+  const nameCss = zonePartCss(el, 'tileName', screenW);
+  const emptyNote = el.emptyText !== undefined && !zonePartHidden(el, 'empty')
+    ? <span className="tt-empty-note" style={zonePartCss(el, 'empty', screenW)}>{el.emptyText}</span>
     : null;
 
   const slot = (i: number, style?: React.CSSProperties, badge?: string) => (
@@ -1590,7 +1634,7 @@ function SlotPreview({ zone, el, abs, screenH, screenW, real }: {
       key={i}
       style={{ width: cardW, height: cardH, ...cardCss, ...style }}
     >
-      {badge !== undefined && <span className={countCls}>{badge}</span>}
+      {badge !== undefined && !countHidden && <span className={countCls} style={countCss}>{badge}</span>}
     </span>
   );
 
@@ -1613,12 +1657,14 @@ function SlotPreview({ zone, el, abs, screenH, screenW, real }: {
           return (
             <span className="tt-slot tt-slot-pile" key={i} style={{ width: cardW, height: cardH, ...cardCss }}>
               {showCountBadge && (
-                <span className={countCls}>× {p !== null ? p.count : 10 - (i % 3)}</span>
+                <span className={countCls} style={countCss}>× {p !== null ? p.count : 10 - (i % 3)}</span>
               )}
-              {(p !== null ? p.badge !== '' : el.pileBadgeField != null) && (
-                <span className={badgeCls}>{p !== null ? p.badge : 3 + (i % 5)}</span>
+              {(p !== null ? p.badge !== '' : el.pileBadgeField != null) && !zonePartHidden(el, 'pileBadge') && (
+                <span className={badgeCls} style={badgeCss}>{p !== null ? p.badge : 3 + (i % 5)}</span>
               )}
-              {p !== null && p.name !== '' && <span className="tt-slot-name">{p.name}</span>}
+              {p !== null && p.name !== '' && !zonePartHidden(el, 'tileName') && (
+                <span className="tt-slot-name" style={nameCss}>{p.name}</span>
+              )}
             </span>
           );
         })}
@@ -1679,6 +1725,98 @@ function SlotPreview({ zone, el, abs, screenH, screenW, real }: {
     );
   }
   return <span className="tt-preview" aria-hidden="true">{body}</span>;
+}
+
+/**
+ * Focus-mode anatomy panel ("Card chrome"): docked bottom-right in the canvas
+ * viewport while a ZONE is focused. One representative pile/card mock —
+ * SlotPreview's tt-slot markup at a fixed editor scale — where EVERY chrome
+ * part (cost lozenge, × count, tile name, caption row, empty note) is a
+ * button.tt-part click target selecting that part for the inspector. Unlike
+ * the stage mocks, hidden parts stay visible here (ghosted) so they can be
+ * re-selected and un-hidden. The card FACE itself is designed in the Cards
+ * panel — the footer button jumps there.
+ */
+function ZoneAnatomy({ el, zoneName, partSel, onPartSel, onEditCardTemplate }: {
+  el: ZoneEl;
+  zoneName: string;
+  partSel: ZonePartSel | null;
+  onPartSel?: (p: ZonePartSel | null) => void;
+  onEditCardTemplate?: (zoneElId: Id) => void;
+}) {
+  // Fixed mock size (docked editor chrome, not stage content); part fontSize
+  // overrides preview at their zoom-1 stage size (% of SCREEN_W — textStyle).
+  const cardW = 64;
+  const cardH = Math.round(cardW / 0.714);
+  const tile = (el.display === 'piles' || el.display === 'carousel') && el.pileFace === 'tile';
+  const cardCss = el.cardStyle !== undefined
+    ? (layoutStyleCss(el.cardStyle) as React.CSSProperties)
+    : undefined;
+  const countCls = `tt-slot-count${el.countBadge === 'bottom' ? ' tt-slot-count-bc' : ''}`;
+  const badgeCls = `tt-slot-badge${el.badgeShape === 'round' ? ' tt-slot-badge-round' : ''}`;
+
+  /** button.tt-part — the mock chrome classes paint the button itself. */
+  const partBtn = (part: ZonePartKey, cls: string, body: React.ReactNode) => {
+    const info = ZONE_PARTS.find((p) => p.key === part)!;
+    const on = partSel !== null && partSel.elId === el.id && partSel.part === part;
+    const hidden = zonePartHidden(el, part);
+    return (
+      <button
+        type="button"
+        className={`tt-part${on ? ' tt-part-on' : ''}${hidden ? ' tt-part-hidden' : ''}${cls === '' ? '' : ` ${cls}`}`}
+        data-part={part}
+        title={info.hint}
+        aria-label={info.label}
+        aria-pressed={on}
+        style={zonePartCss(el, part, SCREEN_W)}
+        onClick={(e) => {
+          e.stopPropagation();
+          onPartSel?.({ elId: el.id, part });
+        }}
+      >
+        {body}
+      </button>
+    );
+  };
+
+  return (
+    <div className="tt-anatomy" role="group" aria-label="Card chrome">
+      <div className="tt-anatomy-head">
+        <span className="tt-anatomy-title">Card chrome</span>
+        <span className="tt-anatomy-hint">Click a part to edit it</span>
+      </div>
+      <div className="tt-anatomy-mock">
+        <span
+          className={tile ? 'tt-slot tt-slot-pile tt-anat-tile' : 'tt-slot tt-slot-pile'}
+          style={{ width: cardW, height: cardH, ...(tile ? undefined : cardCss) }}
+        >
+          {el.pileBadgeField != null && partBtn('pileBadge', badgeCls, '3')}
+          {el.countBadge !== 'none' && partBtn('count', countCls, '× 8')}
+          {tile && partBtn('tileName', 'tt-slot-name', 'Card name')}
+        </span>
+      </div>
+      <div className="tt-anatomy-rows">
+        {partBtn('caption', 'tt-item-label', (
+          <>
+            {zoneName}
+            <span className="tt-count-tag">×12</span>
+          </>
+        ))}
+        {partBtn('empty', 'tt-empty-note', el.emptyText ?? 'Empty')}
+      </div>
+      <button
+        type="button"
+        className="btn btn-small tt-anatomy-edit"
+        title="The card face itself is designed in the Cards panel"
+        onClick={(e) => {
+          e.stopPropagation();
+          onEditCardTemplate?.(el.id);
+        }}
+      >
+        Edit card design
+      </button>
+    </div>
+  );
 }
 
 const JUSTIFY: Record<'left' | 'center' | 'right', string> = {

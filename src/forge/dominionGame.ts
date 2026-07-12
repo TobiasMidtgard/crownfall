@@ -798,9 +798,7 @@ function sealChildren(m: boolean): ScreenElement[] {
     : { x: 9, y: 54, w: 82, h: 11 };
   const foeName: ScreenElement = {
     ...sealName(id('name_foe'), '', SEAL_FOE, ASH, nameRect, nameFs, [FOE]),
-    // The foe's name breathes while he thinks (2.6s loop while the state
-    // holds). 'breathe' is runner-live but not yet in the stored union —
-    // see the wave-1 runner report; the cast is the documented bridge.
+    // The foe's name breathes while he thinks (2.6s loop while the state holds).
     onChangeAnim: 'breathe',
     states: [{
       id: m ? 'dom_st_m_seal_foe_breathe' : 'dom_st_seal_foe_breathe',

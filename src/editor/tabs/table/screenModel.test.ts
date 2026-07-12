@@ -11,12 +11,14 @@ import type {
   ActionDef, DeckDef, ElementState, Expr, FlowLayout, GameDef, PhaseDef, ScreenElement, ScreenLayout,
   VariableDef, ZoneDef,
 } from '../../../shared/types';
+import { PASS_ACTION_ID } from '../../../shared/types';
 import { newGameDef } from '../../../shared/defaults';
 import { harness, makeDef, zone } from '../../../engine/testkit';
 import {
   MOTION_DEFAULTS, PHONE_ASPECT, addElementState, alignElements, applyElementState,
   bindCounterStepActions,
-  canDropInto, containerCanFlow, isFlowChild, newFlowGroup, newImageElement, slotChildrenOf,
+  canDropInto, collectDefRefs, containerCanFlow, isFlowChild, missingDefRefs, newFlowGroup,
+  newImageElement, slotChildrenOf,
   buildStarterLayout, cloneElementsWithNewIds, createMobileVariant, deckCardCount,
   deepestGroupAt, deleteMobileVariant, distributeElements, duplicateEls, findEl, groupSiblings,
   indexElements, insertIntoFocusedChildren, makeActionDef, makeCounterActions, makeVariableDef,
@@ -1347,5 +1349,177 @@ describe('counter element (newCounterElement + makeCounterActions)', () => {
     // …but NOT in oneAction (a tick would consume the phase) or auto phases.
     expect(next!.phases[1].actionIds).toEqual([]);
     expect(next!.phases[2].actionIds).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Def-reference soundness (component library: collectDefRefs / missingDefRefs)
+// ---------------------------------------------------------------------------
+
+describe('collectDefRefs / missingDefRefs', () => {
+  /** A seal-like assembly touching every ref kind, nested inside one group. */
+  const refTree: ScreenElement = {
+    kind: 'group', id: 'root', name: 'Seal', rect: rect(0, 0, 60, 60),
+    visible: { kind: 'getVar', varId: 'v_vis', target: null },
+    children: [
+      {
+        kind: 'button', id: 'b', name: 'Play', rect: rect(0, 0, 30, 20), actionId: 'a_play', label: 'Play',
+        enabledWhen: {
+          kind: 'compare', op: '>',
+          left: { kind: 'getVar', varId: 'v_mana', target: null },
+          right: { kind: 'zoneCount', zone: { zoneId: 'z_hand', owner: null } },
+        },
+        states: [{ id: 's1', name: 'Main', when: { kind: 'phaseIs', phaseId: 'ph_main' } }],
+      },
+      {
+        kind: 'counter', id: 'c', name: 'Score', rect: rect(0, 30, 30, 20),
+        varId: 'v_score', seat: 'viewer', incActionId: 'a_inc', decActionId: null,
+      },
+      {
+        kind: 'zone', id: 'z', name: 'Pile', rect: rect(30, 0, 30, 30), zoneId: 'z_pile', seat: 'shared',
+        cardFilter: {
+          kind: 'logic', op: 'and',
+          left: { kind: 'cardHasTag', card: { kind: 'binding', name: '$card' }, tagId: 'tag_x' },
+          right: {
+            kind: 'logic', op: 'or',
+            left: { kind: 'cardTypeIs', card: { kind: 'binding', name: '$card' }, typeId: 'ty_gold' },
+            right: { kind: 'filterRef', filterId: 'f_basic', card: { kind: 'binding', name: '$card' } },
+          },
+        },
+      },
+      {
+        kind: 'text', id: 't', name: 'Hint', rect: rect(30, 30, 30, 30), text: '', fontSize: 2, align: 'center',
+        parts: ['Phase ', { kind: 'phasePos', phaseId: 'ph_end' }, ' · ', {
+          kind: 'countCards',
+          zone: { zoneId: 'z_deck', owner: { kind: 'currentPlayer' } },
+          filter: { kind: 'not', expr: { kind: 'getVar', varId: 'v_flag', target: null } },
+        }],
+      },
+    ],
+  };
+
+  it('collects every def-scoped id across the subtree, nested exprs included', () => {
+    const refs = collectDefRefs(refTree);
+    expect([...refs.zones].sort()).toEqual(['z_deck', 'z_hand', 'z_pile']);
+    expect([...refs.vars].sort()).toEqual(['v_flag', 'v_mana', 'v_score', 'v_vis']);
+    expect([...refs.actions].sort()).toEqual(['a_inc', 'a_play']);
+    expect([...refs.phases].sort()).toEqual(['ph_end', 'ph_main']);
+    // Card-catalog ids are def-declared too (GameDef.cardTypes/cardTags/filters).
+    expect([...refs.types]).toEqual(['ty_gold']);
+    expect([...refs.tags]).toEqual(['tag_x']);
+    expect([...refs.filters]).toEqual(['f_basic']);
+  });
+
+  it('skips null action bindings and the pass sentinel (not def refs)', () => {
+    const pass: ScreenElement = {
+      kind: 'button', id: 'p', name: 'Pass', rect: rect(0, 0, 10, 10), actionId: PASS_ACTION_ID, label: 'Pass',
+    };
+    expect(collectDefRefs(pass).actions.size).toBe(0);
+    const unbound: ScreenElement = {
+      kind: 'button', id: 'u', name: 'U', rect: rect(0, 0, 10, 10), actionId: null, label: 'U',
+    };
+    expect(collectDefRefs(unbound).actions.size).toBe(0);
+    // The counter's null stepper side is equally silent (refTree's decActionId).
+    expect(collectDefRefs(refTree).actions.has(PASS_ACTION_ID)).toBe(false);
+  });
+
+  it('a ref-free element reports empty buckets', () => {
+    const refs = collectDefRefs(el('plain'));
+    expect(refs.zones.size + refs.vars.size + refs.actions.size + refs.phases.size
+      + refs.types.size + refs.tags.size + refs.filters.size).toBe(0);
+  });
+
+  it('missingDefRefs: declared ids drop out, dangling ones report', () => {
+    const def: GameDef = {
+      ...newGameDef('Refs'),
+      zones: [
+        { ...makeZoneDef('Pile', 'shared', 'all', 'stack'), id: 'z_pile' },
+        { ...makeZoneDef('Hand', 'perPlayer', 'owner', 'fan'), id: 'z_hand' },
+      ],
+      variables: [
+        { id: 'v_score', name: 'Score', scope: 'perPlayer', type: 'number', initial: 0 },
+        { id: 'v_vis', name: 'Show', scope: 'global', type: 'number', initial: 1 },
+      ],
+      actions: [{ id: 'a_play', name: 'Play', target: { kind: 'none' }, legality: null, script: [] }],
+      phases: [phase('ph_main', 'Main')],
+    };
+    const missing = missingDefRefs(refTree, def);
+    expect(missing.zones).toEqual(['z_deck']);
+    expect([...missing.vars].sort()).toEqual(['v_flag', 'v_mana']);
+    expect(missing.actions).toEqual(['a_inc']);
+    expect(missing.phases).toEqual(['ph_end']);
+    // The def declares no catalog entries — every catalog ref dangles.
+    expect(missing.types).toEqual(['ty_gold']);
+    expect(missing.tags).toEqual(['tag_x']);
+    expect(missing.filters).toEqual(['f_basic']);
+    // A def declaring EVERYTHING reports nothing.
+    const full: GameDef = {
+      ...def,
+      zones: [...def.zones, { ...makeZoneDef('Deck', 'perPlayer', 'none', 'stack'), id: 'z_deck' }],
+      variables: [
+        ...def.variables,
+        { id: 'v_mana', name: 'Mana', scope: 'perPlayer', type: 'number', initial: 0 },
+        { id: 'v_flag', name: 'Flag', scope: 'global', type: 'number', initial: 0 },
+      ],
+      actions: [...def.actions, { id: 'a_inc', name: '+1', target: { kind: 'none' }, legality: null, script: [] }],
+      phases: [...def.phases, phase('ph_end', 'End')],
+      cardTypes: [{ id: 'ty_gold', name: 'Gold', color: '#caa53d' }],
+      cardTags: [{ id: 'tag_x', name: 'X' }],
+      filters: [{ id: 'f_basic', name: 'Basics', condition: { kind: 'bool', value: true } }],
+    };
+    expect(missingDefRefs(refTree, full)).toEqual({
+      zones: [], vars: [], actions: [], phases: [], types: [], tags: [], filters: [],
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Clone regression: the seal assembly (fresh ids everywhere, intra-subtree
+// selector remap, def-scoped refs untouched) — the save-as-component path
+// ---------------------------------------------------------------------------
+
+describe('cloneElementsWithNewIds — seal regression', () => {
+  it('fresh element/state ids, selector follows the cloned button, def refs unchanged', () => {
+    const plate: ScreenElement = {
+      kind: 'button', id: 'seal_btn', name: 'Plate', rect: rect(0, 0, 100, 100),
+      actionId: 'a_ring', label: 'Ring',
+      visible: { kind: 'getVar', varId: 'v_shown', target: null },
+    };
+    const gem: ScreenElement = {
+      kind: 'shape', id: 'seal_gem', name: 'Gem', rect: rect(40, 40, 20, 20), shape: 'diamond',
+      // A state id DERIVED from its element id — must still regenerate.
+      states: [{ id: 'seal_gem-lit', name: 'Lit', when: { kind: 'phaseIs', phaseId: 'ph_main' } }],
+    };
+    const label: ScreenElement = {
+      kind: 'text', id: 'seal_txt', name: 'Label', rect: rect(0, 70, 100, 20),
+      text: 'SEAL', fontSize: 2, align: 'center', showForSelector: 'seal_btn',
+    };
+    const seal: ScreenElement = {
+      kind: 'group', id: 'seal', name: 'Seal', rect: rect(20, 20, 40, 40), children: [plate, gem, label],
+    };
+
+    const [cloned] = cloneElementsWithNewIds([seal]);
+    const flat = flattenAll([cloned]);
+    const oldIds = new Set(['seal', 'seal_btn', 'seal_gem', 'seal_txt', 'seal_gem-lit']);
+    // Every element AND state id is fresh…
+    for (const e of flat) {
+      expect(oldIds.has(e.id)).toBe(false);
+      for (const s of e.states ?? []) expect(oldIds.has(s.id)).toBe(false);
+    }
+    // …the intra-subtree selector reference follows the CLONED button…
+    const newPlate = flat.find((e) => e.name === 'Plate')!;
+    const newLabel = flat.find((e) => e.name === 'Label')!;
+    expect(newLabel.showForSelector).toBe(newPlate.id);
+    expect(newLabel.showForSelector).not.toBe('seal_btn');
+    // …while def-scoped refs pass through untouched.
+    if (newPlate.kind !== 'button') throw new Error('expected the cloned button');
+    expect(newPlate.actionId).toBe('a_ring');
+    expect(newPlate.visible).toEqual({ kind: 'getVar', varId: 'v_shown', target: null });
+    const newGem = flat.find((e) => e.name === 'Gem')!;
+    expect(newGem.states![0].when).toEqual({ kind: 'phaseIs', phaseId: 'ph_main' });
+    // Same def-ref footprint before and after (nothing gained, nothing lost).
+    const before = missingDefRefs(seal, newGameDef('empty'));
+    const after = missingDefRefs(cloned, newGameDef('empty'));
+    expect(after).toEqual(before);
   });
 });

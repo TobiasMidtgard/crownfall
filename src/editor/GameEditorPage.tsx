@@ -235,7 +235,13 @@ export function GameEditorPage({ gameId, navigate, readOnly: forcedReadOnly, rea
                 </button>
               </div>
             )}
-            <TableTab def={draft} onChange={onChange} />
+            <TableTab
+              def={draft}
+              onChange={onChange}
+              // Idempotent open (openPanel is the rail's TOGGLE — jumping to
+              // Cards from the canvas must never close an already-open panel).
+              onOpenCards={() => { setWide(WIDE_BY_DEFAULT.has('cards')); setPanel('cards'); }}
+            />
           </div>
 
           {panel !== null && (

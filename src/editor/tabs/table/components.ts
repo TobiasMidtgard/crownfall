@@ -50,3 +50,13 @@ export function addComponent(list: SavedComponent[], id: string, name: string, e
 export function removeComponent(list: SavedComponent[], id: string): SavedComponent[] {
   return list.filter((c) => c.id !== id);
 }
+
+/** Rename an entry (blank falls back like addComponent), keeping its element. */
+export function renameComponent(list: SavedComponent[], id: string, name: string): SavedComponent[] {
+  return list.map((c) => (c.id === id ? { ...c, name: name.trim() || c.el.name || 'Component' } : c));
+}
+
+/** Replace an entry's stored element (re-save in place), keeping id + name. */
+export function updateComponentEl(list: SavedComponent[], id: string, el: ScreenElement): SavedComponent[] {
+  return list.map((c) => (c.id === id ? { ...c, el } : c));
+}

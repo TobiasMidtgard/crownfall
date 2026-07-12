@@ -14,15 +14,17 @@
  *   - element STATE helpers (add/remove/reorder, editor preview merge),
  *   - inline variable/action creation ("tightly knitted" cross-editing),
  *   - align/distribute for multi-selections,
- *   - deck-composition helpers carried over from v3.
+ *   - deck-composition helpers carried over from v3,
+ *   - def-reference soundness for the component library (collectDefRefs /
+ *     missingDefRefs: what a saved element points at vs what a def declares).
  * No React. Geometry math is imported from src/runner/layoutGeometry and
  * re-exported here so the canvas/panels have ONE coordination point with the
  * runner and the two can never drift.
  */
 import type {
-  ActionDef, DeckDef, ElementState, FlowLayout, GameDef, GameState, Id, LayoutStyle, MotionSpec,
-  ScreenElement, ScreenLayout, ScreenVariant, SeatRef, VariableDef, ZoneDef, ZoneLayout,
-  ZoneVisibility,
+  ActionDef, DeckDef, ElementState, Expr, FlowLayout, GameDef, GameState, Id, LayoutStyle,
+  MotionSpec, ScreenElement, ScreenLayout, ScreenVariant, SeatRef, VariableDef, ZoneDef,
+  ZoneLayout, ZoneRef, ZoneVisibility,
 } from '../../../shared/types';
 import { PASS_ACTION_ID } from '../../../shared/types';
 import { isDisplayVisible } from '../../../engine';
@@ -1403,4 +1405,115 @@ export function zonePreview(
       })
     : null;
   return { count: ids.length, piles };
+}
+
+// ---------------------------------------------------------------------------
+// Def-reference soundness (component library): a saved element may point at
+// zones/vars/actions/phases the RECEIVING def never declared
+// ---------------------------------------------------------------------------
+
+/** Every def-scoped id one element subtree points at, bucketed by kind. */
+export interface DefRefs {
+  zones: Set<Id>;
+  vars: Set<Id>;
+  actions: Set<Id>;
+  phases: Set<Id>;
+  types: Set<Id>;
+  tags: Set<Id>;
+  filters: Set<Id>;
+}
+
+/**
+ * Collect every def-scoped reference in `el`'s WHOLE subtree — children of
+ * every kind (slotted children live in `children` too, routed by `slotId`):
+ * zone bindings, varText/counter variables, button/counter action ids (null
+ * and the pass sentinel are not def refs), and every id carried by the
+ * element's display expressions (visible, enabledWhen, cardFilter,
+ * states[].when, dynamic text parts) — including the card-catalog ids
+ * (GameDef.cardTypes / cardTags / filters) that cardTypeIs, cardHasTag and
+ * filterRef point at. Template FIELD ids stay skipped: fields ride with the
+ * card templates, not the def's declaration lists.
+ */
+export function collectDefRefs(el: ScreenElement): DefRefs {
+  const refs: DefRefs = {
+    zones: new Set(), vars: new Set(), actions: new Set(), phases: new Set(),
+    types: new Set(), tags: new Set(), filters: new Set(),
+  };
+  const action = (id: Id | null) => {
+    if (id !== null && id !== PASS_ACTION_ID) refs.actions.add(id);
+  };
+  const zoneRef = (z: ZoneRef) => {
+    refs.zones.add(z.zoneId);
+    expr(z.owner);
+  };
+  // One recursive walker over the FULL Expr union: record every variant that
+  // carries a def id, recurse into every nested Expr / ZoneRef.
+  const expr = (e: Expr | null | undefined): void => {
+    if (e == null) return;
+    switch (e.kind) {
+      case 'getVar': refs.vars.add(e.varId); expr(e.target); break;
+      case 'zoneCount': case 'topCard': zoneRef(e.zone); break;
+      case 'bestCard': case 'countCards': zoneRef(e.zone); expr(e.filter); break;
+      case 'sumCards': zoneRef(e.zone); expr(e.filter); break;
+      case 'phasePos': case 'phaseIs': refs.phases.add(e.phaseId); break;
+      case 'cardField': case 'cardOwner': case 'cardZoneId': expr(e.card); break;
+      case 'cardTypeIs': refs.types.add(e.typeId); expr(e.card); break;
+      case 'cardHasTag': refs.tags.add(e.tagId); expr(e.card); break;
+      case 'filterRef': refs.filters.add(e.filterId); expr(e.card); break;
+      case 'nextPlayer': expr(e.from); break;
+      case 'math': case 'compare': case 'logic': expr(e.left); expr(e.right); break;
+      case 'not': expr(e.expr); break;
+      case 'random': expr(e.max); break;
+      default: break; // num/str/bool/binding/currentPlayer/… carry no ids
+    }
+  };
+  const visit = (node: ScreenElement): void => {
+    if (node.kind === 'zone') {
+      refs.zones.add(node.zoneId);
+      expr(node.cardFilter);
+    } else if (node.kind === 'button') {
+      action(node.actionId);
+      expr(node.enabledWhen);
+    } else if (node.kind === 'counter') {
+      refs.vars.add(node.varId);
+      action(node.incActionId);
+      action(node.decActionId);
+      expr(node.enabledWhen);
+    } else if (node.kind === 'varText') {
+      refs.vars.add(node.varId);
+    } else if (node.kind === 'text' && node.parts) {
+      for (const p of node.parts) {
+        if (typeof p !== 'string') expr(p);
+      }
+    }
+    expr(node.visible);
+    for (const s of node.states ?? []) expr(s.when);
+    for (const child of node.children ?? []) visit(child);
+  };
+  visit(el);
+  return refs;
+}
+
+/**
+ * collectDefRefs filtered against what `def` actually declares — the ids the
+ * element points at that this def is MISSING (dropping a saved component into
+ * another game surfaces these as broken bindings before they dangle).
+ */
+export function missingDefRefs(
+  el: ScreenElement, def: GameDef,
+): { zones: Id[]; vars: Id[]; actions: Id[]; phases: Id[]; types: Id[]; tags: Id[]; filters: Id[] } {
+  const refs = collectDefRefs(el);
+  const gone = (ids: Set<Id>, declared: readonly { id: Id }[]): Id[] => {
+    const have = new Set(declared.map((d) => d.id));
+    return [...ids].filter((id) => !have.has(id));
+  };
+  return {
+    zones: gone(refs.zones, def.zones),
+    vars: gone(refs.vars, def.variables),
+    actions: gone(refs.actions, def.actions),
+    phases: gone(refs.phases, def.phases),
+    types: gone(refs.types, def.cardTypes ?? []),
+    tags: gone(refs.tags, def.cardTags ?? []),
+    filters: gone(refs.filters, def.filters ?? []),
+  };
 }

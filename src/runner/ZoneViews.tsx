@@ -45,6 +45,7 @@ import {
   DEFAULT_FAN_ANGLE, fanMarginPx, fanTransform, gridSpec, groupPiles, groupPilesRemembered,
   topLegalCard, type CardPile, type FrameCss, type PileMemoryEntry,
 } from './layoutGeometry';
+import type { PartCss } from './partStyles';
 
 /**
  * Authored chrome + spacing for a zone element in a screen layout (absent =
@@ -78,6 +79,15 @@ export interface ZoneCustom {
    *  (.rn-ptile — cost lozenge, name, × count) instead of the card
    *  template's face. Default 'card'. */
   pileFace?: 'card' | 'tile';
+  /** Per-part chrome overrides (zone partStyles), pre-resolved to inline
+   *  CSS by ScreenRenderer (zonePartCss). Hidden parts don't render. */
+  parts?: {
+    pileBadge?: PartCss;
+    count?: PartCss;
+    tileName?: PartCss;
+    caption?: PartCss;
+    empty?: PartCss;
+  };
   /** Merge identical cards into one × N element ('cards' mode). */
   collapseDuplicates?: boolean;
   /** Fan rotation per card step (0 = flat; default 4). */
@@ -246,10 +256,21 @@ export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, cus
     />
   );
   // Authored emptyText renders as a free-flowing note (the "Play zone
-  // empty." pattern); the default keeps the card-shaped dashed slot.
-  const emptySlot = custom?.emptyText !== undefined
-    ? <div className="rn-empty rn-empty-note">{custom.emptyText}</div>
-    : <div className="rn-empty" style={{ width, height: Math.round(width / 0.714) }}>empty</div>;
+  // empty." pattern); the default keeps the card-shaped dashed slot. The
+  // `empty` part restyles either form; hidden renders nothing at all.
+  const parts = custom?.parts;
+  const emptySlot = parts?.empty?.hidden === true
+    ? <></>
+    : custom?.emptyText !== undefined
+      ? <div className="rn-empty rn-empty-note" style={parts?.empty?.css}>{custom.emptyText}</div>
+      : (
+        <div
+          className="rn-empty"
+          style={{ width, height: Math.round(width / 0.714), ...parts?.empty?.css }}
+        >
+          empty
+        </div>
+      );
 
   // Authored spacing (screen layouts): gap on rows/grids; fans overlap via a
   // CSS var (margin-left = gap - cardWidth, see layoutGeometry.fanMarginPx).
@@ -295,7 +316,7 @@ export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, cus
       />
     );
     const body = it.n > 1
-      ? <CollapsedGroup ctx={ctx} item={it} width={width}>{card}</CollapsedGroup>
+      ? <CollapsedGroup ctx={ctx} item={it} width={width} countPart={parts?.count}>{card}</CollapsedGroup>
       : card;
     if (!fanOn) return <Fragment key={it.key}>{body}</Fragment>;
     const t = fanTransform(i, items.length, width, custom?.fanAngle);
@@ -348,6 +369,7 @@ export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, cus
         countBadge={custom?.countBadge}
         cardFrame={custom?.cardFrame}
         face={custom?.pileFace ?? 'card'}
+        parts={parts}
         dimWhenIdle={anyPileLegal}
         refusable={!tappable}
       />
@@ -377,8 +399,11 @@ export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, cus
     body = (
       <div className="rn-pile">
         {count > 0 ? renderCard(ids[count - 1]) : emptySlot}
-        {custom?.countBadge !== 'none' && (
-          <span className={`rn-badge${custom?.countBadge === 'bottom' ? ' rn-badge-bc' : ''}${full ? ' rn-capfull' : ''}`}>
+        {custom?.countBadge !== 'none' && parts?.count?.hidden !== true && (
+          <span
+            className={`rn-badge${custom?.countBadge === 'bottom' ? ' rn-badge-bc' : ''}${full ? ' rn-capfull' : ''}`}
+            style={parts?.count?.css}
+          >
             {cap !== null ? `${realCount}/${cap}` : count}
           </span>
         )}
@@ -435,8 +460,8 @@ export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, cus
       onClick={tappable ? () => ctx.onZoneTap(inst.key) : refuseZoneTap}
       onKeyDown={tappable ? pressHandler(() => ctx.onZoneTap(inst.key)) : undefined}
     >
-      {(caption !== '' || capChip !== null) && (
-        <span className="rn-zone-cap">{caption}{capChip}</span>
+      {parts?.caption?.hidden !== true && (caption !== '' || capChip !== null) && (
+        <span className="rn-zone-cap" style={parts?.caption?.css}>{caption}{capChip}</span>
       )}
       <div className="rn-pop" key={sig} ref={fill === true ? setPopEl : undefined}>{body}</div>
     </div>
@@ -454,7 +479,7 @@ export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, cus
  * CardView directly — never TableCard — so the representative card, which
  * now lives elsewhere, doesn't double-register in the FLIP rect registry.
  */
-function SupplyPile({ ctx, pile, width, badgeField, badgeShape, countBadge, cardFrame, face, dimWhenIdle, refusable }: {
+function SupplyPile({ ctx, pile, width, badgeField, badgeShape, countBadge, cardFrame, face, parts, dimWhenIdle, refusable }: {
   ctx: TableCtx;
   pile: CardPile;
   width: number;
@@ -467,6 +492,8 @@ function SupplyPile({ ctx, pile, width, badgeField, badgeShape, countBadge, card
   cardFrame?: FrameCss;
   /** 'tile' renders the compact DGT pile tile instead of the card face. */
   face?: 'card' | 'tile';
+  /** Per-part overrides (ZoneCustom.parts): pileBadge / count / tileName. */
+  parts?: ZoneCustom['parts'];
   dimWhenIdle: boolean;
   /** No enclosing tappable zone: illegal pile taps may refuse-shake. */
   refusable: boolean;
@@ -483,6 +510,7 @@ function SupplyPile({ ctx, pile, width, badgeField, badgeShape, countBadge, card
         badgeShape={badgeShape}
         countBadge={countBadge}
         cardFrame={cardFrame}
+        parts={parts}
         dimWhenIdle={dimWhenIdle}
         refusable={refusable}
       />
@@ -490,8 +518,12 @@ function SupplyPile({ ctx, pile, width, badgeField, badgeShape, countBadge, card
   }
   const badgeVal = badgeField !== null ? card.fields[badgeField] : undefined;
   const badgeCls = `rn-pilecost${badgeShape === 'round' ? ' rn-pilecost-round' : ''}`;
-  const badgeChip = badgeVal !== undefined && badgeVal !== ''
-    ? <span className={badgeCls} aria-hidden="true"><span>{String(badgeVal)}</span></span>
+  const badgeChip = badgeVal !== undefined && badgeVal !== '' && parts?.pileBadge?.hidden !== true
+    ? (
+      <span className={badgeCls} style={parts?.pileBadge?.css} aria-hidden="true">
+        <span>{String(badgeVal)}</span>
+      </span>
+    )
     : null;
   const countCls = `rn-badge${countBadge === 'bottom' ? ' rn-badge-bc' : ''}`;
   const visible = isCardVisibleTo(ctx.def, ctx.state, pile.topId, ctx.viewerId);
@@ -520,7 +552,9 @@ function SupplyPile({ ctx, pile, width, badgeField, badgeShape, countBadge, card
           width={width}
           accent={ctx.accent}
         />
-        {countBadge !== 'none' && <span className={countCls} aria-hidden="true">× 0</span>}
+        {countBadge !== 'none' && parts?.count?.hidden !== true && (
+          <span className={countCls} style={parts?.count?.css} aria-hidden="true">× 0</span>
+        )}
         {badgeChip}
       </div>
     );
@@ -568,8 +602,8 @@ function SupplyPile({ ctx, pile, width, badgeField, badgeShape, countBadge, card
         nameSuffix={` × ${pile.count}${badgePart}`}
         frame={cardFrame}
       />
-      {countBadge !== 'none' && (
-        <span className={countCls} aria-hidden="true">× {pile.count}</span>
+      {countBadge !== 'none' && parts?.count?.hidden !== true && (
+        <span className={countCls} style={parts?.count?.css} aria-hidden="true">× {pile.count}</span>
       )}
       {badgeChip}
     </div>
@@ -591,7 +625,7 @@ function SupplyPile({ ctx, pile, width, badgeField, badgeShape, countBadge, card
  * tile exposes `data-card` (the face's name, face-up only) and skins route
  * accent colors from it.
  */
-function TilePile({ ctx, pile, width, badgeField, badgeShape, countBadge, cardFrame, dimWhenIdle, refusable }: {
+function TilePile({ ctx, pile, width, badgeField, badgeShape, countBadge, cardFrame, parts, dimWhenIdle, refusable }: {
   ctx: TableCtx;
   pile: CardPile;
   width: number;
@@ -599,6 +633,8 @@ function TilePile({ ctx, pile, width, badgeField, badgeShape, countBadge, cardFr
   badgeShape?: 'diamond' | 'round';
   countBadge?: 'corner' | 'bottom' | 'none';
   cardFrame?: FrameCss;
+  /** Per-part overrides (ZoneCustom.parts): pileBadge / count / tileName. */
+  parts?: ZoneCustom['parts'];
   dimWhenIdle: boolean;
   /** No enclosing tappable zone: illegal pile taps may refuse-shake. */
   refusable: boolean;
@@ -612,15 +648,19 @@ function TilePile({ ctx, pile, width, badgeField, badgeShape, countBadge, cardFr
   const shown = depleted ? pile.faceUp ?? visible : visible;
   const name = shown ? card.name : 'Face-down card';
   const badgeVal = badgeField !== null && shown ? card.fields[badgeField] : undefined;
-  const costChip = badgeVal !== undefined && badgeVal !== ''
+  const costChip = badgeVal !== undefined && badgeVal !== '' && parts?.pileBadge?.hidden !== true
     ? (
       <span
         className={`rn-ptile-cost${badgeShape === 'round' ? ' rn-ptile-cost-round' : ''}`}
+        style={parts?.pileBadge?.css}
         aria-hidden="true"
       >
         {String(badgeVal)}
       </span>
     )
+    : null;
+  const nameEl = parts?.tileName?.hidden !== true
+    ? <span className="rn-ptile-name" style={parts?.tileName?.css} aria-hidden="true">{name}</span>
     : null;
   const countCls = `rn-ptile-count${countBadge === 'none' ? ' rn-ptile-count-off' : ''}`;
   const badgeName = badgeField !== null
@@ -645,8 +685,10 @@ function TilePile({ ctx, pile, width, badgeField, badgeShape, countBadge, cardFr
         onClick={refusable ? (e) => e.stopPropagation() : undefined}
       >
         {costChip}
-        <span className="rn-ptile-name" aria-hidden="true">{name}</span>
-        <span className={countCls} aria-hidden="true">0</span>
+        {nameEl}
+        {parts?.count?.hidden !== true && (
+          <span className={countCls} style={parts?.count?.css} aria-hidden="true">0</span>
+        )}
       </div>
     );
   }
@@ -684,8 +726,10 @@ function TilePile({ ctx, pile, width, badgeField, badgeShape, countBadge, cardFr
       onClick={tap}
     >
       {costChip}
-      <span className="rn-ptile-name" aria-hidden="true">{name}</span>
-      <span className={countCls} aria-hidden="true">{pile.count}</span>
+      {nameEl}
+      {parts?.count?.hidden !== true && (
+        <span className={countCls} style={parts?.count?.css} aria-hidden="true">{pile.count}</span>
+      )}
       {keyBadge !== undefined && (
         <kbd
           className={`rn-keybadge${keyBadge.group === 'plain' ? ' rn-keybadge-plain' : ''}${ctx.keySpotlight === keyBadge.group ? ' rn-keybadge-lit' : ''}`}
@@ -703,10 +747,12 @@ function TilePile({ ctx, pile, width, badgeField, badgeShape, countBadge, cardFr
  * Tapping reaches the TOPMOST legal member when the face itself isn't the
  * legal one (per-card state can differ between "identical" cards).
  */
-function CollapsedGroup({ ctx, item, width, children }: {
+function CollapsedGroup({ ctx, item, width, countPart, children }: {
   ctx: TableCtx;
   item: { cardId: Id; n: number; memberIds: readonly Id[] };
   width: number;
+  /** × N part override (ZoneCustom.parts.count). */
+  countPart?: PartCss;
   children: React.ReactNode;
 }) {
   const hasMoves = (id: Id) => (ctx.cardMoves.get(id)?.length ?? 0) > 0;
@@ -738,7 +784,9 @@ function CollapsedGroup({ ctx, item, width, children }: {
       )}
       <div className="rn-cshadow rn-cshadow1" style={{ borderRadius: radius }} aria-hidden="true" />
       {children}
-      <span className="rn-badge" aria-hidden="true">× {item.n}</span>
+      {countPart?.hidden !== true && (
+        <span className="rn-badge" style={countPart?.css} aria-hidden="true">× {item.n}</span>
+      )}
     </div>
   );
 }

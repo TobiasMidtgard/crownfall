@@ -1,10 +1,13 @@
 /**
- * Tests for the reusable-component library: add/remove and the load filter
- * that drops malformed entries.
+ * Tests for the reusable-component library: add/remove/rename/update and the
+ * load filter that drops malformed entries.
  */
 import { beforeEach, describe, expect, it } from 'vitest';
 import type { ScreenElement } from '../../../shared/types';
-import { addComponent, loadComponents, persistComponents, removeComponent } from './components';
+import {
+  addComponent, loadComponents, persistComponents, removeComponent, renameComponent,
+  updateComponentEl,
+} from './components';
 
 // The test env is node (no jsdom): shim the localStorage the library reads.
 const mem = new Map<string, string>();
@@ -51,5 +54,28 @@ describe('component library', () => {
     expect(loadComponents()).toEqual([]);
     localStorage.setItem('cardsmith.components.v1', '{ broken');
     expect(loadComponents()).toEqual([]);
+  });
+
+  it('rename keeps id + element, with the blank-name fallback', () => {
+    const list = addComponent(addComponent([], 'c1', 'Badge', el('e1')), 'c2', 'Crest', el('e2'));
+    const next = renameComponent(list, 'c1', 'Sigil');
+    expect(next.map((c) => c.name)).toEqual(['Sigil', 'Crest']);
+    expect(next[0]).toMatchObject({ id: 'c1' });
+    expect(next[0].el.id).toBe('e1');
+    // Blank falls back to the element's name, like addComponent.
+    expect(renameComponent(list, 'c1', '   ')[0].name).toBe('e1');
+    // Unknown ids change nothing; the input list is untouched.
+    expect(renameComponent(list, 'ghost', 'X')).toEqual(list);
+    expect(list[0].name).toBe('Badge');
+  });
+
+  it('updateComponentEl replaces the element, keeping id + name', () => {
+    const list = addComponent([], 'c1', 'Badge', el('e1'));
+    const next = updateComponentEl(list, 'c1', el('e2'));
+    expect(next[0]).toMatchObject({ id: 'c1', name: 'Badge' });
+    expect(next[0].el.id).toBe('e2');
+    // Unknown ids change nothing; the input list is untouched.
+    expect(updateComponentEl(list, 'ghost', el('e3'))).toEqual(list);
+    expect(list[0].el.id).toBe('e1');
   });
 });

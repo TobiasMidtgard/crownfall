@@ -40,6 +40,7 @@ import {
 import { useTableKeyboard } from './keyboard';
 import { collapseDelay, dragUpExceeded, mayCollapse, peekHandleLabel } from './peekBar';
 import { GameSession, type SeatSetup, type SessionSnapshot } from './session';
+import type { NetAdapter } from './net';
 import { OpponentsStrip, VarChips } from './OpponentsStrip';
 import { ZoneBlock, type TableCtx } from './ZoneViews';
 import { ScreenRenderer, useNarrowViewport } from './ScreenRenderer';
@@ -52,7 +53,7 @@ import {
   Curtain, ErrorBanner, FatalScreen, GameOverOverlay, LogDrawer, Snackbar,
 } from './overlays';
 
-export function TableScreen({ def, seats, seed, navigate, onPlayAgain, onBackToSetup, onGameOver, homeLabel }: {
+export function TableScreen({ def, seats, seed, navigate, onPlayAgain, onBackToSetup, onGameOver, homeLabel, net, viewAs }: {
   def: GameDef;
   seats: SeatSetup[];
   seed: number;
@@ -64,16 +65,24 @@ export function TableScreen({ def, seats, seed, navigate, onPlayAgain, onBackToS
   /** Label for the leave-the-table overlay action (default 'Home') — hosts
    *  whose onHome lands elsewhere name the real destination. */
   homeLabel?: string;
+  /** Online play: the lockstep transport for the remote seats. */
+  net?: NetAdapter | null;
+  /**
+   * Online play: pin the table to ONE seat's eyes (this device's player).
+   * Also disables the hotseat pass-device curtain — the other human is on
+   * their own screen, not peeking over a shoulder.
+   */
+  viewAs?: Id;
 }) {
   // The session is created in an effect (not render) so StrictMode's double
   // mount creates/disposes cleanly — engine.start() may only run once.
   const [session, setSession] = useState<GameSession | null>(null);
   useEffect(() => {
-    const s = new GameSession(def, seats, seed);
+    const s = new GameSession(def, seats, seed, net ?? null);
     setSession(s);
     s.begin();
     return () => s.dispose();
-  }, [def, seats, seed]);
+  }, [def, seats, seed, net]);
 
   const subscribe = useCallback(
     (cb: () => void) => (session ? session.subscribe(cb) : () => undefined),
@@ -112,17 +121,19 @@ export function TableScreen({ def, seats, seed, navigate, onPlayAgain, onBackToS
       navigate={navigate}
       onPlayAgain={onPlayAgain}
       homeLabel={homeLabel}
+      viewAs={viewAs}
     />
   );
 }
 
-function Table({ def, session, snap, navigate, onPlayAgain, homeLabel }: {
+function Table({ def, session, snap, navigate, onPlayAgain, homeLabel, viewAs }: {
   def: GameDef;
   session: GameSession;
   snap: SessionSnapshot;
   navigate: (hash: string) => void;
   onPlayAgain: () => void;
   homeLabel?: string;
+  viewAs?: Id;
 }) {
   const state = snap.state;
   const accent = def.meta.accentColor ?? '#7c5cff';
@@ -139,15 +150,17 @@ function Table({ def, session, snap, navigate, onPlayAgain, homeLabel }: {
   const holderId = state.window?.holderId ?? null;
 
   // ----- viewer perspective + hotseat privacy curtain -----
+  // Online play pins the eyes to this device's seat; hotseat rotates them.
   const lastHumanRef = useRef<Id | null>(null);
-  const viewerId = pickViewer(state, snap.choice?.playerId ?? null, lastHumanRef.current);
+  const viewerId = viewAs ?? pickViewer(state, snap.choice?.playerId ?? null, lastHumanRef.current);
   const viewer = state.players.find((p) => p.id === viewerId) ?? null;
   const viewerIsHuman = viewer !== null && !viewer.isAI;
   useEffect(() => {
     if (viewerIsHuman) lastHumanRef.current = viewerId;
   });
   const humanSeats = state.players.filter((p) => !p.isAI).length;
-  const needsPrivacy = humanSeats > 1 && def.zones.some((z) => z.visibility === 'owner');
+  const needsPrivacy = viewAs === undefined
+    && humanSeats > 1 && def.zones.some((z) => z.visibility === 'owner');
   const [revealedSeat, setRevealedSeat] = useState<Id | null>(null);
   const showCurtain = needsPrivacy && viewerIsHuman && !snap.finished && revealedSeat !== viewerId;
 

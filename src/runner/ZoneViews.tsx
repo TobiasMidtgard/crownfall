@@ -353,9 +353,15 @@ export function ZoneBlock({ ctx, zone, inst, size, caption, cardWidth, fill, cus
       />
     );
     // Piles render nothing when empty — unless the author wrote emptyText.
+    // A carousel whose piles all FIT the frame centers them as a group
+    // (no scroll, no snap-padding); an overflowing one keeps the snap-to-
+    // center behavior. Until the box is measured, assume overflow so
+    // nothing jumps on first paint.
+    const carouselFits = popBox !== null
+      && piles.length * width + (piles.length - 1) * (gapPx ?? 10) <= popBox.w;
     body = piles.length === 0 ? (custom?.emptyText !== undefined ? emptySlot : <></>) : isCarousel ? (
       <div
-        className="rn-carousel"
+        className={`rn-carousel${carouselFits ? ' rn-carousel-fit' : ''}`}
         style={{
           // Centers the snapped pile: inline padding = 50% - half a card.
           '--rn-carousel-half': `${Math.round(width / 2)}px`,

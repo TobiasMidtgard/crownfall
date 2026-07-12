@@ -1727,3 +1727,11 @@ button.rn-ptile:hover { translate: 0 -3px; }
   font-style: italic;
   color: rgba(255, 255, 255, 0.35);
 }
+
+/* A carousel whose piles all fit the frame (.rn-carousel-fit, measured by
+   ZoneBlock) centers them as a group: no snap padding, no scrolling. */
+.rn-carousel.rn-carousel-fit {
+  padding-left: 12px;
+  padding-right: 12px;
+  justify-content: center;
+}

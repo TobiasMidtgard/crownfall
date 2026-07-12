@@ -93,16 +93,19 @@ describe('choose', () => {
   });
 
   it('player choice respects includeSelf and the asker (who)', async () => {
+    // includeSelf false in a two-player game leaves ONE candidate — the
+    // engine auto-resolves it without asking (forced-choice short-circuit).
     const spec: ChoiceSpec = { kind: 'player', prompt: 'Target', includeSelf: false };
-    const h = await run(spec, ['p1']);
-    const req = h.choices.requests[0];
-    expect(req.kind).toBe('player');
-    if (req.kind === 'player') expect(req.playerIds).toEqual(['p1']); // asker p0 excluded
-    expect(h.state().globalVars['picked']).toBe('p1');
+    const h = await run(spec, []);
+    expect(h.choices.requests).toHaveLength(0);
+    expect(h.state().globalVars['picked']).toBe('p1'); // asker p0 excluded
 
+    // includeSelf true offers both seats — a real decision, so it asks.
     const inclusive = await run({ ...spec, includeSelf: true }, ['p0']);
     const r2 = inclusive.choices.requests[0];
+    expect(r2.kind).toBe('player');
     if (r2.kind === 'player') expect(r2.playerIds).toEqual(['p0', 'p1']);
+    expect(inclusive.state().globalVars['picked']).toBe('p0');
   });
 
   it('asks the player named by `who`', async () => {
@@ -115,10 +118,11 @@ describe('choose', () => {
 
   it('blocks getLegalMoves while a choice is pending', async () => {
     let release: ((a: string) => void) | null = null;
+    // TWO candidates, so the choice genuinely pends (one would auto-resolve).
     const def = makeDef({
       zones: [zone('a')],
-      cards: [cdef('c1')],
-      decks: [customDeck('d', 'a', ['c1'])],
+      cards: [cdef('c1'), cdef('c2')],
+      decks: [customDeck('d', 'a', ['c1', 'c2'])],
       setup: [choose(cardChoice())],
     });
     const h = harness(def, {

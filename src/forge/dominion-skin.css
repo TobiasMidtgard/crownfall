@@ -200,17 +200,16 @@
   color: var(--dgt-bone-dim);
 }
 
-/* Mobile supply carousels: the runner's default padding centers the snapped
-   pile (parking the first pile mid-frame with the rest trailing offscreen)
-   and its 10px top inset clips the cost diamond. Anchor the row at the
-   frame's left instead — the scroll starts ON the first pile — and give the
-   diamond's ~12px overhang room on the top and left. */
+/* Mobile supply carousels: keep the runner's CENTERED behavior — each
+   snapped pile parks mid-frame, and a row that fits centers as a group
+   (.rn-carousel-fit). The skin only gives the rotated cost diamond's ~12px
+   overhang room at the top; inline padding stays the runner's snap-centering
+   calc(50% − half a card). */
 .dominion-skin .rn-carousel {
-  padding: 12px 12px 4px;
-  scroll-padding-inline: 12px;
+  padding-top: 12px;
+  padding-bottom: 4px;
   align-items: flex-start;
 }
-.dominion-skin .rn-carouselslot { scroll-snap-align: start; }
 
 /* ---------- card faces (via CardView's cv-<elementId> part tags) ---------- */
 

@@ -21,10 +21,18 @@ import type {
 } from '../shared/types';
 import { PASS_ACTION_ID } from '../shared/types';
 import { actingSeat } from './layout';
+import type { NetAdapter, NetMsg } from './net';
 
 export interface SeatSetup {
   name: string;
   isAI: boolean;
+  /**
+   * Online play: this seat is decided on the OTHER client — its moves and
+   * choice answers arrive over the net adapter instead of local input.
+   * (On the guest, the host's AI seats are also marked remote: AI runs on
+   * exactly one client and relays, since its randomness is unseeded.)
+   */
+  remote?: boolean;
 }
 
 export interface SessionSnapshot {
@@ -95,6 +103,8 @@ export class GameSession {
   snapshot: SessionSnapshot;
 
   private readonly aiSeats: boolean[];
+  private readonly remoteSeats: boolean[];
+  private readonly net: NetAdapter | null;
   private listeners = new Set<() => void>();
   private notifyScheduled = false;
   private disposed = false;
@@ -105,9 +115,23 @@ export class GameSession {
   private aiChoiceTimer: ReturnType<typeof setTimeout> | null = null;
   /** Pending human choice: the request id it belongs to + its resolver. */
   private humanAnswer: { id: number; resolve: (a: ChoiceAnswer) => void } | null = null;
+  /** Choices awaiting a REMOTE seat's answer, by request id. */
+  private remoteAnswers = new Map<number, (a: ChoiceAnswer) => void>();
+  /** Remote answers that arrived before our engine asked (ordering slack). */
+  private earlyAnswers = new Map<number, ChoiceAnswer>();
+  /** Remote moves waiting for the engine to go idle. */
+  private netQueue: Extract<NetMsg, { t: 'move' }>[] = [];
 
-  constructor(def: GameDef, seats: SeatSetup[], seed: number) {
+  constructor(def: GameDef, seats: SeatSetup[], seed: number, net: NetAdapter | null = null) {
     this.aiSeats = seats.map((s) => s.isAI);
+    this.remoteSeats = seats.map((s) => s.remote === true);
+    this.net = net;
+    if (net) {
+      net.onMessage((msg) => this.handleNet(msg));
+      net.onClose(() => this.patch({
+        scriptError: 'The other player disconnected — the table is frozen.',
+      }));
+    }
     this.engine = createEngine(def, {
       playerNames: seats.map((s) => s.name),
       aiSeats: this.aiSeats,
@@ -152,11 +176,13 @@ export class GameSession {
     if (this.disposed || this.inFlight || this.humanAnswer !== null || this.engine.finished) return;
     const state = this.engine.getState();
     const actor = actingSeat(state);
-    if (!actor || actor.isAI) return;
+    if (!actor || actor.isAI || this.isRemote(actor.id)) return;
     this.inFlight = true;
     this.patch({ moves: [], busy: true });
     try {
       await this.engine.performAction(actor.id, move);
+      // Lockstep: the peer replays this exact move on its own engine.
+      this.net?.send({ t: 'move', seat: actor.id, move });
     } catch {
       // The move went stale (raced a state change) — refresh re-syncs.
     } finally {
@@ -176,6 +202,8 @@ export class GameSession {
     if (!pending || pending.id !== requestId) return;
     this.humanAnswer = null;
     this.patch({ choice: null });
+    // Lockstep: the peer's engine is waiting on the same request id.
+    this.net?.send({ t: 'answer', id: requestId, answer });
     pending.resolve(answer);
   }
 
@@ -192,14 +220,70 @@ export class GameSession {
 
   // -------------------------------------------------------------------------
 
+  private isRemote(playerId: string): boolean {
+    return this.remoteSeats[Number(playerId.slice(1))] === true;
+  }
+
+  /** Inbound lockstep frames from the other client. */
+  private handleNet(msg: NetMsg): void {
+    if (this.disposed) return;
+    if (msg.t === 'answer') {
+      const resolve = this.remoteAnswers.get(msg.id);
+      if (resolve !== undefined) {
+        this.remoteAnswers.delete(msg.id);
+        resolve(msg.answer);
+      } else {
+        // Arrived before our engine asked — hold it (ids are engine-global).
+        this.earlyAnswers.set(msg.id, msg.answer);
+      }
+      return;
+    }
+    this.netQueue.push(msg);
+    void this.drainNet();
+  }
+
+  /** Apply queued remote moves whenever the engine is idle. */
+  private async drainNet(): Promise<void> {
+    if (this.disposed || this.inFlight || this.engine.finished) return;
+    if (this.humanAnswer !== null || this.remoteAnswers.size > 0) return; // mid-choice
+    const msg = this.netQueue.shift();
+    if (msg === undefined) return;
+    this.inFlight = true;
+    this.patch({ moves: [], busy: true });
+    try {
+      await this.engine.performAction(msg.seat, msg.move);
+    } catch {
+      // Stale/duplicate remote frame — refresh below re-syncs.
+    } finally {
+      this.inFlight = false;
+      this.refresh();
+    }
+  }
+
   private resolveChoice(req: ChoiceRequest, state: GameState): Promise<ChoiceAnswer> {
     if (this.disposed) return new Promise<ChoiceAnswer>(() => undefined); // dead session: never settles
     const seatIdx = Number(req.playerId.slice(1));
+    if (this.remoteSeats[seatIdx]) {
+      // The answer is decided on the other client. It may already be here
+      // (the peer resolved and sent before our engine asked).
+      const early = this.earlyAnswers.get(req.id);
+      if (early !== undefined || this.earlyAnswers.has(req.id)) {
+        this.earlyAnswers.delete(req.id);
+        return Promise.resolve(early ?? null);
+      }
+      this.patch({ state, moves: [] });
+      return new Promise<ChoiceAnswer>((resolve) => {
+        this.remoteAnswers.set(req.id, resolve);
+      });
+    }
     if (this.aiSeats[seatIdx]) {
       return new Promise<ChoiceAnswer>((resolve) => {
         this.aiChoiceTimer = setTimeout(() => {
           this.aiChoiceTimer = null;
-          resolve(aiAnswer(req));
+          const answer = aiAnswer(req);
+          // The AI lives on THIS client only; relay its decision.
+          this.net?.send({ t: 'answer', id: req.id, answer });
+          resolve(answer);
         }, AI_CHOICE_DELAY_MS);
       });
     }
@@ -216,18 +300,20 @@ export class GameSession {
     const state = this.engine.getState();
     const actor = actingSeat(state);
     const idle = !this.inFlight && this.humanAnswer === null;
-    const moves = actor && !actor.isAI && idle && !this.engine.finished
+    const moves = actor && !actor.isAI && !this.isRemote(actor.id) && idle && !this.engine.finished
       ? this.engine.getLegalMoves(actor.id)
       : [];
     this.patch({ state, moves, busy: !idle, finished: this.engine.finished });
     this.maybeScheduleAiMove();
+    void this.drainNet();
   }
 
   private maybeScheduleAiMove(): void {
     if (this.disposed || this.engine.finished || this.inFlight) return;
     if (this.humanAnswer !== null || this.aiMoveTimer !== null || !this.snapshot.started) return;
     const actor = actingSeat(this.snapshot.state);
-    if (!actor || !actor.isAI) return;
+    // AI runs on the client that OWNS the seat (never for remote mirrors).
+    if (!actor || !actor.isAI || this.isRemote(actor.id)) return;
     this.aiMoveTimer = setTimeout(() => {
       this.aiMoveTimer = null;
       void this.runAiMove();
@@ -246,6 +332,8 @@ export class GameSession {
     this.patch({ busy: true });
     try {
       await this.engine.performAction(actor.id, move);
+      // The AI lives on THIS client only; relay its move to the peer.
+      this.net?.send({ t: 'move', seat: actor.id, move });
     } catch {
       // Stale move — refresh below re-syncs.
     } finally {

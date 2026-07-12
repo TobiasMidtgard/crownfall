@@ -281,7 +281,41 @@ function fallbackAnswer(req: ChoiceRequest): ChoiceAnswer {
   }
 }
 
+/**
+ * The one answer a request admits, or undefined when there is a real
+ * decision. Auto-resolved requests never reach the choice provider — no
+ * sheet, no AI delay, no waiting on a remote seat. Revealed requests are
+ * NEVER forced: the choice sheet doubles as the reveal UI, and answering
+ * for the player would skip information they are entitled to see.
+ */
+function forcedAnswer(req: ChoiceRequest): ChoiceAnswer | undefined {
+  if ((req.kind === 'card' || req.kind === 'cards' || req.kind === 'pile') && req.revealed === true) {
+    return undefined;
+  }
+  switch (req.kind) {
+    case 'card': return !req.optional && req.cardIds.length === 1 ? req.cardIds[0] : undefined;
+    case 'option': return req.options.length === 1 ? req.options[0].id : undefined;
+    case 'player': return req.playerIds.length === 1 ? req.playerIds[0] : undefined;
+    case 'yesNo': return undefined; // two valid answers, always a decision
+    case 'cards': return req.min === req.max && req.max === req.cardIds.length
+      ? JSON.stringify(req.cardIds)
+      : undefined;
+    case 'pile': return !req.optional && req.cardIds.length === 1 ? req.cardIds[0] : undefined;
+  }
+}
+
 async function askChoice(core: Core, req: ChoiceRequest): Promise<ChoiceAnswer> {
+  // No real decision ⇒ resolve it ourselves, with a log line so players see
+  // why the game moved on without asking.
+  const forced = forcedAnswer(req);
+  if (forced !== undefined) {
+    core.state.log.push({
+      turn: core.state.turnNumber,
+      text: `${req.prompt} — only one option; resolved automatically.`,
+    });
+    notify(core);
+    return forced;
+  }
   core.pendingChoice = true;
   try {
     for (let attempt = 0; attempt < 3; attempt++) {

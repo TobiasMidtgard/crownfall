@@ -13,11 +13,24 @@ function makeSeats(count: number, prev: SeatSetup[] = []): SeatSetup[] {
   return Array.from({ length: count }, (_, i) => prev[i] ?? { name: `Player ${i + 1}`, isAI: i !== 0 });
 }
 
-export function SetupScreen({ def, issues, navigate, onStart }: {
+/** PlayPage's online-matchmaking status, rendered inside the setup screen. */
+export type OnlineStatus =
+  | { mode: 'hosting'; code: string }
+  | { mode: 'joining' }
+  | { mode: 'error'; message: string };
+
+export function SetupScreen({ def, issues, navigate, onStart, online, onHost, onJoin, onCancelOnline }: {
   def: GameDef;
   issues: ValidationIssue[];
   navigate: (hash: string) => void;
   onStart: (seats: SeatSetup[], seed: number) => void;
+  /** Current online-matchmaking state (null = idle). */
+  online?: OnlineStatus | null;
+  /** Open a room: this device becomes seat 1, a joiner becomes seat 2. */
+  onHost?: (hostName: string, seed: number) => void;
+  /** Join a room by its code. */
+  onJoin?: (code: string, guestName: string) => void;
+  onCancelOnline?: () => void;
 }) {
   const errors = issues.filter((i) => i.severity === 'error');
   const warnings = issues.filter((i) => i.severity === 'warning');
@@ -26,7 +39,11 @@ export function SetupScreen({ def, issues, navigate, onStart }: {
   const [seats, setSeats] = useState<SeatSetup[]>(() => makeSeats(Math.min(Math.max(minP, 2), maxP)));
   const [seed, setSeed] = useState(rollSeed);
   const [showWarnings, setShowWarnings] = useState(false);
+  const [joinCode, setJoinCode] = useState('');
   const allAI = seats.every((s) => s.isAI);
+  const myName = (seats[0]?.name ?? '').trim() || 'Player 1';
+  const onlineCapable = onHost !== undefined && onJoin !== undefined
+    && errors.length === 0 && minP <= 2 && maxP >= 2;
 
   const setCount = (n: number) => {
     const next = Math.min(maxP, Math.max(minP, n));
@@ -142,6 +159,69 @@ export function SetupScreen({ def, issues, navigate, onStart }: {
         <button className="btn btn-primary rn-start" disabled={errors.length > 0} onClick={start}>
           {allAI ? '▶ Watch the AIs play' : '▶ Start game'}
         </button>
+
+        {onlineCapable && (
+          <div className="panel" style={{ marginTop: 14 }}>
+            <label className="field" style={{ marginBottom: 4 }}><span>Play online</span></label>
+            {online == null && (
+              <>
+                <p className="faint" style={{ margin: '0 0 10px' }}>
+                  Two devices, one table: host a room and share its code, or join with
+                  a code. You play as "{myName}" (seat 1's name above). Peer-to-peer —
+                  no account, no server.
+                </p>
+                <div className="row" style={{ gap: 8, flexWrap: 'wrap' }}>
+                  <button className="btn btn-primary" onClick={() => onHost!(myName, seed)}>
+                    🌐 Host a room
+                  </button>
+                  <div className="spacer" />
+                  <input
+                    className="input"
+                    style={{ width: 130, textTransform: 'uppercase' }}
+                    value={joinCode}
+                    maxLength={6}
+                    placeholder="CODE"
+                    aria-label="Room code"
+                    onChange={(e) => setJoinCode(e.target.value.toUpperCase())}
+                  />
+                  <button
+                    className="btn"
+                    disabled={joinCode.trim().length < 6}
+                    onClick={() => onJoin!(joinCode.trim(), myName)}
+                  >
+                    Join
+                  </button>
+                </div>
+              </>
+            )}
+            {online?.mode === 'hosting' && (
+              <div>
+                <p style={{ margin: '0 0 6px' }}>
+                  Room open — share this code:{' '}
+                  <strong className="rn-seed" style={{ fontSize: '1.4rem', letterSpacing: '0.2em' }}>
+                    {online.code}
+                  </strong>
+                </p>
+                <p className="faint" style={{ margin: '0 0 10px' }}>
+                  Waiting for a challenger… the game starts the moment they join.
+                </p>
+                <button className="btn" onClick={onCancelOnline}>Cancel</button>
+              </div>
+            )}
+            {online?.mode === 'joining' && (
+              <div>
+                <p style={{ margin: '0 0 10px' }}>Reaching the host's table…</p>
+                <button className="btn" onClick={onCancelOnline}>Cancel</button>
+              </div>
+            )}
+            {online?.mode === 'error' && (
+              <div>
+                <p style={{ margin: '0 0 10px', color: 'var(--danger)' }}>{online.message}</p>
+                <button className="btn" onClick={onCancelOnline}>Back</button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

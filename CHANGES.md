@@ -38,6 +38,17 @@
 - **More interactive elements** — toggle (boolean variable switch), slider, order-list (drag to set resolution order), card-select battery (min/max + eligibility Expr + confirm) as engine-honest choice surfaces; roster (players/AI) belongs to the setup screen instead.
 - **Sentence view for WHEN/zones** — the rule header (event + condition) already reads as a sentence; zone routes ("hand-moves: only to Discard of the owner") and per-phase action whitelists could adopt the same inline-blank prose.
 
+## ✅ Done — auto-resolve, centered carousels, ONLINE MULTIPLAYER
+- **Forced choices resolve themselves**: any request with exactly ONE valid answer (single mandatory card/pile candidate, a lone option, a lone player target, min = max = every candidate) never opens a sheet — the engine answers it with a log line ("… only one option; resolved automatically"). Revealed choices are exempt (the sheet is the reveal), optional picks and yes/no always ask. Phases where the current player has zero legal moves already auto-skipped; response windows already auto-passed — the table now never waits on a non-decision.
+- **Mobile supply carousels center properly**: a row that fits the frame centers as a group; an overflowing row snap-centers every pile (the skin's old left-anchor override is gone).
+- **Online multiplayer** (`Play online` on the game setup screen): host a room → share the 6-letter code → a friend joins from any browser. Peer-to-peer WebRTC (PeerJS public broker), no server, no accounts. Deterministic lockstep: the host's def + seed ship at the handshake (locally-edited games stay in sync), each client runs its own engine and relays moves/choice answers; each device is pinned to its own seat (no hotseat curtain) and a disconnect freezes the table with a banner. Follow-ups queued below.
+
+## 🔥 Open — multiplayer follow-ups
+- **Hall matchmaking is still theater** — wire the hall's "take a seat" ceremony (Summons/Tables) to real hosting/joining instead of the scripted fake foe.
+- **Online rematch** — "Play again" currently returns to setup; a rematch handshake (new seed over the same link) would keep the room alive.
+- **Reconnection** — a dropped peer freezes the table; resumable sessions need a move-log replay on rejoin.
+- **>2 players online** — the transport is 1:1; a host-relayed star topology would generalize it.
+
 ## ✅ Done — table redesign + zone card-presentation controls
 - **Zone elements got finer card control** (select any zone element — incl. focused): **Badge shape** (diamond ⇄ round cost badge), **× Count badge** (corner / pill under the card / hidden), **Card style (this element)** — a full fill/border/radius/shadow editor painted over every card face or pile tile that ONE element shows (dress the kingdom without touching the card template), and **Empty-state text** ("Play zone empty." — also gives pile boards an empty state). Editor canvas previews all of it (and its badge corners now match the runner's).
 - **Flat hands fixed**: a 0° fan no longer reserves fan-arc headroom, so flat card strips size properly.

@@ -332,6 +332,30 @@ export type ScreenElement =
       cardFilter?: Expr | null;
       /** Piles: card field rendered as a corner badge (e.g. cost). */
       pileBadgeField?: Id | null;
+      /**
+       * Shape of the pileBadgeField chip: 'diamond' (default, the DGT
+       * rotated lozenge) or 'round' (a circular badge, top-left).
+       */
+      badgeShape?: 'diamond' | 'round';
+      /**
+       * Where the × N count renders on piles and stacks: 'corner'
+       * (default, bottom-right), 'bottom' (a pill centered under the card
+       * edge), or 'none' (hidden — e.g. when a caption already counts).
+       */
+      countBadge?: 'corner' | 'bottom' | 'none';
+      /**
+       * Per-ELEMENT chrome painted over each card face / pile tile in this
+       * zone element (border, radius, background, shadow) — lets one slice
+       * of a supply dress its cards differently without touching the card
+       * template. Merges over the face's own chrome.
+       */
+      cardStyle?: LayoutStyle;
+      /**
+       * Placeholder copy while this element shows no cards (replaces the
+       * default 'empty'). Also gives piles/carousel displays an empty
+       * state, which by default render nothing.
+       */
+      emptyText?: string;
       /** Hand-style zones: merge identical cards into one × N element. */
       collapseDuplicates?: boolean;
       /** Fan zones: degrees of rotation per card step (0 = flat; default ~4). */

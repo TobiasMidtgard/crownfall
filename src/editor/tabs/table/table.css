@@ -395,9 +395,12 @@
     4px 4px 0 rgba(16, 18, 30, 0.9),
     4px 4px 0 1px #313650;
 }
+/* Runner parity: the × count pill sits bottom-right (.rn-badge) and the
+   field badge top-left (.rn-pilecost) — the canvas mirrors those corners.
+   -bc = countBadge 'bottom' (pill centered under the card edge). */
 .tt-slot-count {
   position: absolute;
-  top: -5px;
+  bottom: -5px;
   right: -7px;
   z-index: 2;
   font-size: 9px;
@@ -410,10 +413,16 @@
   border: 1px solid rgba(255, 255, 255, 0.3);
   white-space: nowrap;
 }
+.tt-slot-count.tt-slot-count-bc {
+  right: auto;
+  left: 50%;
+  bottom: -7px;
+  transform: translateX(-50%);
+}
 .tt-slot-badge {
   position: absolute;
   left: -4px;
-  bottom: -4px;
+  top: -4px;
   z-index: 2;
   min-width: 14px;
   height: 14px;
@@ -422,10 +431,29 @@
   justify-content: center;
   font-size: 9px;
   font-weight: 800;
-  border-radius: 999px;
-  background: #caa64a;
   color: #1c1605;
+}
+/* Diamond plate behind upright text (runner .rn-pilecost geometry). */
+.tt-slot-badge::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  transform: rotate(45deg);
+  border-radius: 3px;
+  background: #caa64a;
   border: 1px solid rgba(0, 0, 0, 0.5);
+}
+.tt-slot-badge.tt-slot-badge-round::before {
+  transform: none;
+  border-radius: 999px;
+}
+.tt-empty-note {
+  align-self: center;
+  padding: 4px 8px;
+  font-size: 10px;
+  font-style: italic;
+  color: rgba(255, 255, 255, 0.35);
 }
 
 /* group */

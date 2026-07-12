@@ -582,8 +582,9 @@ describe('the screen layout speaks the original table\'s language', () => {
     expect(zoneEl('dom_el_supply_victory').keyGroup).toBe('ctrl');
     expect(zoneEl('dom_el_supply_kingdom').keyGroup).toBe('alt');
     expect(zoneEl('dom_el_my_hand').keyGroup).toBe('plain');
-    // The hand fans at the original's 1.6°/step.
-    expect(zoneEl('dom_el_my_hand').fanAngle).toBe(1.6);
+    // The keeper's mock: a FLAT hand strip — every copy visible, no fan tilt.
+    expect(zoneEl('dom_el_my_hand').fanAngle).toBe(0);
+    expect(zoneEl('dom_el_my_hand').collapseDuplicates).toBe(false);
   });
 
   it('supply slices resolve through the type/tag exprs: the kingdom slice is EXACTLY the ten piles', async () => {
@@ -615,17 +616,29 @@ describe('the screen layout speaks the original table\'s language', () => {
     expect(errors).toEqual([]);
   });
 
-  it('desktop kingdom piles wear the DGT tile at the --pile-w-k width; basics stay mini cards', () => {
+  it('desktop kingdom is a 5×2 grid of BIG card faces with round cost badges + bottom count pills', () => {
     const zoneEl = (id: string) => findEl(els, id) as Extract<ScreenElement, { kind: 'zone' }>;
-    // The original's desktop kingdom was a grid of makePile plates, not card
-    // faces; its Treasure/Victory columns were mini cards (spec §5.3).
-    expect(zoneEl('dom_el_supply_kingdom').pileFace).toBe('tile');
-    expect(zoneEl('dom_el_supply_kingdom').cardScale).toBe(6.5);
-    expect(zoneEl('dom_el_supply_treasures').pileFace).toBeUndefined();
-    expect(zoneEl('dom_el_supply_victory').pileFace).toBeUndefined();
-    // Hand and in-play keep full card faces (no pileFace anywhere near them).
+    // The keeper's mock: the kingdom shows full card faces (the compact tile
+    // stays one Pile-face select away), five columns × two rows, each card
+    // wearing a round cost badge top-left and a count pill bottom-center.
+    const kingdom = zoneEl('dom_el_supply_kingdom');
+    expect(kingdom.pileFace).toBeUndefined();
+    expect(kingdom.rows).toBe(2);
+    expect(kingdom.columns).toBe(5);
+    expect(kingdom.badgeShape).toBe('round');
+    expect(kingdom.countBadge).toBe('bottom');
+    expect(kingdom.cardStyle?.borderRadius).toBe(10);
+    // The basics columns share the badge dress and stay mini card faces.
+    for (const id of ['dom_el_supply_treasures', 'dom_el_supply_victory']) {
+      expect(zoneEl(id).pileFace).toBeUndefined();
+      expect(zoneEl(id).badgeShape).toBe('round');
+      expect(zoneEl(id).countBadge).toBe('bottom');
+    }
+    // Hand and in-play keep full card faces (no pileFace anywhere near them),
+    // and the play zone names its empty state.
     expect(zoneEl('dom_el_my_hand').pileFace).toBeUndefined();
     expect(zoneEl('dom_el_my_inplay').pileFace).toBeUndefined();
+    expect(zoneEl('dom_el_my_inplay').emptyText).toBe('Play zone empty.');
   });
 
   it('motion.byTag carries the original per-event animation table', () => {
@@ -687,10 +700,11 @@ describe('the screen layout speaks the original table\'s language', () => {
     const foeParts = (findEl(els, 'dom_el_seal_name_foe') as Extract<ScreenElement, { kind: 'text' }>).parts!;
     expect(renderTextParts(def, state, foeParts, 'p0')).toBe('Brook');
     expect(renderTextParts(def, state, foeParts, 'p1')).toBe('Ada');
-    // Own in-play: visible on your turn even empty; hidden only when the foe
-    // is acting AND your row is empty. Foe row: the mirror condition.
+    // Own play zone: ALWAYS visible in the mock layout (it carries the
+    // "Play zone empty." note instead of hiding). Foe row keeps the original
+    // foePlayWrap condition — shown while the foe acts or has cards out.
     expect(vis('dom_el_my_inplay', 'p0')).toBe(true);
-    expect(vis('dom_el_my_inplay', 'p1')).toBe(false);
+    expect(vis('dom_el_my_inplay', 'p1')).toBe(true);
     expect(vis('dom_el_foe_inplay', 'p1')).toBe(true);
     expect(vis('dom_el_foe_inplay', 'p0')).toBe(false);
     expect(errors).toEqual([]);
@@ -762,17 +776,18 @@ describe("the mobile variant is the original's pocket table (one viewport)", () 
     expect(hand.collapseDuplicates).toBe(true);
   });
 
-  it('NO chronicle on either variant; the status bar peeks (spec B §3)', () => {
-    // The runner's Log drawer is the one history — no on-board log element
-    // anywhere (the `log` element kind itself survives for other games).
+  it('the chronicle is a collapsed right-edge tab on desktop, absent on mobile; the status bar peeks', () => {
     const noLogs = (els: ScreenElement[]): boolean => els.every((el) => {
       if (el.kind === 'log') return false;
       const kids = el.kind === 'group' ? el.children : el.children ?? [];
       return kids.length === 0 || noLogs(kids);
     });
-    expect(noLogs(def.screenLayout!.elements), 'desktop chronicle gone').toBe(true);
+    // The keeper's mock docks the CHRONICLE tab at the right edge, closed by
+    // default; the mobile pocket table still relies on the Log drawer only.
+    const chron = findEl(def.screenLayout!.elements, 'dom_el_chronicle')!;
+    expect(chron.kind).toBe('log');
+    expect(chron.collapsible).toEqual({ side: 'right', label: 'CHRONICLE', startCollapsed: true });
     expect(noLogs(m.elements), 'mobile chronicle gone').toBe(true);
-    expect(findEl(def.screenLayout!.elements, 'dom_el_chronicle')).toBeNull();
     // The status bar collapses to the safe-area-clear handle after idle.
     expect(def.screenLayout!.statusBar).toBe('peek');
   });

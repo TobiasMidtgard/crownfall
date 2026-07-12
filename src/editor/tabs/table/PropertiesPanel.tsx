@@ -673,6 +673,19 @@ function ZoneSection(props: PropertiesPanelProps & { el: ZoneEl }) {
             <span>Pile badge</span>
             <PileBadgeSelect def={def} value={el.pileBadgeField ?? null} onChange={(pileBadgeField) => patch({ pileBadgeField })} />
           </label>
+          {el.pileBadgeField != null && (
+            <label className="field">
+              <span>Badge shape</span>
+              <select
+                className="select"
+                value={el.badgeShape ?? 'diamond'}
+                onChange={(e) => patch({ badgeShape: e.target.value === 'round' ? 'round' : undefined })}
+              >
+                <option value="diamond">Diamond lozenge</option>
+                <option value="round">Round badge</option>
+              </select>
+            </label>
+          )}
           <label className="field">
             <span>Pile face</span>
             <select
@@ -703,6 +716,49 @@ function ZoneSection(props: PropertiesPanelProps & { el: ZoneEl }) {
           />
         )
       )}
+
+      {(el.display === 'piles' || el.display === 'carousel' || zone?.layout === 'stack') && (
+        <label className="field">
+          <span>× Count badge</span>
+          <select
+            className="select"
+            value={el.countBadge ?? 'corner'}
+            onChange={(e) => patch({
+              countBadge: e.target.value === 'corner'
+                ? undefined
+                : e.target.value as 'bottom' | 'none',
+            })}
+          >
+            <option value="corner">Corner (bottom-right)</option>
+            <option value="bottom">Pill under the card</option>
+            <option value="none">Hidden</option>
+          </select>
+        </label>
+      )}
+
+      <label className="field">
+        <span>Empty-state text</span>
+        <input
+          type="text"
+          className="input"
+          placeholder="empty"
+          value={el.emptyText ?? ''}
+          onChange={(e) => patch({ emptyText: e.target.value || undefined })}
+        />
+      </label>
+      <p className="faint tt-prop-hint">
+        Shown while this element has no cards (e.g. "Play zone empty."). Pile boards
+        normally render nothing when empty — text here gives them an empty state too.
+      </p>
+
+      <StyleSection
+        title="Card style (this element)"
+        hint="Chrome painted over every card face or pile tile THIS element shows — a gold
+          hairline, a darker plate, rounder corners — without touching the card template
+          or other views of the same zone."
+        style={el.cardStyle}
+        onChange={(cardStyle) => patch({ cardStyle })}
+      />
 
       <label className="field">
         <span>Card filter</span>
@@ -1746,9 +1802,13 @@ function ImageSection({ el, onPatchEl }: {
 // Style (all elements)
 // ---------------------------------------------------------------------------
 
-function StyleSection({ style, onChange }: {
+function StyleSection({ style, onChange, title, hint }: {
   style: LayoutStyle | undefined;
   onChange: (style: LayoutStyle | undefined) => void;
+  /** Section heading override (the zone Card-style reuse). Default "Style". */
+  title?: string;
+  /** Explanatory hint shown under the heading. */
+  hint?: string;
 }) {
   const s = style ?? {};
   const set = (patch: Partial<LayoutStyle>) => {
@@ -1760,7 +1820,8 @@ function StyleSection({ style, onChange }: {
   };
   return (
     <section className="tt-prop-section">
-      <h4>Style</h4>
+      <h4>{title ?? 'Style'}</h4>
+      {hint !== undefined && <p className="faint tt-prop-hint">{hint}</p>}
       <FillEditor value={s.background} onChange={(background) => set({ background })} />
       <ColorRow label="Border color" value={s.borderColor} placeholder="Default" onChange={(borderColor) => set({ borderColor })} />
       <div className="tt-grid">

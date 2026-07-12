@@ -1411,70 +1411,250 @@ export function buildDominionDef(): GameDef {
   // per-move-tag animation table, and TURN tickers that count rounds.
   const layout = def.screenLayout;
   if (layout) {
-    patchTextEl(layout.elements, 'dom_el_turn', { parts: roundNumberParts() });
-    // Supply slices + keyboard groups; the captions name their modifier keys.
-    // Every slice filter speaks the type/tag vocabulary (the example's ctype
-    // compares are gone with the field itself).
-    patchZoneEl(layout.elements, 'dom_el_supply_treasures', {
+    const els = layout.elements;
+    patchTextEl(els, 'dom_el_turn', { parts: roundNumberParts() });
+
+    // ------ the keeper's mock (war table v2) --------------------------------
+    // Three labeled supply columns (underlined headers + gold hairline
+    // separators) over a status strip (phase seal + ACTIONS/BUYS/COINS
+    // chips), a realm header band, the play-zone harbor and a flat hand
+    // strip. Everything is authored elements — no skin-only chrome.
+    const HDR_GOLD = '#d2ab66';
+    const HDR_GREEN = '#8fbf8f';
+    const HDR_RED = '#e0697a';
+    const HAIR = 'rgba(210, 171, 102, 0.26)';
+    const BAND_BG = '#191210';
+    const BAND_BORDER = '#352a20';
+    const GOLD_CARD_EDGE = { borderColor: 'rgba(210, 171, 102, 0.5)', borderWidth: 1, borderRadius: 9 };
+
+    removeEl(els, 'dom_el_title');
+
+    // Foe strip: a slim top band; the TURN ticker sits to its right.
+    patchEl(els, 'dom_el_foe', (el) => {
+      el.rect = { x: 0.8, y: 0.7, w: 82, h: 4.8 };
+      el.style = { background: BAND_BG, borderColor: BAND_BORDER, borderWidth: 1, borderRadius: 8 };
+    });
+    patchTextEl(els, 'dom_el_turn', { rect: { x: 84, y: 1.7, w: 14.6, h: 2.6 }, fontSize: 1.25 });
+
+    // Supply columns: headers, underlines, hairline separators, slices.
+    patchTextEl(els, 'dom_el_supply_treasure_label', {
+      text: 'TREASURES', rect: { x: 1.2, y: 7, w: 14.2, h: 2 },
+      fontSize: 1, bold: true, align: 'left', color: HDR_GOLD, letterSpacing: 1.2,
+    });
+    patchZoneEl(els, 'dom_el_supply_treasures', {
+      rect: { x: 1.2, y: 10.6, w: 14.6, h: 44 },
       cardFilter: IS_TREASURE_CARD, keyGroup: 'shift',
+      rows: null, columns: 1, cardScale: 5.2, gap: 1.8, padding: 1,
+      style: undefined, showName: false,
+      countBadge: 'bottom', badgeShape: 'round',
+      cardStyle: { ...GOLD_CARD_EDGE, borderColor: 'rgba(210, 171, 102, 0.4)' },
     });
-    patchZoneEl(layout.elements, 'dom_el_supply_victory', {
-      cardFilter: IS_BASIC_VICTORY_PILE, rows: 4, cardScale: 4, gap: 0.5, keyGroup: 'ctrl',
+    patchTextEl(els, 'dom_el_supply_victory_label', {
+      text: 'VICTORY', rect: { x: 18, y: 7, w: 14.2, h: 2 },
+      fontSize: 1, bold: true, align: 'left', color: HDR_GREEN, letterSpacing: 1.2,
     });
-    // The kingdom wears the DGT compact pile TILE on desktop too — the
-    // original's desktop kingdom was a 5×2 grid of makePile plates (name,
-    // cost lozenge, × count; --pile-w-k), not full card faces. cardScale
-    // 6.5 (~91px at a 1400px stage) reaches the original's clamp band while
-    // two tile rows still fit the unchanged panel rect. Treasury/Victory
-    // stay card-faced: the original's desktop basics were MINI CARDS (§5.3).
-    patchZoneEl(layout.elements, 'dom_el_supply_kingdom', {
-      cardFilter: IS_KINGDOM_PILE, keyGroup: 'alt', pileFace: 'tile', cardScale: 6.5,
+    patchZoneEl(els, 'dom_el_supply_victory', {
+      rect: { x: 18, y: 10.6, w: 14.6, h: 44 },
+      cardFilter: IS_BASIC_VICTORY_PILE, keyGroup: 'ctrl',
+      rows: null, columns: 1, cardScale: 4.7, gap: 1.4, padding: 1,
+      style: undefined, showName: false,
+      countBadge: 'bottom', badgeShape: 'round',
+      cardStyle: { ...GOLD_CARD_EDGE, borderColor: 'rgba(143, 191, 143, 0.35)' },
     });
-    patchTextEl(layout.elements, 'dom_el_supply_treasure_label', { text: 'TREASURY · SHIFT' });
-    patchTextEl(layout.elements, 'dom_el_supply_victory_label', { text: 'VICTORY · CTRL' });
-    patchTextEl(layout.elements, 'dom_el_supply_kingdom_label', { text: 'KINGDOM · ALT' });
-    // The hand: always-visible plain digit badges, the original's shallow fan.
-    patchZoneEl(layout.elements, 'dom_el_my_hand', { keyGroup: 'plain', fanAngle: 1.6 });
-    // Own in-play: visible unless the foe is acting AND the row is empty —
-    // the exact original condition (renderPlayRows). No turn-color state:
-    // the DGT battlefield row carries no own-turn dressing.
-    patchZoneEl(layout.elements, 'dom_el_my_inplay', {
-      visible: or(MY_TURN, gt(zoneCount(zone(INPLAY, VIEWER)), num(0))),
-      reveal: 'fade',
-      states: [],
+    patchTextEl(els, 'dom_el_supply_kingdom_label', {
+      text: 'KINGDOM ACTION CARDS', rect: { x: 34.8, y: 7, w: 40, h: 2 },
+      fontSize: 1, bold: true, align: 'left', color: HDR_RED, letterSpacing: 1.2,
     });
-    // The harbor spots (and their captions) appear only when they hold cards —
-    // no empty deck / discard / trash boxes standing around.
-    patchZoneEl(layout.elements, 'dom_el_my_deck', { visible: HAS_DECK, reveal: 'fade' });
-    patchTextEl(layout.elements, 'dom_el_my_deck_label', { visible: HAS_DECK });
-    patchZoneEl(layout.elements, 'dom_el_my_discard', { visible: HAS_DISCARD, reveal: 'fade' });
-    patchTextEl(layout.elements, 'dom_el_my_discard_label', { visible: HAS_DISCARD });
-    patchZoneEl(layout.elements, 'dom_el_trash', { visible: HAS_TRASH, reveal: 'fade' });
-    // Foe in-play: 0.82× the own-row card width, hanging off the foe strip's
-    // right edge (the strip is absolute-positioned, so the row floats where
-    // the original's strip would have grown). Visible while the foe acts or
-    // still has cards in play — the exact original foePlayWrap condition.
-    removeEl(layout.elements, 'dom_el_foe_inplay');
-    layout.elements.push({
-      kind: 'zone', id: 'dom_el_foe_inplay', name: 'Foe in play',
-      rect: { x: 55.5, y: 6.2, w: 27.2, h: 12 },
-      zoneId: INPLAY, seat: 'opp1', cardScale: 4.5, gap: 0.5, padding: 0.3, showName: false,
-      visible: or(THEIR_TURN, gt(zoneCount(zone(INPLAY, FOE)), num(0))),
-      reveal: 'fade',
+    // The kingdom as BIG CARD FACES, 5 × 2 — the mock's centerpiece (the
+    // compact tile look remains one Pile-face select away).
+    patchZoneEl(els, 'dom_el_supply_kingdom', {
+      rect: { x: 34.8, y: 10.6, w: 64, h: 44 },
+      cardFilter: IS_KINGDOM_PILE, keyGroup: 'alt',
+      pileFace: undefined, rows: 2, columns: 5, cardScale: 7.3, gap: 1.8, padding: 1,
+      style: undefined, showName: false,
+      countBadge: 'bottom', badgeShape: 'round',
+      cardStyle: { ...GOLD_CARD_EDGE, borderRadius: 10 },
     });
-    // The phase seal, rebuilt to the spec markup with its five render-states.
-    patchEl(layout.elements, 'dom_el_seal', (el) => {
+    const underline = (id: string, x: number, w: number, color: string): ScreenElement => ({
+      kind: 'line', id, name: `${id.replace('dom_el_', '').replace(/_/g, ' ')}`,
+      rect: { x, y: 9.4, w, h: 0.5 }, orient: 'h', thickness: 1,
+      style: { borderColor: color },
+    });
+    els.push(
+      underline('dom_el_hdr_line_treasures', 1.2, 14.2, 'rgba(210, 171, 102, 0.55)'),
+      underline('dom_el_hdr_line_victory', 18, 14.2, 'rgba(143, 191, 143, 0.5)'),
+      underline('dom_el_hdr_line_kingdom', 34.8, 64, 'rgba(224, 105, 122, 0.45)'),
+      {
+        kind: 'line', id: 'dom_el_sep_tv', name: 'Column separator',
+        rect: { x: 16.5, y: 7, w: 0.4, h: 47.6 }, orient: 'v', thickness: 1,
+        style: { borderColor: HAIR },
+      },
+      {
+        kind: 'line', id: 'dom_el_sep_vk', name: 'Column separator',
+        rect: { x: 33.4, y: 7, w: 0.4, h: 47.6 }, orient: 'v', thickness: 1,
+        style: { borderColor: HAIR },
+      },
+    );
+
+    // Status strip: the phase seal reshaped into a wide plate (dots right,
+    // name/hint inline) + the three counter chips beside it.
+    patchEl(els, 'dom_el_seal', (el) => {
       if (el.kind !== 'group') return;
+      el.rect = { x: 0.8, y: 56.4, w: 19, h: 5.8 };
       el.onChangeAnim = 'stamp';
       el.states = sealStates(false);
       el.children = sealChildren(false);
+      const strip: [string, { x: number; y: number; w: number; h: number }][] = [
+        ['dot_action', { x: 68, y: 28, w: 3.2, h: 40 }],
+        ['dot_buy', { x: 73.6, y: 28, w: 3.2, h: 40 }],
+        ['dot_cleanup', { x: 79.2, y: 28, w: 3.2, h: 40 }],
+        ['key', { x: 86.5, y: 26, w: 10.5, h: 46 }],
+      ];
+      for (const [cid, r] of strip) patchEl(el.children, `dom_el_seal_${cid}`, (d) => { d.rect = { ...r }; });
+      for (const nid of ['name_action', 'name_buy', 'name_cleanup', 'name_foe', 'name_resolve', 'name_fallen']) {
+        patchEl(el.children, `dom_el_seal_${nid}`, (t) => {
+          t.rect = { x: 5, y: 12, w: 58, h: 50 };
+          if (t.kind === 'text') t.fontSize = 1.15;
+        });
+      }
+      for (const hid of ['hint_action', 'hint_buy', 'hint_cleanup', 'hint_foe', 'hint_resolve', 'hint_fallen']) {
+        patchEl(el.children, `dom_el_seal_${hid}`, (t) => {
+          t.rect = { x: 5, y: 64, w: 58, h: 24 };
+          if (t.kind === 'text') t.fontSize = 0.55;
+        });
+      }
     });
-    // The chronicle leaves the table (spec B §3): the runner's Log drawer is
-    // the one history on BOTH variants (the rebuilt mobile never had one),
-    // and the status bar peeks instead of pinning — it collapses to the
-    // safe-area-clear handle after ~2s idle and returns on hover / tap /
-    // drag-up / focus (dominion-skin.css dresses the handle).
-    removeEl(layout.elements, 'dom_el_chronicle');
+    const chip = (id: string, x: number, tint: string, soft: string) => {
+      patchEl(els, id, (el) => {
+        if (el.kind !== 'varText') return;
+        el.rect = { x, y: 56.4, w: 5.6, h: 5.8 };
+        el.fontSize = 1.9;
+        el.style = { background: soft, borderColor: tint, borderWidth: 1, borderRadius: 10 };
+      });
+      patchTextEl(els, `${id}_label`, {
+        rect: { x, y: 60.3, w: 5.6, h: 1.3 }, fontSize: 0.62, align: 'center', color: tint,
+      });
+    };
+    chip('dom_el_counter_actions', 21.4, '#a68cff', 'rgba(124, 92, 255, 0.10)');
+    chip('dom_el_counter_buys', 27.6, HDR_GREEN, 'rgba(79, 158, 99, 0.10)');
+    chip('dom_el_counter_coins', 33.8, GOLD, 'rgba(210, 171, 102, 0.10)');
+
+    // Realm header band: "<You>'S REALM" + the ACTIVE TURN chip + drop hint.
+    els.push(
+      {
+        kind: 'shape', id: 'dom_el_realm_bar', name: 'Realm bar', shape: 'rect',
+        rect: { x: 0.8, y: 63.4, w: 98.4, h: 3.6 },
+        style: { background: BAND_BG, borderColor: BAND_BORDER, borderWidth: 1, borderRadius: 8 },
+      },
+      {
+        kind: 'text', id: 'dom_el_realm_name', name: 'Realm name',
+        rect: { x: 2, y: 64.2, w: 24, h: 2.2 },
+        text: 'YOUR REALM', parts: [VIEWER, "'S REALM"],
+        fontSize: 1.05, bold: true, align: 'left', color: INK,
+        letterSpacing: 1, uppercase: true,
+      },
+      {
+        kind: 'text', id: 'dom_el_realm_active', name: 'Active turn chip',
+        rect: { x: 21, y: 64.1, w: 8.4, h: 2.2 },
+        text: 'ACTIVE TURN', fontSize: 0.68, bold: true, align: 'center', color: '#69d18c',
+        style: {
+          background: 'rgba(105, 209, 140, 0.12)',
+          borderColor: 'rgba(105, 209, 140, 0.55)', borderWidth: 1, borderRadius: 999,
+        },
+        visible: MY_TURN, reveal: 'fade',
+      },
+      {
+        kind: 'text', id: 'dom_el_realm_hint', name: 'Realm hint',
+        rect: { x: 31, y: 64.4, w: 46, h: 1.8 },
+        text: '— drop a hand card to play, or a supply card to buy',
+        fontSize: 0.72, align: 'left', color: ASH,
+        visible: MY_TURN,
+      },
+    );
+
+    // Harbor band: DECK tile (blue-striped), the PLAY ZONE, DISCARD + TRASH.
+    patchTextEl(els, 'dom_el_my_deck_label', {
+      rect: { x: 1.2, y: 68.2, w: 7, h: 1.3 }, fontSize: 0.7, align: 'center',
+    });
+    patchZoneEl(els, 'dom_el_my_deck', {
+      rect: { x: 1.2, y: 69.8, w: 7, h: 13 }, cardScale: 4.4,
+      style: {
+        background: 'repeating-linear-gradient(45deg, #16283a 0 8px, #0f1c29 8px 16px)',
+        borderColor: '#2e4a66', borderWidth: 1, borderRadius: 8,
+      },
+    });
+    patchZoneEl(els, 'dom_el_my_inplay', {
+      rect: { x: 9.4, y: 68.2, w: 66.4, h: 14.6 },
+      cardScale: 5.4, padding: 1,
+      style: { background: '#150e0a', borderColor: BAND_BORDER, borderWidth: 1, borderRadius: 10 },
+      emptyText: 'Play zone empty.',
+      states: [],
+    });
+    els.push({
+      kind: 'text', id: 'dom_el_my_inplay_label', name: 'Play zone label',
+      rect: { x: 10.6, y: 69, w: 12, h: 1.2 },
+      text: 'PLAY ZONE', fontSize: 0.65, bold: true, align: 'left', color: ASH,
+      letterSpacing: 1.4, uppercase: true,
+    });
+    patchTextEl(els, 'dom_el_my_discard_label', {
+      rect: { x: 77, y: 68.2, w: 9.6, h: 1.3 }, fontSize: 0.7, align: 'center', color: '#e8a04c',
+    });
+    patchZoneEl(els, 'dom_el_my_discard', {
+      rect: { x: 77, y: 69.8, w: 9.6, h: 13 }, cardScale: 4.4,
+      style: { background: '#1a120c', borderColor: '#5a3b1e', borderWidth: 1, borderRadius: 8 },
+      emptyText: 'empty',
+    });
+    patchZoneEl(els, 'dom_el_trash', {
+      rect: { x: 88, y: 69.8, w: 9.6, h: 13 }, cardScale: 4.4,
+      emptyText: 'empty',
+    });
+    els.push({
+      kind: 'text', id: 'dom_el_trash_label', name: 'Trash label',
+      rect: { x: 88, y: 68.2, w: 9.6, h: 1.3 },
+      text: 'TRASH', fontSize: 0.7, bold: true, align: 'center', color: HDR_RED,
+      letterSpacing: 1.4, uppercase: true,
+    });
+
+    // Hand strip: a flat row of individual cards on its own panel (the mock
+    // shows every copy — no × N collapsing, no fan tilt).
+    els.push({
+      kind: 'text', id: 'dom_el_my_hand_label', name: 'Hand label',
+      rect: { x: 1.2, y: 84.2, w: 6, h: 1.2 },
+      text: 'HAND', fontSize: 0.65, bold: true, align: 'left', color: ASH,
+      letterSpacing: 1.4, uppercase: true,
+    });
+    patchZoneEl(els, 'dom_el_my_hand', {
+      rect: { x: 0.8, y: 85.4, w: 98.4, h: 14.1 },
+      keyGroup: 'plain', fanAngle: 0, collapseDuplicates: false,
+      // Fan-layout gap = how much of each covered card stays visible, so a
+      // flat NON-overlapping strip needs gap ≥ cardScale (plus breathing room).
+      cardScale: 6.4, gap: 7.2, padding: 0.5,
+      style: { background: '#150e0a', borderColor: BAND_BORDER, borderWidth: 1, borderRadius: 10 },
+    });
+
+    // Foe in-play floats over the kingdom's top edge while the foe acts or
+    // still has cards out — the original foePlayWrap condition.
+    removeEl(els, 'dom_el_foe_inplay');
+    els.push({
+      kind: 'zone', id: 'dom_el_foe_inplay', name: 'Foe in play',
+      rect: { x: 55.5, y: 5.8, w: 27.2, h: 11 },
+      zoneId: INPLAY, seat: 'opp1', cardScale: 4.5, gap: 0.5, padding: 0.3, showName: false,
+      style: { background: BAND_BG, borderColor: BAND_BORDER, borderWidth: 1, borderRadius: 8 },
+      visible: or(THEIR_TURN, gt(zoneCount(zone(INPLAY, FOE)), num(0))),
+      reveal: 'fade',
+    });
+
+    // The chronicle returns as the mock's right-edge tab: a collapsible log
+    // docked at CHRONICLE, closed by default. The status bar still peeks.
+    removeEl(els, 'dom_el_chronicle');
+    removeEl(els, 'dom_el_chronicle_label');
+    els.push({
+      kind: 'log', id: 'dom_el_chronicle', name: 'Chronicle',
+      rect: { x: 79, y: 7, w: 20, h: 47.6 },
+      fontSize: 0.95, turnSeparators: true,
+      style: { background: BAND_BG, borderColor: BAND_BORDER, borderWidth: 1, borderRadius: 10 },
+      collapsible: { side: 'right', label: 'CHRONICLE', startCollapsed: true },
+    });
     layout.statusBar = 'peek';
     // The original's per-event flight table (motion.byTag): draw 300/22/45ms,
     // play 320/38, buy+gain 340/40/6°, discard & cleanup sweep 320/36/7°/35ms.

@@ -1693,3 +1693,37 @@ button.rn-ptile:hover { translate: 0 -3px; }
 .rn-ct-btn:hover:not(:disabled) { background: color-mix(in srgb, var(--accent-2) 24%, transparent); }
 .rn-ct-btn:active:not(:disabled) { transform: scale(0.92); }
 .rn-ct-btn:disabled { opacity: 0.35; cursor: default; }
+
+/* --- authored badge placement + empty notes (zone presentation controls) -------
+   .rn-badge-bc: the × N count as a pill centered under the card's bottom edge
+   (zone countBadge 'bottom'); .rn-pilecost-round / .rn-ptile-cost-round: the
+   field badge as a circle instead of the DGT diamond (zone badgeShape
+   'round'); .rn-empty-note: authored emptyText as free-flowing italic copy;
+   .rn-ptile-count-off: tile count hidden (countBadge 'none'). */
+
+.rn-badge.rn-badge-bc {
+  right: auto;
+  left: 50%;
+  bottom: -10px;
+  transform: translateX(-50%);
+}
+.rn-pilecost.rn-pilecost-round {
+  transform: none;
+  border-radius: 999px;
+}
+.rn-pilecost.rn-pilecost-round > span { transform: none; }
+.rn-ptile-cost.rn-ptile-cost-round::before {
+  rotate: 0deg;
+  border-radius: 999px;
+}
+.rn-ptile-count-off { visibility: hidden; }
+.rn-empty.rn-empty-note {
+  width: auto;
+  height: auto;
+  align-self: center;
+  border: none;
+  padding: 6px 10px;
+  font-size: 0.78rem;
+  font-style: italic;
+  color: rgba(255, 255, 255, 0.35);
+}

@@ -23,7 +23,7 @@ import { getGameById, saveGame } from '../state/store';
 import { buildDominionDef } from './dominionGame';
 
 export const DOMINION_GAME_ID = 'dominion-crownfall';
-export const SEED_VERSION = 10;
+export const SEED_VERSION = 11;
 
 const STAMP_KEY = 'crownfall.seed.dominion';
 const TOMBSTONE_KEY = 'crownfall.seed.dominion.deleted';

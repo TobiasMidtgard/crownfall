@@ -1572,13 +1572,25 @@ function SlotPreview({ zone, el, abs, screenH, screenW, real }: {
     return p !== undefined && p.count > 1 ? `×${p.count}` : undefined;
   };
 
+  // Per-element card chrome (zone cardStyle) + authored badge options —
+  // mirrored from the runner so the canvas previews what players see.
+  const cardCss = el.cardStyle !== undefined
+    ? (layoutStyleCss(el.cardStyle) as React.CSSProperties)
+    : undefined;
+  const countCls = `tt-slot-count${el.countBadge === 'bottom' ? ' tt-slot-count-bc' : ''}`;
+  const showCountBadge = el.countBadge !== 'none';
+  const badgeCls = `tt-slot-badge${el.badgeShape === 'round' ? ' tt-slot-badge-round' : ''}`;
+  const emptyNote = el.emptyText !== undefined
+    ? <span className="tt-empty-note">{el.emptyText}</span>
+    : null;
+
   const slot = (i: number, style?: React.CSSProperties, badge?: string) => (
     <span
       className={stacked ? 'tt-slot tt-slot-x' : 'tt-slot'}
       key={i}
-      style={{ width: cardW, height: cardH, ...style }}
+      style={{ width: cardW, height: cardH, ...cardCss, ...style }}
     >
-      {badge !== undefined && <span className="tt-slot-count">{badge}</span>}
+      {badge !== undefined && <span className={countCls}>{badge}</span>}
     </span>
   );
 
@@ -1591,7 +1603,7 @@ function SlotPreview({ zone, el, abs, screenH, screenW, real }: {
       ?? Math.max(1, Math.min(2, Math.floor((innerH + gapPx) / (cardH + gapPx))));
     const piles = real !== null ? real.piles ?? [] : null;
     const n = piles !== null ? piles.length : Math.max(1, cols * rows);
-    body = (
+    body = n === 0 && emptyNote !== null ? emptyNote : (
       <span
         className="tt-slots"
         style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, max-content)`, gap: gapPx, justifyContent: 'center' }}
@@ -1599,10 +1611,12 @@ function SlotPreview({ zone, el, abs, screenH, screenW, real }: {
         {Array.from({ length: n }, (_, i) => {
           const p = piles !== null ? piles[i] : null;
           return (
-            <span className="tt-slot tt-slot-pile" key={i} style={{ width: cardW, height: cardH }}>
-              <span className="tt-slot-count">× {p !== null ? p.count : 10 - (i % 3)}</span>
+            <span className="tt-slot tt-slot-pile" key={i} style={{ width: cardW, height: cardH, ...cardCss }}>
+              {showCountBadge && (
+                <span className={countCls}>× {p !== null ? p.count : 10 - (i % 3)}</span>
+              )}
               {(p !== null ? p.badge !== '' : el.pileBadgeField != null) && (
-                <span className="tt-slot-badge">{p !== null ? p.badge : 3 + (i % 5)}</span>
+                <span className={badgeCls}>{p !== null ? p.badge : 3 + (i % 5)}</span>
               )}
               {p !== null && p.name !== '' && <span className="tt-slot-name">{p.name}</span>}
             </span>
@@ -1612,9 +1626,11 @@ function SlotPreview({ zone, el, abs, screenH, screenW, real }: {
     );
   } else if (zone.layout === 'stack') {
     body = realSlots === 0 ? (
-      <span className="tt-slots tt-slots-stack">
-        <span className="tt-slot tt-slot-void" style={{ width: cardW, height: cardH }} />
-      </span>
+      emptyNote ?? (
+        <span className="tt-slots tt-slots-stack">
+          <span className="tt-slot tt-slot-void" style={{ width: cardW, height: cardH }} />
+        </span>
+      )
     ) : (
       <span className="tt-slots tt-slots-stack">
         <span className="tt-slot tt-slot-under" style={{ width: cardW, height: cardH }} />
@@ -1626,7 +1642,7 @@ function SlotPreview({ zone, el, abs, screenH, screenW, real }: {
     const rows = el.rows
       ?? Math.max(1, Math.min(2, Math.floor((innerH + gapPx) / (cardH + gapPx))));
     const n = cap(Math.max(1, cols * rows));
-    body = (
+    body = n === 0 && emptyNote !== null ? emptyNote : (
       <span
         className="tt-slots"
         style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, max-content)`, gap: gapPx, justifyContent: 'center' }}
@@ -1642,7 +1658,7 @@ function SlotPreview({ zone, el, abs, screenH, screenW, real }: {
     // Fan quality: per-card rotation + parabolic dip from the center index.
     const angle = el.fanAngle ?? 4;
     const mid = (n - 1) / 2;
-    body = (
+    body = n === 0 && emptyNote !== null ? emptyNote : (
       <span className="tt-slots tt-slots-fan" style={{ display: 'flex' }}>
         {Array.from({ length: n }, (_, i) => {
           const off = i - mid;
@@ -1655,7 +1671,7 @@ function SlotPreview({ zone, el, abs, screenH, screenW, real }: {
     );
   } else {
     const n = cap(fitCount(innerW, cardW, gapPx, 8));
-    body = (
+    body = n === 0 && emptyNote !== null ? emptyNote : (
       <span className="tt-slots" style={{ display: 'flex', gap: gapPx }}>
         {Array.from({ length: n }, (_, i) =>
           slot(i, undefined, real !== null ? realBadge(i) : stacked && i === 0 ? '×2' : undefined))}

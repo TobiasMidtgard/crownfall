@@ -88,6 +88,15 @@ const LOOK = 'dom_zone_look';
  * to In Play, where that turn's cleanup discards it normally.
  */
 const DURATION = 'dom_zone_duration';
+/**
+ * The landscape sideboard (Events / Landmarks; Ways and Projects when their
+ * mechanics land): chosen landscapes sit face-up here for the whole game.
+ * Events are bought in place via dom_action_buy_event; Landmarks just sit
+ * and score (their modules gate scoring on presence in this zone).
+ */
+const LANDSCAPES = 'dom_zone_landscapes';
+/** Unchosen landscape cards wait here, hidden (the RESERVE's little sister). */
+const LANDSCAPE_STOCK = 'dom_zone_landscape_stock';
 
 const ACTIONS = 'dom_var_actions';
 const BUYS = 'dom_var_buys';
@@ -216,6 +225,10 @@ const TYPE_TREASURE = 'dom_type_treasure';
 const TYPE_VICTORY = 'dom_type_victory';
 const TYPE_CURSE = 'dom_type_curse';
 const TYPE_ACTION = 'dom_type_action';
+/** Landscape primary types — declared only while some module ships that
+ *  kind (an unused type would be a validation warning). */
+const TYPE_EVENT = 'dom_type_event';
+const TYPE_LANDMARK = 'dom_type_landmark';
 const TAG_ATTACK = 'dom_tag_attack';
 const TAG_REACTION = 'dom_tag_reaction';
 const TAG_KINGDOM = 'dom_tag_kingdom';
@@ -223,12 +236,23 @@ const TAG_BASIC = 'dom_tag_basic';
 /** The named filter "The basic cards" (condition: card has tag Basic). */
 const FILTER_BASIC = 'dom_filter_basic';
 
-/** Type accents = hex twins of the skin's OKLCH palette (aurum / verdict / umbra / bone). */
+/** Landscape cards contributed by the registered expansions (Events buy in
+ *  place, Landmarks sit and score). Single copies, never kingdom picks. */
+const LANDSCAPE_SPECS = EXPANSIONS.flatMap((x) => x.landscapes ?? []);
+const LANDSCAPE_NAME_SET = new Set(LANDSCAPE_SPECS.map((l) => l.name));
+
+/** Type accents = hex twins of the skin's OKLCH palette (aurum / verdict / umbra / bone).
+ *  Landscape types join only while some module ships that kind — an unused
+ *  type would be a defined-but-unused validation warning. */
 const CARD_TYPES: CardTypeDef[] = [
   { id: TYPE_TREASURE, name: 'Treasure', color: '#d2ab66' },
   { id: TYPE_VICTORY, name: 'Victory', color: '#4f9e63' },
   { id: TYPE_CURSE, name: 'Curse', color: '#9460b7' },
   { id: TYPE_ACTION, name: 'Action', color: '#ece4d8' },
+  ...(LANDSCAPE_SPECS.some((l) => l.kind === 'event')
+    ? [{ id: TYPE_EVENT, name: 'Event', color: '#8fb8d8' }] : []),
+  ...(LANDSCAPE_SPECS.some((l) => l.kind === 'landmark')
+    ? [{ id: TYPE_LANDMARK, name: 'Landmark', color: '#5fae8e' }] : []),
 ];
 const CARD_TAGS: TagDef[] = [
   { id: TAG_ATTACK, name: 'Attack' },
@@ -349,6 +373,7 @@ const EXPANSION_OF: Record<string, string> = {};
 for (const p of KINGDOM_PILES) EXPANSION_OF[p.name] = 'Base';
 for (const x of EXPANSIONS) {
   for (const p of x.piles) EXPANSION_OF[p.name] = x.setName ?? 'Base';
+  for (const l of x.landscapes ?? []) EXPANSION_OF[l.name] = x.setName ?? 'Base';
 }
 
 /** Non-supply stock (Prizes, Horses, Spoils…) grouped by destination zone:
@@ -407,6 +432,13 @@ for (const p of NONSUPPLY_PILES) {
       : TREASURE_NAMES.has(p.name) ? TYPE_TREASURE
         : TYPE_ACTION,
     tags,
+  };
+}
+// Landscapes wear their sideboard type and no tags at all.
+for (const l of LANDSCAPE_SPECS) {
+  TYPE_LINE[l.name] = {
+    typeId: l.kind === 'event' ? TYPE_EVENT : TYPE_LANDMARK,
+    tags: [],
   };
 }
 
@@ -1367,6 +1399,14 @@ function buildMobileScreen(): ScreenVariant {
         showName: false, style: M_GROUND,
         visible: gt(zoneCount(zone('dom_zone_exile', VIEWER)), num(0)), reveal: 'fade',
       },
+      // The landscape sideboard floats one rung higher, same occupied-only rule.
+      {
+        kind: 'zone', id: 'dom_el_m_landscapes', name: 'Landscapes',
+        rect: { x: 1.5, y: 28.6, w: 97, h: 4.6 },
+        zoneId: LANDSCAPES, seat: 'shared', cardScale: 6, gap: 0.8, padding: 0.3,
+        showName: false, style: M_GROUND,
+        visible: gt(zoneCount(zone(LANDSCAPES)), num(0)), reveal: 'fade',
+      },
       // Your parked durations float above the in-play row when occupied
       // (m_foe_inplay precedent: overlay strips appear only with cargo).
       {
@@ -1422,7 +1462,8 @@ function buildMobileScreen(): ScreenVariant {
 export function kingdomCardNames(def: GameDef): string[] {
   return def.cards
     .filter((c) => !BASIC_NAME_SET.has(c.name) && !PROSPERITY_NAME_SET.has(c.name)
-      && !NONSUPPLY_NAME_SET.has(c.name) && c.name !== POTION_NAME)
+      && !NONSUPPLY_NAME_SET.has(c.name) && !LANDSCAPE_NAME_SET.has(c.name)
+      && c.name !== POTION_NAME)
     .map((c) => c.name);
 }
 
@@ -1454,7 +1495,8 @@ export interface KingdomCatalogEntry {
 export function kingdomCatalog(def: GameDef): KingdomCatalogEntry[] {
   return def.cards
     .filter((c) => !BASIC_NAME_SET.has(c.name) && !PROSPERITY_NAME_SET.has(c.name)
-      && !NONSUPPLY_NAME_SET.has(c.name) && c.name !== POTION_NAME)
+      && !NONSUPPLY_NAME_SET.has(c.name) && !LANDSCAPE_NAME_SET.has(c.name)
+      && c.name !== POTION_NAME)
     .map((c) => ({
       name: c.name,
       cost: Number(c.fields[COST] ?? 0),
@@ -1496,6 +1538,9 @@ export function buildDominionDef(): GameDef {
     // revealed choice, then leave — no screen element shows the zone itself.
     { id: LOOK, name: 'Aside', owner: 'shared', visibility: 'none', layout: 'stack', area: 'center' },
     { id: DURATION, name: 'Set aside', owner: 'perPlayer', visibility: 'all', layout: 'row', area: 'player' },
+    // The landscape sideboard + its hidden stock (Events / Landmarks).
+    { id: LANDSCAPES, name: 'Landscapes', owner: 'shared', visibility: 'all', layout: 'row', area: 'center' },
+    { id: LANDSCAPE_STOCK, name: 'Landscape stock', owner: 'shared', visibility: 'none', layout: 'stack', area: 'center' },
     ...EXPANSIONS.flatMap((x) => x.zones ?? []),
   );
 
@@ -1600,6 +1645,17 @@ export function buildDominionDef(): GameDef {
       initialZone: RESERVE,
       shuffle: false,
     },
+    // Landscape stock — single copies, promoted by pickLandscapes.
+    ...(LANDSCAPE_SPECS.length > 0 ? [{
+      id: 'dom_deck_landscapes',
+      name: 'Landscape stock',
+      source: {
+        kind: 'custom' as const,
+        entries: LANDSCAPE_SPECS.map((l) => ({ cardId: cardIdFor(l.name), count: 1 })),
+      },
+      initialZone: LANDSCAPE_STOCK,
+      shuffle: false,
+    }] : []),
     {
       id: 'dom_deck_potion',
       name: 'Potion stock',
@@ -1750,8 +1806,34 @@ export function buildDominionDef(): GameDef {
       ],
     },
   );
+  // Buying an Event: pays coins (Events are never Bridge-discounted — the
+  // discount applies to CARD costs), spends a buy, and fires the Event's
+  // onPlay ability IN PLACE (triggerAbilities — the card never moves, so
+  // the same Event can be bought again with another buy).
+  if (LANDSCAPE_SPECS.some((l) => l.kind === 'event')) {
+    def.actions.push({
+      id: 'dom_action_buy_event', name: 'Buy an event',
+      target: { kind: 'cardInZone', zoneId: LANDSCAPES, ownerOnly: false },
+      legality: allOf(
+        isA(CARD, TYPE_EVENT),
+        gt(getVar(BUYS), num(0)),
+        lte(field(CARD, COST), getVar(COINS)),
+      ),
+      script: [
+        changeVar(COINS, neg(field(CARD, COST))),
+        changeVar(BUYS, num(-1)),
+        announce(CURRENT, ' buys the ', CARD, ' event.'),
+        { kind: 'triggerAbilities', card: CARD, on: 'enterZone', zoneId: INPLAY },
+      ],
+    });
+  }
   const buyPhase = def.phases.find((p) => p.id === PHASE_BUY);
-  if (buyPhase) buyPhase.actionIds.push('dom_action_spend_coffer');
+  if (buyPhase) {
+    buyPhase.actionIds.push('dom_action_spend_coffer');
+    if (LANDSCAPE_SPECS.some((l) => l.kind === 'event')) {
+      buyPhase.actionIds.push('dom_action_buy_event');
+    }
+  }
   const actionPhase = def.phases.find((p) => p.id === PHASE_ACTION);
   if (actionPhase) actionPhase.actionIds.push('dom_action_spend_villager');
   def.actions.push(...EXPANSIONS.flatMap((x) => x.buildActions?.(KIT) ?? []));
@@ -2097,6 +2179,24 @@ export function buildDominionDef(): GameDef {
         style: { background: '#141019', borderColor: '#4a3a5c', borderWidth: 1, borderRadius: 8 },
         visible: gt(zoneCount(zone('dom_zone_exile', FOE)), num(0)), reveal: 'fade',
       },
+      // The landscape sideboard (Events / Landmarks) floats beside the exile
+      // strip only when the table plays with landscapes; click an Event to
+      // buy it during your buy phase.
+      {
+        kind: 'zone', id: 'dom_el_landscapes', name: 'Landscapes',
+        rect: { x: 33.2, y: 47, w: 20.4, h: 7.4 },
+        zoneId: LANDSCAPES, seat: 'shared', cardScale: 4.6, gap: 0.8, padding: 0.6,
+        showName: false,
+        style: { background: '#101816', borderColor: '#3a5c50', borderWidth: 1, borderRadius: 8 },
+        visible: gt(zoneCount(zone(LANDSCAPES)), num(0)), reveal: 'fade',
+      },
+      {
+        kind: 'text', id: 'dom_el_landscapes_label', name: 'Landscapes label',
+        rect: { x: 34.2, y: 47.6, w: 12, h: 1.1 },
+        text: 'LANDSCAPES', fontSize: 0.6, bold: true, align: 'left', color: ASH,
+        letterSpacing: 1.2, uppercase: true,
+        visible: gt(zoneCount(zone(LANDSCAPES)), num(0)), reveal: 'fade',
+      },
     );
     patchTextEl(els, 'dom_el_my_discard_label', {
       rect: { x: 77, y: 68.2, w: 9.6, h: 1.3 }, fontSize: 0.7, align: 'center', color: '#e8a04c',
@@ -2264,6 +2364,78 @@ function isPotionBlock(b: Block): boolean {
 /** True when this def's setup promotes the Potion pile. */
 export function potionEnabled(def: GameDef): boolean {
   return def.setup.some(isPotionBlock);
+}
+
+// --- the landscape sideboard (Events / Landmarks) -------------------------------
+
+export interface LandscapeCatalogEntry {
+  name: string;
+  cost: number;
+  kind: 'event' | 'landmark';
+  expansion: string;
+}
+
+/** Every landscape the def knows (for the setup screen's landscape picker). */
+export function landscapeCatalog(def: GameDef): LandscapeCatalogEntry[] {
+  return LANDSCAPE_SPECS
+    .filter((l) => def.cards.some((c) => c.name === l.name))
+    .map((l) => ({ ...l, expansion: EXPANSION_OF[l.name] ?? 'Base' }));
+}
+
+/** One tagged setup block per chosen landscape: stock → the sideboard. */
+function landscapeBlock(name: string): Block {
+  return move(
+    { kind: 'filter', filter: nameIs(name) },
+    zone(LANDSCAPE_STOCK), zone(LANDSCAPES), { faceUp: true },
+  );
+}
+
+/** The landscape a setup block promotes, or null (the pickLandscapes tag). */
+function landscapeBlockName(b: Block): string | null {
+  if (b.kind !== 'moveCards') return null;
+  if (b.from.zoneId !== LANDSCAPE_STOCK || b.to.zoneId !== LANDSCAPES) return null;
+  if (b.cards.kind !== 'filter') return null;
+  const f = b.cards.filter;
+  if (f.kind !== 'compare' || f.op !== '==') return null;
+  if (f.left.kind !== 'cardField' || f.left.fieldId !== 'name') return null;
+  if (f.right.kind !== 'str') return null;
+  return f.right.value;
+}
+
+/** The landscapes this def's setup puts on the table. */
+export function activeLandscapes(def: GameDef): string[] {
+  return def.setup
+    .map(landscapeBlockName)
+    .filter((n): n is string => n !== null);
+}
+
+/**
+ * PURE landscape swap (pickKingdom's little sister): the table's sideboard
+ * becomes exactly `names` (0–2 in practice — the picker enforces the cap).
+ * Throws on a name the def doesn't know. Idempotent.
+ */
+export function pickLandscapes(def: GameDef, names: string[]): GameDef {
+  const out = deepClone(def);
+  for (const name of names) {
+    if (!LANDSCAPE_NAME_SET.has(name) || !out.cards.some((c) => c.name === name)) {
+      throw new Error(`Unknown landscape "${name}".`);
+    }
+  }
+  const keep: Block[] = [];
+  let insertAt = -1;
+  for (const b of out.setup) {
+    if (landscapeBlockName(b) === null) keep.push(b);
+    else if (insertAt < 0) insertAt = keep.length;
+  }
+  // Fresh defs carry no landscape blocks: land them before the final
+  // deal-hands block so the sideboard exists when play begins.
+  if (insertAt < 0) insertAt = Math.max(0, keep.length - 1);
+  out.setup = [
+    ...keep.slice(0, insertAt),
+    ...names.map(landscapeBlock),
+    ...keep.slice(insertAt),
+  ];
+  return out;
 }
 
 // --- Prosperity basics toggle (Platinum & Colony) ------------------------------

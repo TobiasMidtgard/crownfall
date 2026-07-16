@@ -16,8 +16,8 @@ import { validateGameDef } from '../shared/validate';
 import { KINGDOM_SETS } from '../shared/kingdoms';
 import { getGameById } from '../state/store';
 import {
-  activeKingdomCards, kingdomCatalog, pickKingdom, supportsKingdomPicking,
-  supportsProsperityBasics, withProsperityBasics,
+  activeKingdomCards, kingdomCatalog, landscapeCatalog, pickKingdom, pickLandscapes,
+  supportsKingdomPicking, supportsProsperityBasics, withProsperityBasics,
 } from '../forge/dominionGame';
 import { rollSeed } from './layout';
 import { hostGame, joinGame, type MatchStart, type NetAdapter, type NetFault } from './net';
@@ -62,6 +62,10 @@ export function PlayPage({ gameId, navigate }: PlayPageProps) {
   const [kingdomCards, setKingdomCards] = useState<string[] | null>(null); // null = def's own
   const prosperityAble = useMemo(() => (def ? supportsProsperityBasics(def) : false), [def]);
   const [prosperity, setProsperity] = useState(false);
+  // The landscape sideboard (Events / Landmarks) — dormant until a
+  // registered expansion actually ships landscape cards.
+  const landCatalog = useMemo(() => (def && kingdomable ? landscapeCatalog(def) : []), [def, kingdomable]);
+  const [landscapes, setLandscapes] = useState<string[]>([]);
   const pickerData = useMemo(() => {
     if (!def || !kingdomable) return null;
     return {
@@ -86,9 +90,16 @@ export function PlayPage({ gameId, navigate }: PlayPageProps) {
         out = def; // an unknown name (keeper deleted a card) — fall back
       }
     }
+    if (kingdomable && landscapes.length > 0) {
+      try {
+        out = pickLandscapes(out, landscapes);
+      } catch {
+        // a deleted landscape — play without the sideboard
+      }
+    }
     if (prosperityAble && prosperity) out = withProsperityBasics(out, true);
     return out;
-  }, [def, kingdomable, kingdomCards, prosperityAble, prosperity]);
+  }, [def, kingdomable, kingdomCards, landscapes, prosperityAble, prosperity]);
 
   // Leaving an online table (or the page) hangs up the link.
   useEffect(() => () => {
@@ -243,6 +254,12 @@ export function PlayPage({ gameId, navigate }: PlayPageProps) {
           ...pickerData,
           onChange: setKingdomCards,
           prosperity: prosperityAble ? { value: prosperity, onChange: setProsperity } : null,
+          landscapes: landCatalog.length > 0 ? {
+            catalog: landCatalog,
+            value: landscapes,
+            onChange: setLandscapes,
+            max: 2,
+          } : null,
         }}
       />
     );

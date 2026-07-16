@@ -24,6 +24,15 @@ export interface KingdomPicker {
   /** Prosperity basics (Platinum & Colony) toggle — absent when the def
    *  doesn't carry them. */
   prosperity?: { value: boolean; onChange: (on: boolean) => void } | null;
+  /** Landscape sideboard picker (Events / Landmarks) — absent while the
+   *  def ships no landscape cards. */
+  landscapes?: {
+    catalog: { name: string; cost: number; kind: string; expansion?: string }[];
+    value: string[];
+    onChange: (names: string[]) => void;
+    /** Most landscapes one table takes (the official deal: 2). */
+    max: number;
+  } | null;
 }
 
 function makeSeats(count: number, prev: SeatSetup[] = []): SeatSetup[] {
@@ -323,6 +332,41 @@ export function SetupScreen({ def, issues, navigate, onStart, online, onHost, on
                   </span>
                 </label>
               )}
+              {kingdom.landscapes != null && kingdom.landscapes.catalog.length > 0 && (() => {
+                const land = kingdom.landscapes;
+                return (
+                  <div className="rn-klandscapes">
+                    <h4>
+                      Landscapes
+                      <span className="rn-kland-cap"> — Events buy from the sideboard, Landmarks
+                        just score; pick up to {land.max}.</span>
+                    </h4>
+                    <div className="rn-kland-grid" role="group" aria-label="Pick landscapes">
+                      {land.catalog.map((l) => {
+                        const on = land.value.includes(l.name);
+                        const full = !on && land.value.length >= land.max;
+                        return (
+                          <button
+                            key={l.name}
+                            type="button"
+                            className={`btn btn-small rn-kland${on ? ' rn-kland-on' : ''}`}
+                            aria-pressed={on}
+                            disabled={onlineLocked || full}
+                            onClick={() => land.onChange(on
+                              ? land.value.filter((n) => n !== l.name)
+                              : [...land.value, l.name])}
+                          >
+                            {on ? '✓ ' : ''}{l.name}
+                            <span className="rn-kland-kind">
+                              {l.kind}{l.cost > 0 ? ` · ${l.cost}` : ''}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           );
         })()}

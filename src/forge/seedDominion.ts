@@ -23,7 +23,7 @@ import { getGameById, saveGame } from '../state/store';
 import { buildDominionDef } from './dominionGame';
 
 export const DOMINION_GAME_ID = 'dominion-crownfall';
-export const SEED_VERSION = 21; // v21: Alchemy + Menagerie — 41 cards, Potions, Exile mat, Horses
+export const SEED_VERSION = 22; // v22: landscape engine core — sideboard zones, Event buys, picker
 
 const STAMP_KEY = 'crownfall.seed.dominion';
 const TOMBSTONE_KEY = 'crownfall.seed.dominion.deleted';

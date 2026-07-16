@@ -1803,6 +1803,39 @@ button.rn-ptile:hover { translate: 0 -3px; }
 }
 .rn-kprosperity input { margin-top: 3px; }
 .rn-kprosperity span { font-size: 0.9rem; }
+
+/* Landscape sideboard picker (Events / Landmarks). */
+.rn-klandscapes {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: color-mix(in srgb, var(--accent-2) 5%, transparent);
+}
+.rn-klandscapes h4 {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+}
+.rn-kland-cap {
+  font-weight: 400;
+  color: var(--text-dim);
+}
+.rn-kland-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.rn-kland-kind {
+  margin-left: 6px;
+  font-size: 0.72em;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+.rn-kland-on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
 .rn-kgrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));

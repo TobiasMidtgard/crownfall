@@ -135,6 +135,17 @@ export interface ExpansionModule {
    * need TYPE_LINE membership via the attack/victory/treasure name lists.
    */
   nonSupply?: { zoneId: string; piles: PileSpec[] }[];
+  /**
+   * Landscape cards (Adventures/Empires Events, Empires Landmarks — Ways
+   * and Projects once their mechanics land): single copies waiting in the
+   * hidden landscape stock until pickLandscapes promotes the chosen ones
+   * onto the table. The card def itself comes from buildCards like any
+   * other card; an EVENT's effect is its onPlay ability — the core
+   * 'dom_action_buy_event' pays the cost and fires it in place. A LANDMARK
+   * has no action: gate its buildVpTerms/buildTriggers contributions on
+   * the card sitting in the landscapes zone.
+   */
+  landscapes?: { name: string; cost: number; kind: 'event' | 'landmark' }[];
   buildTriggers?(kit: CardKit): TriggerDef[];
   /** Extra actions (e.g. a card's own response-speed reaction). */
   buildActions?(kit: CardKit): ActionDef[];

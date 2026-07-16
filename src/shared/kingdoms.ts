@@ -85,6 +85,21 @@ export const KINGDOM_SETS: KingdomSet[] = [
     motto: 'Rare writs, royal favors.',
     cards: ['Envoy', 'Governor', 'Captain', 'Church', 'Walled Village', 'Dismantle', 'Marchland', 'Village', 'Smithy', 'Market'],
   },
+  {
+    id: 'philosophers-trail', name: "The Philosopher's Trail", icon: 'crest-veil',
+    motto: 'Gold is a state of mind.',
+    cards: ['Apothecary', 'Alchemist', 'Familiar', 'Golem', 'Herbalist', "Philosopher's Stone", 'Scrying Pool', 'University', 'Vineyard', 'Market'],
+  },
+  {
+    id: 'wild-ride', name: 'The Wild Ride', icon: 'crest-dominion',
+    motto: 'Hooves first, questions later.',
+    cards: ['Sleigh', 'Supplies', 'Cavalry', 'Groom', 'Hostelry', 'Livery', 'Paddock', 'Kiln', 'Hunting Lodge', 'Animal Fair'],
+  },
+  {
+    id: 'into-exile', name: 'Into Exile', icon: 'crest-veil',
+    motto: 'Banished, not forgotten.',
+    cards: ['Black Cat', 'Camel Train', 'Stockpile', 'Bounty Hunter', 'Cardinal', 'Sheepdog', 'Coven', 'Displace', 'Sanctuary', 'Gatekeeper'],
+  },
 ];
 
 export const DEFAULT_KINGDOM_ID = 'first-game';

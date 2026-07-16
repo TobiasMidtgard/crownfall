@@ -23,7 +23,7 @@ import { getGameById, saveGame } from '../state/store';
 import { buildDominionDef } from './dominionGame';
 
 export const DOMINION_GAME_ID = 'dominion-crownfall';
-export const SEED_VERSION = 20; // v20: Hinterlands 2E + Promos — 33 cards, on-gain reactions, Church/Captain durations
+export const SEED_VERSION = 21; // v21: Alchemy + Menagerie — 41 cards, Potions, Exile mat, Horses
 
 const STAMP_KEY = 'crownfall.seed.dominion';
 const TOMBSTONE_KEY = 'crownfall.seed.dominion.deleted';

@@ -1358,6 +1358,15 @@ function buildMobileScreen(): ScreenVariant {
         visible: or(MY_TURN, gt(zoneCount(zone(INPLAY, VIEWER)), num(0))),
         reveal: 'fade',
       },
+      // Your exile mat floats over the supply switcher's foot only while
+      // occupied (m_foe_inplay precedent). Foe exile is desktop-only.
+      {
+        kind: 'zone', id: 'dom_el_m_my_exile', name: 'Your exile mat',
+        rect: { x: 1.5, y: 33.4, w: 97, h: 4.6 },
+        zoneId: 'dom_zone_exile', seat: 'viewer', cardScale: 6, gap: 0.8, padding: 0.3,
+        showName: false, style: M_GROUND,
+        visible: gt(zoneCount(zone('dom_zone_exile', VIEWER)), num(0)), reveal: 'fade',
+      },
       // Your parked durations float above the in-play row when occupied
       // (m_foe_inplay precedent: overlay strips appear only with cargo).
       {
@@ -1474,7 +1483,7 @@ export function buildDominionDef(): GameDef {
       "The hall's flagship table, forged here: the classic deck-builder for two. "
       + 'Buy from a shared supply, grow an engine, and weather Militia raids and '
       + 'midnight Curses — reveal a Moat in the response window to stay safe. '
-      + 'Pick one of fourteen kingdom sets or hand-pick your ten from all 164 piles; '
+      + 'Pick one of seventeen kingdom sets or hand-pick your ten from all 205 piles; '
       + 'the game ends when the Provinces (or any three piles) run out, and most '
       + 'victory points wins.',
   };
@@ -2057,6 +2066,36 @@ export function buildDominionDef(): GameDef {
         rect: { x: 64.4, y: 69, w: 11, h: 1.2 },
         text: 'SET ASIDE', fontSize: 0.65, bold: true, align: 'left', color: ASH,
         letterSpacing: 1.4, uppercase: true,
+      },
+    );
+    // Exile mats (Menagerie): floating strips that appear only while someone
+    // holds exiled cards — the zone ships with the menagerie module but its
+    // TABLE surface lives here with the other core strips. The remaining
+    // module mats (Island / Native Village / Church) still lack surfaces;
+    // the universal mats dock is queued with the landscape engine.
+    els.push(
+      {
+        kind: 'zone', id: 'dom_el_my_exile', name: 'Your exile mat',
+        rect: { x: 76, y: 47, w: 22.8, h: 7.4 },
+        zoneId: 'dom_zone_exile', seat: 'viewer', cardScale: 3.4, gap: 0.5, padding: 0.6,
+        showName: false,
+        style: { background: '#141019', borderColor: '#4a3a5c', borderWidth: 1, borderRadius: 8 },
+        visible: gt(zoneCount(zone('dom_zone_exile', VIEWER)), num(0)), reveal: 'fade',
+      },
+      {
+        kind: 'text', id: 'dom_el_my_exile_label', name: 'Exile label',
+        rect: { x: 77, y: 47.6, w: 10, h: 1.1 },
+        text: 'YOUR EXILE', fontSize: 0.6, bold: true, align: 'left', color: ASH,
+        letterSpacing: 1.2, uppercase: true,
+        visible: gt(zoneCount(zone('dom_zone_exile', VIEWER)), num(0)), reveal: 'fade',
+      },
+      {
+        kind: 'zone', id: 'dom_el_foe_exile', name: 'Foe exile mat',
+        rect: { x: 70.4, y: 5.8, w: 12.4, h: 9.6 },
+        zoneId: 'dom_zone_exile', seat: 'opp1', cardScale: 3.2, gap: 0.4, padding: 0.5,
+        showName: false,
+        style: { background: '#141019', borderColor: '#4a3a5c', borderWidth: 1, borderRadius: 8 },
+        visible: gt(zoneCount(zone('dom_zone_exile', FOE)), num(0)), reveal: 'fade',
       },
     );
     patchTextEl(els, 'dom_el_my_discard_label', {

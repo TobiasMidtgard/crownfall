@@ -18,10 +18,18 @@ import { guilds1e } from './guilds1e';
 import { hinterlands2eA } from './hinterlands2eA';
 import { hinterlands2eB } from './hinterlands2eB';
 import { promos1 } from './promos1';
+import { alchemy1e } from './alchemy1e';
+import { menagerieA } from './menagerieA';
+import { menagerieB } from './menagerieB';
 
 export const EXPANSIONS: ExpansionModule[] = [
   base2e, intrigue2eA, intrigue2eB, intrigue2eC,
   seaside2eA, seaside2eB, seaside2eC,
   prosperity2eA, prosperity2eB, cornucopia1e, guilds1e,
   hinterlands2eA, hinterlands2eB, promos1,
+  alchemy1e,
+  // menagerieA declares the shared Exile mat / Horse stock and the shared
+  // exile-discharge trigger — it must precede menagerieB, whose cards
+  // reference those zones and assume that trigger fires first on a gain.
+  menagerieA, menagerieB,
 ];

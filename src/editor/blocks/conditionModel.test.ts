@@ -399,6 +399,10 @@ function isDocumentedAdvanced(e: Expr): boolean {
   // Move-context bindings ($fromZone — Seaside durations' re-entry guards:
   // "this play didn't come from the Duration zone") have no guided clause.
   if (e.left.kind === 'binding' && e.left.name === '$fromZone') return true;
+  // Zone-membership compares (cardZoneId of a bound card vs a zone-id
+  // string — Menagerie's Gatekeeper asks where the gained copy sits before
+  // exiling it) have no guided clause either.
+  if (e.left.kind === 'cardZoneId') return true;
   if (kinds.includes('stackSize')) return true;
   if (kinds.includes('currentPlayer') || kinds.includes('nextPlayer')) return true;
   if (e.right.kind === 'getVar' || e.right.kind === 'zoneCount' || e.right.kind === 'cardField') return true;

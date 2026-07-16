@@ -107,10 +107,16 @@ const VP_TOKENS = 'dom_var_vp_tokens';
 const COFFERS = 'dom_var_coffers';
 /** Per-player banked actions (Renaissance's Villagers): same shape. */
 const VILLAGERS = 'dom_var_villagers';
+/** Potions brewed this turn (Alchemy): the buy action's second currency —
+ *  checked against dom_field_cost_potion and spent alongside coins; reset
+ *  at cleanup (potions never carry over). */
+const POTIONS = 'dom_var_potions';
 /** Set at turn end when the supply says the game is over (see buildDominionDef). */
 const GAME_OVER = 'dom_var_game_over';
 
 const COST = 'dom_field_cost';
+/** The potion half of a card's cost (Alchemy) — 0 for every coin-only card. */
+const COST_POTION = 'dom_field_cost_potion';
 /**
  * The RETIRED machine-type text field: conditions read the real type/tag
  * vocabulary now and the face renders KIND_F, so buildDominionDef scrubs
@@ -266,6 +272,16 @@ const PROSPERITY_PILES: PileSpec[] = [
 export const PROSPERITY_NAMES = PROSPERITY_PILES.map((p) => p.name);
 const PROSPERITY_NAME_SET = new Set(PROSPERITY_NAMES);
 
+/**
+ * Alchemy's second currency. The Potion pile waits in the RESERVE like the
+ * Prosperity basics, but its promotion is AUTOMATIC: pickKingdom adds it
+ * whenever a picked card carries a potion cost (dom_field_cost_potion > 0).
+ * Not a kingdom pick, not in the catalog; counted by the pile watcher only
+ * while promoted.
+ */
+const POTION_PILE: PileSpec = { name: 'Potion', cost: 4, treasure: true, count: 16 };
+export const POTION_NAME = POTION_PILE.name;
+
 /** Every kingdom card the def knows (union of the three sets + spares). */
 const KINGDOM_PILES: PileSpec[] = [
   // Already in the example def.
@@ -356,7 +372,7 @@ interface TypeLine { typeId: string; tags: string[] }
  * Militia/Witch add Attack, Moat adds Reaction (see the MOAT DECISION note).
  */
 const TYPE_LINE: Record<string, TypeLine> = {};
-for (const p of [...BASIC_PILES, ...PROSPERITY_PILES]) {
+for (const p of [...BASIC_PILES, ...PROSPERITY_PILES, POTION_PILE]) {
   TYPE_LINE[p.name] = {
     typeId: p.treasure === true ? TYPE_TREASURE : p.name === 'Curse' ? TYPE_CURSE : TYPE_VICTORY,
     tags: [TAG_BASIC],
@@ -530,8 +546,8 @@ function durationPair(idBase: string, name: string, now: Block[], later: Block[]
 
 const KIT: CardKit = {
   zones: { SUPPLY, TRASH, DECK, HAND, DISCARD, INPLAY, RESERVE, LOOK, DURATION },
-  vars: { ACTIONS, BUYS, COINS, VP, IMMUNE, EMPTY_PILES, SCRATCH, DISCOUNT, VP_TOKENS, COFFERS, VILLAGERS },
-  fields: { COST, COINS_F, VP_F, TEXT },
+  vars: { ACTIONS, BUYS, COINS, VP, IMMUNE, EMPTY_PILES, SCRATCH, DISCOUNT, VP_TOKENS, COFFERS, VILLAGERS, POTIONS },
+  fields: { COST, COINS_F, VP_F, TEXT, COST_POTION },
   types: { ACTION: TYPE_ACTION, TREASURE: TYPE_TREASURE, VICTORY: TYPE_VICTORY, CURSE: TYPE_CURSE },
   tags: { ATTACK: TAG_ATTACK, REACTION: TAG_REACTION, KINGDOM: TAG_KINGDOM },
   OWNER, CARD, CHOICE, PLAYER, SELF,
@@ -593,7 +609,12 @@ const EXTRA_CARDS: CardDef[] = [
         iff(gt(zoneCount(zone(RESERVE)), num(0)), [
           choosePileBlock({
             who: OWNER, from: zone(RESERVE),
-            filter: lte(field(CARD, COST), getVar(COINS, OWNER)),
+            // Basic reserve stock (Platinum/Colony/Potion) is not kingdom
+            // contraband — the market sells unpicked KINGDOM piles only.
+            filter: allOf(
+              lte(field(CARD, COST), getVar(COINS, OWNER)),
+              not(hasTag(CARD, TAG_BASIC)),
+            ),
             optional: true,
             // RESERVE is visibility 'none': without the reveal the sheet
             // renders indistinguishable card backs and the buy is blind.
@@ -1289,6 +1310,21 @@ function buildMobileScreen(): ScreenVariant {
         text: 'VILLAGE', fontSize: 1.9, align: 'center', color: ASH,
         visible: gt(getVar(VILLAGERS, VIEWER), num(0)), reveal: 'fade',
       },
+      // Potions share the villagers ticker slot: nothing banks Villagers
+      // until Renaissance ships, and Alchemy games never bank them — the
+      // mobile band gets a real fourth slot with the Renaissance redesign.
+      {
+        kind: 'varText', id: 'dom_el_m_counter_potions', name: 'Potions ticker',
+        rect: { x: 51.5, y: 42.6, w: 8, h: 3.6 },
+        varId: POTIONS, seat: 'viewer', fontSize: 4.2, bold: true, align: 'center', color: '#6ec6b4',
+        ticker: true, visible: gt(getVar(POTIONS, VIEWER), num(0)), reveal: 'fade',
+      },
+      {
+        kind: 'text', id: 'dom_el_m_counter_potions_label', name: 'POTIONS',
+        rect: { x: 51.5, y: 46.6, w: 8, h: 1.6 },
+        text: 'POTIONS', fontSize: 1.9, align: 'center', color: ASH,
+        visible: gt(getVar(POTIONS, VIEWER), num(0)), reveal: 'fade',
+      },
       {
         kind: 'button', id: 'dom_el_m_btn_spend_coffer', name: 'Spend a Coffer',
         rect: { x: 33.5, y: 39.4, w: 11.5, h: 2.8 },
@@ -1377,7 +1413,7 @@ function buildMobileScreen(): ScreenVariant {
 export function kingdomCardNames(def: GameDef): string[] {
   return def.cards
     .filter((c) => !BASIC_NAME_SET.has(c.name) && !PROSPERITY_NAME_SET.has(c.name)
-      && !NONSUPPLY_NAME_SET.has(c.name))
+      && !NONSUPPLY_NAME_SET.has(c.name) && c.name !== POTION_NAME)
     .map((c) => c.name);
 }
 
@@ -1409,7 +1445,7 @@ export interface KingdomCatalogEntry {
 export function kingdomCatalog(def: GameDef): KingdomCatalogEntry[] {
   return def.cards
     .filter((c) => !BASIC_NAME_SET.has(c.name) && !PROSPERITY_NAME_SET.has(c.name)
-      && !NONSUPPLY_NAME_SET.has(c.name))
+      && !NONSUPPLY_NAME_SET.has(c.name) && c.name !== POTION_NAME)
     .map((c) => ({
       name: c.name,
       cost: Number(c.fields[COST] ?? 0),
@@ -1462,6 +1498,7 @@ export function buildDominionDef(): GameDef {
     { id: VP_TOKENS, name: 'VP tokens', scope: 'perPlayer', type: 'number', initial: 0 },
     { id: COFFERS, name: 'Coffers', scope: 'perPlayer', type: 'number', initial: 0 },
     { id: VILLAGERS, name: 'Villagers', scope: 'perPlayer', type: 'number', initial: 0 },
+    { id: POTIONS, name: 'Potions', scope: 'perPlayer', type: 'number', initial: 0 },
     ...EXPANSIONS.flatMap((x) => x.variables ?? []),
   );
   // The empty-pile counter and the attack-immunity flag (inherited from the
@@ -1476,6 +1513,12 @@ export function buildDominionDef(): GameDef {
     // Prosperity basics — reserve stock until the setup toggle promotes them.
     card('Platinum', 9, 5, 0, 'Worth 5 coins.'),
     card('Colony', 11, 0, 10, 'Worth 10 victory points.'),
+    // Alchemy's Potion — reserve stock until a potion-cost kingdom card
+    // gets picked; pickKingdom promotes it automatically. Its worth is an
+    // on-play +1 Potion (the coin field stays 0), the Astrolabe idiom.
+    card('Potion', 4, 0, 0, 'Worth 1 Potion this turn. Potions buy alchemical cards.', [
+      onPlay('dom_ab_potion', 'Brew', [changeVar(POTIONS, num(1), OWNER)]),
+    ]),
     ...EXPANSIONS.flatMap((x) => x.buildCards(KIT)),
   );
 
@@ -1497,6 +1540,7 @@ export function buildDominionDef(): GameDef {
   if (tpl) {
     tpl.fields = tpl.fields.filter((f) => f.id !== CTYPE);
     tpl.fields.push({ id: KIND_F, name: 'Kind', type: 'text' });
+    tpl.fields.push({ id: COST_POTION, name: 'Potion cost', type: 'number' });
     const typeEl = tpl.elements.find((e) => e.id === 'dom_el_type');
     if (typeEl && typeEl.kind === 'text') typeEl.bind = KIND_F;
   }
@@ -1506,6 +1550,8 @@ export function buildDominionDef(): GameDef {
     c.typeId = line.typeId;
     c.tags = [...line.tags];
     c.fields[KIND_F] = kindLabelFor(line);
+    // Coin-only cards carry an explicit 0 so the buy legality reads a number.
+    if (c.fields[COST_POTION] === undefined) c.fields[COST_POTION] = 0;
     const abilities = EXAMPLE_ABILITY_OVERRIDES[c.name];
     if (abilities !== undefined) c.abilities = deepClone(abilities);
   }
@@ -1541,6 +1587,16 @@ export function buildDominionDef(): GameDef {
       source: {
         kind: 'custom',
         entries: PROSPERITY_PILES.map((p) => ({ cardId: cardIdFor(p.name), count: p.count })),
+      },
+      initialZone: RESERVE,
+      shuffle: false,
+    },
+    {
+      id: 'dom_deck_potion',
+      name: 'Potion stock',
+      source: {
+        kind: 'custom' as const,
+        entries: [{ cardId: cardIdFor(POTION_NAME), count: POTION_PILE.count }],
       },
       initialZone: RESERVE,
       shuffle: false,
@@ -1609,11 +1665,14 @@ export function buildDominionDef(): GameDef {
     buy.legality = allOf(
       gt(getVar(BUYS), num(0)),
       lte(field(CARD, COST), add(getVar(COINS), getVar(DISCOUNT))),
+      // Alchemy's second currency: the potion half is never discounted.
+      lte(field(CARD, COST_POTION), getVar(POTIONS)),
     );
     buy.script = [
       setVar(SCRATCH, sub(field(CARD, COST), getVar(DISCOUNT))),
       iff(lte(getVar(SCRATCH), num(0)), [setVar(SCRATCH, num(0))]),
       changeVar(COINS, neg(getVar(SCRATCH))),
+      changeVar(POTIONS, neg(field(CARD, COST_POTION))),
       changeVar(BUYS, num(-1)),
       announce(CURRENT, ' buys ', CARD, '.'),
       tmove(specific(CARD), zone(SUPPLY), zone(DISCARD), 'buy', { faceUp: true }),
@@ -1652,6 +1711,7 @@ export function buildDominionDef(): GameDef {
       // the expansion cards track (Merchant's first-Silver flag, Conspirator's
       // actions-played counter, Minion's stashed choice…).
       setVar(DISCOUNT, num(0)),
+      setVar(POTIONS, num(0)),
       ...EXPANSIONS.flatMap((x) => x.buildCleanupResets?.(KIT) ?? []),
       END_PHASE,
     ],
@@ -1920,6 +1980,8 @@ export function buildDominionDef(): GameDef {
         visible: allOf(MY_TURN, IN_ACTION, gt(getVar(VILLAGERS, VIEWER), num(0))),
         reveal: 'fade',
       },
+      // Potions spend themselves at buy time — a chip, no button.
+      ...bankChip('potions', POTIONS, 'POTIONS', 69.4, '#6ec6b4', 'rgba(110, 198, 180, 0.10)'),
     );
 
     // Realm header band: "<You>'S REALM" + the ACTIVE TURN chip + drop hint.
@@ -2112,18 +2174,57 @@ export function pickKingdom(def: GameDef, cardNames: string[]): GameDef {
     else if (insertAt < 0) insertAt = keep.length;
   }
   if (insertAt < 0) insertAt = 0;
+  // The Potion pile rides along automatically wherever the picked kingdom
+  // needs it (any card with a potion cost) — pure and idempotent: the old
+  // promotion block is dropped and re-added only when still warranted.
+  const needsPotion = cardNames.some((n) => {
+    const c = out.cards.find((cc) => cc.name === n);
+    return Number(c?.fields[COST_POTION] ?? 0) > 0;
+  });
+  const kept = keep.filter((b) => !isPotionBlock(b));
+  const at = insertAt - keep.slice(0, insertAt).filter(isPotionBlock).length;
   out.setup = [
-    ...keep.slice(0, insertAt),
+    ...kept.slice(0, at),
     ...cardNames.map(kingdomPileBlock),
-    ...keep.slice(insertAt),
+    ...(needsPotion ? [potionBlock()] : []),
+    ...kept.slice(at),
   ];
   const watcher = out.triggers.find((t) => t.id === 'dom_trigger_piles');
   if (watcher) {
-    watcher.script = pileWatcherScript(
-      prosperityEnabled(out) ? [...cardNames, ...PROSPERITY_NAMES] : cardNames,
-    );
+    watcher.script = pileWatcherScript([
+      ...cardNames,
+      ...(needsPotion ? [POTION_NAME] : []),
+      ...(prosperityEnabled(out) ? PROSPERITY_NAMES : []),
+    ]);
   }
   return out;
+}
+
+/**
+ * The setup block that promotes the Potion pile — iff-wrapped like the
+ * Prosperity block (never mistakable for a kingdom pick), shape-distinct
+ * from it by the name it filters.
+ */
+function potionBlock(): Block {
+  return iff(gte(num(1), num(1)), [
+    move({ kind: 'filter', filter: nameIs(POTION_NAME) }, zone(RESERVE), zone(SUPPLY), { faceUp: true }),
+  ]);
+}
+
+function isPotionBlock(b: Block): boolean {
+  if (b.kind !== 'if') return false;
+  const first = b.then[0];
+  return first !== undefined && first.kind === 'moveCards'
+    && first.from.zoneId === RESERVE && first.to.zoneId === SUPPLY
+    && first.cards.kind === 'filter'
+    && first.cards.filter.kind === 'compare'
+    && first.cards.filter.right.kind === 'str'
+    && first.cards.filter.right.value === POTION_NAME;
+}
+
+/** True when this def's setup promotes the Potion pile. */
+export function potionEnabled(def: GameDef): boolean {
+  return def.setup.some(isPotionBlock);
 }
 
 // --- Prosperity basics toggle (Platinum & Colony) ------------------------------
@@ -2186,9 +2287,11 @@ export function withProsperityBasics(def: GameDef, on: boolean): GameDef {
   }
   const watcher = out.triggers.find((t) => t.id === 'dom_trigger_piles');
   if (watcher) {
-    watcher.script = pileWatcherScript(
-      on ? [...activeKingdomCards(out), ...PROSPERITY_NAMES] : activeKingdomCards(out),
-    );
+    watcher.script = pileWatcherScript([
+      ...activeKingdomCards(out),
+      ...(potionEnabled(out) ? [POTION_NAME] : []),
+      ...(on ? PROSPERITY_NAMES : []),
+    ]);
   }
   return out;
 }

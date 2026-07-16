@@ -44,8 +44,8 @@ const BASIC_NAMES = ['Copper', 'Silver', 'Gold', 'Estate', 'Duchy', 'Province', 
 /** Basics 46+40+30+8+8+8+10, kingdom stock 164 piles of 10 (18 core + 10 Base
  *  2E + 26 Intrigue 2E + 26 Seaside 2E + 25 Prosperity 2E + 13 Cornucopia +
  *  13 Guilds + 26 Hinterlands 2E + 7 Promos), Prosperity basics 12+8,
- *  starters 2 × 10, 5 Prizes. */
-const TOTAL_CARDS = 150 + 1640 + 20 + 20 + 5;
+ *  starters 2 × 10, 5 Prizes, 16 Potions. */
+const TOTAL_CARDS = 150 + 1640 + 20 + 20 + 5 + 16;
 
 const errorsOf = (def: GameDef) =>
   validateGameDef(def).filter((i) => i.severity === 'error');
@@ -513,10 +513,14 @@ describe('rebuilt card semantics (deterministic probes)', () => {
     // Harem, Nobles) = 41. Recomputed from the pile catalogue so the pin
     // survives future expansions.
     const state2 = engine.getState();
+    // Basic reserve stock (Platinum/Colony/Potion) is never on offer — the
+    // def filters on the Basic TAG; state card instances don't carry tags,
+    // so the recount matches by name.
+    const basicStock = new Set(['Platinum', 'Colony', 'Potion']);
     const affordableStock = new Set(
       state2.zones['dom_zone_reserve'].cardIds
         .map((id) => state2.cards[id])
-        .filter((c) => Number(c.fields['dom_field_cost']) <= 5)
+        .filter((c) => Number(c.fields['dom_field_cost']) <= 5 && !basicStock.has(c.name))
         .map((c) => c.name),
     );
     expect(req.cardIds).toHaveLength(affordableStock.size);

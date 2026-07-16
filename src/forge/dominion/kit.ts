@@ -42,8 +42,16 @@ export interface CardKit {
     COFFERS: string;
     /** Per-player banked actions (Renaissance): core spend action too. */
     VILLAGERS: string;
+    /** Potions brewed this turn (Alchemy) — the buy action's second
+     *  currency, reset at cleanup. The Potion pile itself ships in core. */
+    POTIONS: string;
   };
-  fields: { COST: string; COINS_F: string; VP_F: string; TEXT: string };
+  fields: {
+    COST: string; COINS_F: string; VP_F: string; TEXT: string;
+    /** Potion half of a card's cost — set it on the CardDef (`c.fields[...]
+     *  = 1`) and the core buy action enforces + spends it. */
+    COST_POTION: string;
+  };
   types: { ACTION: string; TREASURE: string; VICTORY: string; CURSE: string };
   tags: { ATTACK: string; REACTION: string; KINGDOM: string };
 

@@ -50,6 +50,16 @@ export const KINGDOM_SETS: KingdomSet[] = [
     motto: 'Smile, trade, replace.',
     cards: ['Nobles', 'Patrol', 'Replace', 'Torturer', 'Trading Post', 'Upgrade', 'Village', 'Smithy', 'Moat', 'Market'],
   },
+  {
+    id: 'high-tide', name: 'High Tide', icon: 'crest-dominion',
+    motto: 'What the sea sets aside, it returns.',
+    cards: ['Haven', 'Fishing Village', 'Warehouse', 'Caravan', 'Cutpurse', 'Island', 'Salvager', 'Merchant Ship', 'Tactician', 'Wharf'],
+  },
+  {
+    id: 'deep-currents', name: 'Deep Currents', icon: 'crest-veil',
+    motto: 'The tide keeps its own ledger.',
+    cards: ['Astrolabe', 'Lighthouse', 'Lookout', 'Sea Chart', 'Monkey', 'Smugglers', 'Blockade', 'Sea Witch', 'Treasury', 'Bazaar'],
+  },
 ];
 
 export const DEFAULT_KINGDOM_ID = 'first-game';

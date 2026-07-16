@@ -7,7 +7,8 @@
  * cookbook in dominionGame.ts for the idioms behind each helper.
  */
 import type {
-  ActionDef, AbilityDef, Block, CardDef, CardSelector, Expr, TriggerDef, VariableDef, ZoneRef,
+  ActionDef, AbilityDef, Block, CardDef, CardSelector, Expr, TriggerDef, VariableDef, ZoneDef,
+  ZoneRef,
 } from '../../shared/types';
 
 export interface PileSpec {
@@ -21,10 +22,12 @@ export interface PileSpec {
 export interface CardKit {
   /** Zone ids: SUPPLY/TRASH shared; DECK/HAND/DISCARD/INPLAY per player;
    *  RESERVE = unpicked kingdom stock; LOOK = shared staging for look-at /
-   *  set-aside effects (Sentry, Bandit, Library, Patrol). */
+   *  set-aside effects (Sentry, Bandit, Library, Patrol); DURATION = where
+   *  duration cards wait out the off-turn (see durationPair). */
   zones: {
     SUPPLY: string; TRASH: string; DECK: string; HAND: string;
     DISCARD: string; INPLAY: string; RESERVE: string; LOOK: string;
+    DURATION: string;
   };
   vars: {
     ACTIONS: string; BUYS: string; COINS: string; VP: string;
@@ -36,8 +39,9 @@ export interface CardKit {
   types: { ACTION: string; TREASURE: string; VICTORY: string; CURSE: string };
   tags: { ATTACK: string; REACTION: string; KINGDOM: string };
 
-  /** Context bindings: $owner (ability owner), $card, $choice, $player. */
-  OWNER: Expr; CARD: Expr; CHOICE: Expr; PLAYER: Expr;
+  /** Context bindings: $owner (ability owner), $card, $choice, $player,
+   *  $self (the ability's own card — duration moves, Island, Treasure Map). */
+  OWNER: Expr; CARD: Expr; CHOICE: Expr; PLAYER: Expr; SELF: Expr;
 
   nameIs(name: string): Expr;
   isA(card: Expr, typeId: string): Expr;
@@ -76,6 +80,14 @@ export interface CardKit {
     limit: Expr; treasureOnly?: boolean; toHand?: boolean;
     prompt: string; whiff: Block[];
   }): Block[];
+  /**
+   * A Duration card's two halves. `now` runs on play, then the card parks in
+   * the DURATION zone (so cleanup leaves it out); `later` fires at the
+   * owner's next action-phase start and the card marches back to In Play
+   * (that turn's cleanup discards it normally). Throne Room deviation: a
+   * re-play repeats `now` but the card parks only once, so `later` fires once.
+   */
+  durationPair(idBase: string, name: string, now: Block[], later: Block[]): AbilityDef[];
 }
 
 /** One expansion's contribution, merged by buildDominionDef. */
@@ -98,6 +110,8 @@ export interface ExpansionModule {
   treasureNames?: string[];
   /** Extra per-player/global variables the cards need (hidden bookkeeping). */
   variables?: VariableDef[];
+  /** Extra zones the cards need (per-player mats: Island, Native Village). */
+  zones?: ZoneDef[];
   buildTriggers?(kit: CardKit): TriggerDef[];
   /** Extra actions (e.g. a card's own response-speed reaction). */
   buildActions?(kit: CardKit): ActionDef[];

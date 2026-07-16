@@ -23,7 +23,7 @@ import { getGameById, saveGame } from '../state/store';
 import { buildDominionDef } from './dominionGame';
 
 export const DOMINION_GAME_ID = 'dominion-crownfall';
-export const SEED_VERSION = 16; // v16: supply columns auto-reflow for the Prosperity piles
+export const SEED_VERSION = 18; // v18: Seaside 2E — 26 cards, Durations, mats, two new sets
 
 const STAMP_KEY = 'crownfall.seed.dominion';
 const TOMBSTONE_KEY = 'crownfall.seed.dominion.deleted';

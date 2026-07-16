@@ -396,6 +396,9 @@ function isDocumentedAdvanced(e: Expr): boolean {
   if ((e.kind === 'cardHasTag' || e.kind === 'cardTypeIs') && e.card.kind === 'stackTopCard') return true;
   if (e.kind !== 'compare') return false;
   const kinds = [e.left.kind, e.right.kind];
+  // Move-context bindings ($fromZone — Seaside durations' re-entry guards:
+  // "this play didn't come from the Duration zone") have no guided clause.
+  if (e.left.kind === 'binding' && e.left.name === '$fromZone') return true;
   if (kinds.includes('stackSize')) return true;
   if (kinds.includes('currentPlayer') || kinds.includes('nextPlayer')) return true;
   if (e.right.kind === 'getVar' || e.right.kind === 'zoneCount' || e.right.kind === 'cardField') return true;

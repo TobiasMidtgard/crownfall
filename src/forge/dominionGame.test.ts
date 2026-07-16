@@ -41,9 +41,10 @@ import {
 } from './dominionGame';
 
 const BASIC_NAMES = ['Copper', 'Silver', 'Gold', 'Estate', 'Duchy', 'Province', 'Curse'];
-/** Basics 46+40+30+8+8+8+10, kingdom stock 54 piles of 10 (18 core + 10 Base
- *  2E + 26 Intrigue 2E), Prosperity basics 12+8, starters 2 × 10. */
-const TOTAL_CARDS = 150 + 540 + 20 + 20;
+/** Basics 46+40+30+8+8+8+10, kingdom stock 80 piles of 10 (18 core + 10 Base
+ *  2E + 26 Intrigue 2E + 26 Seaside 2E), Prosperity basics 12+8, starters
+ *  2 × 10. */
+const TOTAL_CARDS = 150 + 800 + 20 + 20;
 
 const errorsOf = (def: GameDef) =>
   validateGameDef(def).filter((i) => i.severity === 'error');
@@ -896,8 +897,10 @@ describe('kingdom picker helpers (the setup screen surface)', () => {
 
   it('tags every catalog entry with its printed set; Prosperity basics are not picks', () => {
     const cat = kingdomCatalog(def);
-    expect(cat.every((c) => c.expansion === 'Base' || c.expansion === 'Intrigue')).toBe(true);
+    const sets = new Set(cat.map((c) => c.expansion));
+    expect([...sets].sort()).toEqual(['Base', 'Intrigue', 'Seaside']);
     expect(cat.filter((c) => c.expansion === 'Intrigue')).toHaveLength(26);
+    expect(cat.filter((c) => c.expansion === 'Seaside')).toHaveLength(26);
     expect(cat.some((c) => c.name === 'Platinum' || c.name === 'Colony')).toBe(false);
     expect(kingdomCardNames(def)).not.toContain('Platinum');
   });

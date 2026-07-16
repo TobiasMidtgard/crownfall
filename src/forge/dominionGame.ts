@@ -81,6 +81,13 @@ const INPLAY = 'dom_zone_inplay';
 const RESERVE = 'dom_zone_reserve';
 /** Shared staging for look-at / set-aside effects (Sentry, Bandit, Library). */
 const LOOK = 'dom_zone_look';
+/**
+ * Duration cards live here between their turns (Seaside): the on-play half
+ * parks the card DURATION-ward so the cleanup sweep never touches it; the
+ * next-turn half fires at the owner's action-phase start and marches it back
+ * to In Play, where that turn's cleanup discards it normally.
+ */
+const DURATION = 'dom_zone_duration';
 
 const ACTIONS = 'dom_var_actions';
 const BUYS = 'dom_var_buys';
@@ -396,7 +403,9 @@ function card(
  * player owns, plus 1 VP per 10 owned cards (rounded down) per Gardens. Run
  * by the turnEnd trigger AND one tagged trigger on every 'gain' move.
  */
-const OWNED_ZONES = [DECK, HAND, DISCARD, INPLAY];
+// DURATION joins the walk: a Haven parked at game end still scores its VP.
+// Expansion mats (Island) score via the module's own buildVpTerms instead.
+const OWNED_ZONES = [DECK, HAND, DISCARD, INPLAY, DURATION];
 const ownedTotal: Expr = OWNED_ZONES
   .map((z) => zoneCount(zone(z, PLAYER)))
   .reduce((a, b) => add(a, b));
@@ -446,15 +455,57 @@ function gainFromSupply(opts: {
 
 // --- the expansion kit: hands the private plumbing to dominion/ modules --------
 
+const SELF = bnd('$self');
+
+/**
+ * Haven's set-aside marker (seaside2eA.HAVEN_MARK) — a Haven-parked card was
+ * never PLAYED, so its own later-half must stay inert while it wears this.
+ * Referenced by id to keep the kit standalone; absent var reads as 0.
+ */
+const HAVEN_ASIDE = 'dom_var_haven_aside';
+
+/**
+ * The Duration two-step (see kit.ts for the contract). The now-half fires
+ * only on moves tagged 'play' (every genuine play — the play/treasure
+ * actions, Vassal, Throne Room's synthetic replay — carries it), and the
+ * next-turn march back is tagged 'duration_return' so nothing counts it as
+ * a play: without the tag split the return re-fired the now-half and the
+ * card looped between the zones forever (caught by the Seaside probes).
+ * A Throne-Roomed replay repeats `now`, but the park move whiffs (the card
+ * already left In Play), so `later` fires exactly once.
+ */
+function durationPair(idBase: string, name: string, now: Block[], later: Block[]): AbilityDef[] {
+  return [
+    {
+      id: `${idBase}_now`, name: `${name} — now`,
+      on: 'enterZone', zoneId: INPLAY, phaseId: null, tagFilter: 'play', condition: null,
+      script: [
+        ...now,
+        tmove(specific(SELF), zone(INPLAY, OWNER), zone(DURATION, OWNER), 'play', { faceUp: true }),
+      ],
+    },
+    {
+      id: `${idBase}_later`, name: `${name} — next turn`,
+      on: 'phaseStart', zoneId: DURATION, phaseId: PHASE_ACTION,
+      condition: allOf(eq(CURRENT, OWNER), eq(getVar(HAVEN_ASIDE, SELF), num(0))),
+      script: [
+        announce(OWNER, `'s `, SELF, ' resolves.'),
+        ...later,
+        tmove(specific(SELF), zone(DURATION, OWNER), zone(INPLAY, OWNER), 'duration_return', { faceUp: true }),
+      ],
+    },
+  ];
+}
+
 const KIT: CardKit = {
-  zones: { SUPPLY, TRASH, DECK, HAND, DISCARD, INPLAY, RESERVE, LOOK },
+  zones: { SUPPLY, TRASH, DECK, HAND, DISCARD, INPLAY, RESERVE, LOOK, DURATION },
   vars: { ACTIONS, BUYS, COINS, VP, IMMUNE, EMPTY_PILES, SCRATCH, DISCOUNT },
   fields: { COST, COINS_F, VP_F, TEXT },
   types: { ACTION: TYPE_ACTION, TREASURE: TYPE_TREASURE, VICTORY: TYPE_VICTORY, CURSE: TYPE_CURSE },
   tags: { ATTACK: TAG_ATTACK, REACTION: TAG_REACTION, KINGDOM: TAG_KINGDOM },
-  OWNER, CARD, CHOICE, PLAYER,
+  OWNER, CARD, CHOICE, PLAYER, SELF,
   nameIs, isA, hasTag, IS_ACTION_CARD, IS_TREASURE_CARD, div, mod, sumCards,
-  tmove, drawN, draw, choosePileBlock, playAgain, onPlay,
+  tmove, drawN, draw, choosePileBlock, playAgain, onPlay, durationPair,
   cardDef: (id, name, cost, coins, vp, text, abilities = []) => ({
     id, name, templateId: 'dom_tpl_kingdom',
     fields: { [COST]: cost, [COINS_F]: coins, [VP_F]: vp, [TEXT]: text },
@@ -1188,6 +1239,16 @@ function buildMobileScreen(): ScreenVariant {
         visible: or(MY_TURN, gt(zoneCount(zone(INPLAY, VIEWER)), num(0))),
         reveal: 'fade',
       },
+      // Your parked durations float above the in-play row when occupied
+      // (m_foe_inplay precedent: overlay strips appear only with cargo).
+      {
+        kind: 'zone', id: 'dom_el_m_my_duration', name: 'Set aside',
+        rect: { x: 1.5, y: 44.6, w: 97, h: 4.4 },
+        zoneId: DURATION, seat: 'viewer', cardScale: 6, gap: 0.8, padding: 0.3,
+        showName: false, style: M_GROUND,
+        visible: gt(zoneCount(zone(DURATION, VIEWER)), num(0)),
+        reveal: 'fade',
+      },
       // --- the hand fan (~60-79%) ---------------------------------------------
       // Full card faces (only supply piles wear tiles); the 14%-of-width gap
       // keeps ~55px of every stack visible, so a five-stack hand needs no
@@ -1304,6 +1365,8 @@ export function buildDominionDef(): GameDef {
     // Look-at staging (Sentry/Bandit/Library): cards visit briefly during a
     // revealed choice, then leave — no screen element shows the zone itself.
     { id: LOOK, name: 'Aside', owner: 'shared', visibility: 'none', layout: 'stack', area: 'center' },
+    { id: DURATION, name: 'Set aside', owner: 'perPlayer', visibility: 'all', layout: 'row', area: 'player' },
+    ...EXPANSIONS.flatMap((x) => x.zones ?? []),
   );
 
   def.variables.push(
@@ -1735,7 +1798,7 @@ export function buildDominionDef(): GameDef {
       },
     });
     patchZoneEl(els, 'dom_el_my_inplay', {
-      rect: { x: 9.4, y: 68.2, w: 66.4, h: 14.6 },
+      rect: { x: 9.4, y: 68.2, w: 53.2, h: 14.6 },
       cardScale: 5.4, padding: 1,
       style: { background: '#150e0a', borderColor: BAND_BORDER, borderWidth: 1, borderRadius: 10 },
       emptyText: 'Play zone empty.',
@@ -1747,6 +1810,24 @@ export function buildDominionDef(): GameDef {
       text: 'PLAY ZONE', fontSize: 0.65, bold: true, align: 'left', color: ASH,
       letterSpacing: 1.4, uppercase: true,
     });
+    // Duration cards wait here between turns (Seaside) — always framed, so
+    // the harbor band reads the same whether or not anything is set aside.
+    els.push(
+      {
+        kind: 'zone', id: 'dom_el_my_duration', name: 'Set aside',
+        rect: { x: 63.4, y: 68.2, w: 12.4, h: 14.6 },
+        zoneId: DURATION, seat: 'viewer', cardScale: 4.6, gap: 0.5, padding: 1,
+        showName: false, emptyText: 'nothing set aside',
+        style: { background: '#120f14', borderColor: '#3d3550', borderWidth: 1, borderRadius: 10 },
+        cardStyle: { ...GOLD_CARD_EDGE, borderColor: 'rgba(148, 128, 196, 0.45)' },
+      },
+      {
+        kind: 'text', id: 'dom_el_my_duration_label', name: 'Set aside label',
+        rect: { x: 64.4, y: 69, w: 11, h: 1.2 },
+        text: 'SET ASIDE', fontSize: 0.65, bold: true, align: 'left', color: ASH,
+        letterSpacing: 1.4, uppercase: true,
+      },
+    );
     patchTextEl(els, 'dom_el_my_discard_label', {
       rect: { x: 77, y: 68.2, w: 9.6, h: 1.3 }, fontSize: 0.7, align: 'center', color: '#e8a04c',
     });
@@ -1786,6 +1867,16 @@ export function buildDominionDef(): GameDef {
     // Foe in-play floats over the kingdom's top edge while the foe acts or
     // still has cards out — the original foePlayWrap condition.
     removeEl(els, 'dom_el_foe_inplay');
+    // The foe's parked durations float beside their in-play strip — visible
+    // whenever they have cards waiting (Wharf incoming is public knowledge).
+    els.push({
+      kind: 'zone', id: 'dom_el_foe_duration', name: 'Foe set aside',
+      rect: { x: 83.6, y: 5.8, w: 12.4, h: 11 },
+      zoneId: DURATION, seat: 'opp1', cardScale: 4, gap: 0.5, padding: 0.3, showName: false,
+      style: { background: '#120f14', borderColor: '#3d3550', borderWidth: 1, borderRadius: 8 },
+      visible: gt(zoneCount(zone(DURATION, FOE)), num(0)),
+      reveal: 'fade',
+    });
     els.push({
       kind: 'zone', id: 'dom_el_foe_inplay', name: 'Foe in play',
       rect: { x: 55.5, y: 5.8, w: 27.2, h: 11 },

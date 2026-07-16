@@ -75,6 +75,16 @@ export const KINGDOM_SETS: KingdomSet[] = [
     motto: 'Guild coin is patient coin.',
     cards: ['Stonemason', 'Advisor', 'Baker', 'Journeyman', 'Merchant Guild', 'Laboratory', 'Cellar', 'Workshop', 'Festival', 'Moneylender'],
   },
+  {
+    id: 'silk-road', name: 'The Silk Road', icon: 'glyph-coin',
+    motto: 'Every gain carries a gift.',
+    cards: ['Crossroads', "Fool's Gold", 'Oasis', 'Scheme', 'Tunnel', 'Jack of All Trades', 'Trader', 'Highway', 'Margrave', 'Border Village'],
+  },
+  {
+    id: 'kings-envoy', name: "The King's Envoy", icon: 'crest-dominion',
+    motto: 'Rare writs, royal favors.',
+    cards: ['Envoy', 'Governor', 'Captain', 'Church', 'Walled Village', 'Dismantle', 'Marchland', 'Village', 'Smithy', 'Market'],
+  },
 ];
 
 export const DEFAULT_KINGDOM_ID = 'first-game';

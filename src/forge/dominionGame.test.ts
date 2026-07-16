@@ -41,10 +41,11 @@ import {
 } from './dominionGame';
 
 const BASIC_NAMES = ['Copper', 'Silver', 'Gold', 'Estate', 'Duchy', 'Province', 'Curse'];
-/** Basics 46+40+30+8+8+8+10, kingdom stock 131 piles of 10 (18 core + 10 Base
+/** Basics 46+40+30+8+8+8+10, kingdom stock 164 piles of 10 (18 core + 10 Base
  *  2E + 26 Intrigue 2E + 26 Seaside 2E + 25 Prosperity 2E + 13 Cornucopia +
- *  13 Guilds), Prosperity basics 12+8, starters 2 × 10, 5 Prizes. */
-const TOTAL_CARDS = 150 + 1310 + 20 + 20 + 5;
+ *  13 Guilds + 26 Hinterlands 2E + 7 Promos), Prosperity basics 12+8,
+ *  starters 2 × 10, 5 Prizes. */
+const TOTAL_CARDS = 150 + 1640 + 20 + 20 + 5;
 
 const errorsOf = (def: GameDef) =>
   validateGameDef(def).filter((i) => i.severity === 'error');
@@ -905,12 +906,14 @@ describe('kingdom picker helpers (the setup screen surface)', () => {
   it('tags every catalog entry with its printed set; Prosperity basics are not picks', () => {
     const cat = kingdomCatalog(def);
     const sets = new Set(cat.map((c) => c.expansion));
-    expect([...sets].sort()).toEqual(['Base', 'Cornucopia', 'Guilds', 'Intrigue', 'Prosperity', 'Seaside']);
+    expect([...sets].sort()).toEqual(['Base', 'Cornucopia', 'Guilds', 'Hinterlands', 'Intrigue', 'Promos', 'Prosperity', 'Seaside']);
     expect(cat.filter((c) => c.expansion === 'Intrigue')).toHaveLength(26);
     expect(cat.filter((c) => c.expansion === 'Seaside')).toHaveLength(26);
     expect(cat.filter((c) => c.expansion === 'Prosperity')).toHaveLength(25);
     expect(cat.filter((c) => c.expansion === 'Cornucopia')).toHaveLength(13);
     expect(cat.filter((c) => c.expansion === 'Guilds')).toHaveLength(13);
+    expect(cat.filter((c) => c.expansion === 'Hinterlands')).toHaveLength(26);
+    expect(cat.filter((c) => c.expansion === 'Promos')).toHaveLength(7);
     expect(cat.some((c) => c.name === 'Platinum' || c.name === 'Colony')).toBe(false);
     // Non-supply stock (the five Prizes) is nobody's kingdom pick either.
     expect(cat.some((c) => c.name === 'Princess' || c.name === 'Diadem')).toBe(false);

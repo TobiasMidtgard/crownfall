@@ -15,9 +15,13 @@ import { prosperity2eA } from './prosperity2eA';
 import { prosperity2eB } from './prosperity2eB';
 import { cornucopia1e } from './cornucopia1e';
 import { guilds1e } from './guilds1e';
+import { hinterlands2eA } from './hinterlands2eA';
+import { hinterlands2eB } from './hinterlands2eB';
+import { promos1 } from './promos1';
 
 export const EXPANSIONS: ExpansionModule[] = [
   base2e, intrigue2eA, intrigue2eB, intrigue2eC,
   seaside2eA, seaside2eB, seaside2eC,
   prosperity2eA, prosperity2eB, cornucopia1e, guilds1e,
+  hinterlands2eA, hinterlands2eB, promos1,
 ];

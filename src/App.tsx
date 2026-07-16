@@ -1,10 +1,13 @@
 /**
  * Crownfall — app shell and top-level hash router.
  *
- * Three areas, three chunks:
+ * Three areas, lazy seams inside each:
  *   Hall  (eager)  #/  #/login  #/tables  #/codex  #/engine   → src/hall/HallApp
+ *                  (Codex itself is lazy — it drags the Dominion def builder)
  *   Table (lazy)   #/play/dominion?set=&foe=&seat=            → src/hall/DominionPlay
  *   Forge (lazy)   #/forge  #/forge/edit/:id  #/forge/play/:id → src/forge/ForgeApp
+ *                  (its Home/Editor/Play pages split again, so playing never
+ *                  downloads the editor)
  *
  * Hash routing keeps the app a fully static bundle (GitHub Pages / tunnel safe).
  * Query params ride inside the hash: '#/play/dominion?set=sharp-coins'.
@@ -46,6 +49,26 @@ export function parseHash(hash: string): Route {
 
 export function navigate(hash: string) {
   window.location.hash = hash.startsWith('#') ? hash : `#${hash}`;
+}
+
+const HALL_TITLES: Record<HallPage, string> = {
+  landing: 'Crownfall — The Hall',
+  login: 'Crownfall — The Gates',
+  tables: 'Crownfall — The Tables',
+  codex: 'Crownfall — The Codex',
+  engine: 'Crownfall — The Engine',
+};
+
+/** Per-route tab title, so the Forge, a live table, and the hall can be told
+ * apart in the tab strip and in Back-button history. */
+export function routeTitle(route: Route): string {
+  if (route.area === 'forge') {
+    if (route.sub.startsWith('edit/')) return 'Crownfall — The Forge · editing';
+    if (route.sub.startsWith('play/')) return 'Crownfall — at the table';
+    return 'Crownfall — The Forge';
+  }
+  if (route.area === 'table') return 'Crownfall — at the table';
+  return HALL_TITLES[route.page];
 }
 
 function RouteLoading() {
@@ -101,6 +124,10 @@ export default function App() {
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
+  useEffect(() => {
+    document.title = routeTitle(route);
+  }, [route]);
+
   if (route.area === 'forge') {
     return (
       <RouteErrorBoundary key={route.area}>
@@ -119,5 +146,11 @@ export default function App() {
       </RouteErrorBoundary>
     );
   }
-  return <HallApp page={route.page} navigate={navigate} />;
+  // The hall is eager, but its Codex screen is lazy — a stale chunk after a
+  // redeploy must land on the reload card, not a blank page.
+  return (
+    <RouteErrorBoundary key="hall">
+      <HallApp page={route.page} navigate={navigate} />
+    </RouteErrorBoundary>
+  );
 }

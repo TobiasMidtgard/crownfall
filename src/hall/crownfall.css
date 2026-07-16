@@ -937,6 +937,14 @@
 }
 .hall-root .profile-ledger dd, .hall-root .profile-ledger strong { color: var(--bone); font-weight: 600; }
 
+/* demo accounts: the ledger came with the name, not from play */
+.hall-root .profile-lore {
+  margin: 1.1rem 0 0;
+  font-size: 0.78rem;
+  font-style: italic;
+  color: var(--ash);
+}
+
 .hall-root .profile-signout {
   margin-top: 1.6rem;
   width: 100%;
@@ -1069,6 +1077,14 @@
   text-transform: uppercase;
   color: var(--ash-bright);
   white-space: nowrap;
+}
+/* fixture rows: lore of the hall, not the player's own history */
+.hall-root .chronicle-lore {
+  margin-left: 0.7rem;
+  padding: 0.1rem 0.45rem;
+  border: 1px solid var(--rule-soft);
+  color: var(--ash);
+  font-size: 0.62rem;
 }
 
 /* kingdom picker (banners) */

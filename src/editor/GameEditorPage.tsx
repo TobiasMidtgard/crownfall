@@ -1,19 +1,20 @@
 /**
  * GameEditorPage — ONE game-engine screen (#14). The WYSIWYG table canvas is
  * the editor: it stays mounted as the whole surface, and every other section
- * (Info | Cards | Types | Zones | Variables | Flow | Actions | Rules |
- * Filters) opens as a slide-over panel from the section rail on the left —
+ * (Info | Cards | Types | Systems | Actions | Rules | Filters) opens as a
+ * slide-over panel from the section rail on the left —
  * design the screen and tune rules/cards/zones side by side, no page swaps.
- * Heavy sections (Cards, Flow, Actions, Rules) open wide by default; ⇤/⤢
+ * Heavy sections (Cards, Systems, Actions, Rules) open wide by default; ⇤/⤢
  * toggles the width, ✕ (or the rail button again) closes.
  * Loads the game by id, autosaves edits to the store (~400ms debounce),
  * validates live, and opens built-in examples read-only with "Clone & edit".
  */
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import type { GameDef, ValidationIssue } from '../shared/types';
 import { deepClone } from '../shared/defaults';
 import { validateGameDef } from '../shared/validate';
 import { cloneGame, getGameById, saveGame } from '../state/store';
+import { exportGame } from '../storage/storage';
 import { CardsTab } from '../designer/CardsTab';
 import { Modal } from './common/Modal';
 import { EdIcon, type EdIconName } from './common/icons';
@@ -87,7 +88,9 @@ export function GameEditorPage({ gameId, navigate, readOnly: forcedReadOnly, rea
     timerRef.current = undefined;
     if (pendingRef.current) {
       const ok = saveGame(pendingRef.current);
-      pendingRef.current = null;
+      // Keep the unsaved def on failure so Retry (and the unload flush) can
+      // try again — clearing it would make the error state a dead end.
+      if (ok) pendingRef.current = null;
       setSaveState(ok ? 'saved' : 'error');
     }
   };
@@ -103,8 +106,9 @@ export function GameEditorPage({ gameId, navigate, readOnly: forcedReadOnly, rea
   // browsers that don't fire pagehide reliably).
   useEffect(() => {
     const flushNow = () => {
-      if (pendingRef.current) {
-        saveGame(pendingRef.current);
+      // Clear only on success: pagehide also fires on backgrounding, and a
+      // failed save must stay retryable if the page comes back.
+      if (pendingRef.current && saveGame(pendingRef.current)) {
         pendingRef.current = null;
       }
     };
@@ -125,7 +129,12 @@ export function GameEditorPage({ gameId, navigate, readOnly: forcedReadOnly, rea
     timerRef.current = window.setTimeout(flushSave, SAVE_DEBOUNCE_MS);
   };
 
-  const issues = useMemo(() => (draft ? validateGameDef(draft) : []), [draft]);
+  // Whole-def validation deep-walks every card ability, zone, phase and
+  // expression — far too heavy for every keystroke or color-scrub pointermove.
+  // Deferring the input keeps typing responsive; the issues chip catches up
+  // the moment input pauses.
+  const deferredDraft = useDeferredValue(draft);
+  const issues = useMemo(() => (deferredDraft ? validateGameDef(deferredDraft) : []), [deferredDraft]);
 
   if (!draft) {
     return (
@@ -144,6 +153,27 @@ export function GameEditorPage({ gameId, navigate, readOnly: forcedReadOnly, rea
   const errorCount = issues.filter((i) => i.severity === 'error').length;
   const warningCount = issues.length - errorCount;
   const panelLabel = SECTIONS.find((s) => s.id === panel)?.label ?? '';
+
+  const cloneAndEdit = () => {
+    const copy = cloneGame(draft);
+    navigate(`#/edit/${copy.meta.id}`);
+  };
+
+  // Idempotent open (openPanel is the rail's TOGGLE — jumping here from an
+  // issue row or a cross-panel hint must never close an already-open panel).
+  const jumpToPanel = (id: SectionId) => {
+    setWide(WIDE_BY_DEFAULT.has(id));
+    setPanel(id);
+  };
+
+  // The canvas's "Edit card design" bridge lands on Templates (the faces live
+  // there); rail opens keep CardsTab's own card-count default. One-shot.
+  const cardsSectionRef = useRef<'templates' | 'cards' | undefined>(undefined);
+  const consumeCardsSection = () => {
+    const s = cardsSectionRef.current;
+    cardsSectionRef.current = undefined;
+    return s;
+  };
 
   return (
     <>
@@ -177,9 +207,35 @@ export function GameEditorPage({ gameId, navigate, readOnly: forcedReadOnly, rea
             {errorCount > 0 ? `⚠ ${errorCount} error${errorCount === 1 ? '' : 's'}` : `${warningCount} warning${warningCount === 1 ? '' : 's'}`}
           </button>
         )}
-        <span className="faint ed-save-hint">
-          {readOnly ? 'read-only' : saveState === 'saved' ? 'Saved ✓' : 'Saving…'}
-        </span>
+        {!readOnly && saveState === 'error' ? (
+          <span className="ed-save-error" role="alert">
+            <span aria-hidden="true">⚠</span>
+            <span className="ed-save-error-text">Couldn't save — device storage may be full</span>
+            <button
+              type="button"
+              className="btn btn-small"
+              onClick={() => {
+                // A failed flush keeps pendingRef, but cover the cold path too.
+                if (!pendingRef.current) pendingRef.current = draft;
+                flushSave();
+              }}
+            >
+              Retry
+            </button>
+            <button
+              type="button"
+              className="btn btn-small"
+              title="Download the game as a file so nothing is lost"
+              onClick={() => exportGame(draft)}
+            >
+              ⇩ Export
+            </button>
+          </span>
+        ) : (
+          <span className="faint ed-save-hint">
+            {readOnly ? 'read-only' : saveState === 'saved' ? 'Saved ✓' : 'Saving…'}
+          </span>
+        )}
         <button
           type="button"
           className="btn btn-primary"
@@ -220,14 +276,7 @@ export function GameEditorPage({ gameId, navigate, readOnly: forcedReadOnly, rea
             {readOnly && (
               <div className="ed-banner">
                 <span>{readOnlyNote ?? 'This is a built-in example — open it to learn, but edits aren\'t saved.'}</span>
-                <button
-                  type="button"
-                  className="btn btn-small btn-primary"
-                  onClick={() => {
-                    const copy = cloneGame(draft);
-                    navigate(`#/edit/${copy.meta.id}`);
-                  }}
-                >
+                <button type="button" className="btn btn-small btn-primary" onClick={cloneAndEdit}>
                   Clone &amp; edit
                 </button>
               </div>
@@ -235,9 +284,7 @@ export function GameEditorPage({ gameId, navigate, readOnly: forcedReadOnly, rea
             <TableTab
               def={draft}
               onChange={onChange}
-              // Idempotent open (openPanel is the rail's TOGGLE — jumping to
-              // Cards from the canvas must never close an already-open panel).
-              onOpenCards={() => { setWide(WIDE_BY_DEFAULT.has('cards')); setPanel('cards'); }}
+              onOpenCards={() => { cardsSectionRef.current = 'templates'; jumpToPanel('cards'); }}
             />
           </div>
 
@@ -265,13 +312,31 @@ export function GameEditorPage({ gameId, navigate, readOnly: forcedReadOnly, rea
                 </button>
               </header>
               <div className="ed-panel-body">
-                {panel === 'info' && <InfoTab def={draft} onChange={onChange} />}
-                {panel === 'cards' && <CardsTab def={draft} onChange={onChange} />}
-                {panel === 'types' && <TypesTab def={draft} onChange={onChange} />}
-                {panel === 'systems' && <SystemsTab def={draft} onChange={onChange} />}
-                {panel === 'actions' && <ActionsTab def={draft} onChange={onChange} />}
-                {panel === 'rules' && <RulesTab def={draft} onChange={onChange} />}
-                {panel === 'filters' && <FiltersTab def={draft} onChange={onChange} />}
+                {readOnly && (
+                  <div className="ed-banner ed-panel-readonly">
+                    <span>Read-only — clone the game to make changes.</span>
+                    <button type="button" className="btn btn-small btn-primary" onClick={cloneAndEdit}>
+                      Clone &amp; edit
+                    </button>
+                  </div>
+                )}
+                {/* fieldset[disabled] switches off every control inside the
+                    panel in read-only mode — no silently inert inputs. */}
+                <fieldset className="ed-panel-fieldset" disabled={readOnly}>
+                  {panel === 'info' && <InfoTab def={draft} onChange={onChange} />}
+                  {panel === 'cards' && (
+                    <CardsTab
+                      def={draft}
+                      onChange={onChange}
+                      initialSection={consumeCardsSection()}
+                    />
+                  )}
+                  {panel === 'types' && <TypesTab def={draft} onChange={onChange} />}
+                  {panel === 'systems' && <SystemsTab def={draft} onChange={onChange} />}
+                  {panel === 'actions' && <ActionsTab def={draft} onChange={onChange} onOpenSystems={() => jumpToPanel('systems')} />}
+                  {panel === 'rules' && <RulesTab def={draft} onChange={onChange} />}
+                  {panel === 'filters' && <FiltersTab def={draft} onChange={onChange} />}
+                </fieldset>
               </div>
             </section>
           )}
@@ -279,31 +344,67 @@ export function GameEditorPage({ gameId, navigate, readOnly: forcedReadOnly, rea
       </main>
 
       {issuesOpen && (
-        <IssuesModal issues={issues} onClose={() => setIssuesOpen(false)} />
+        <IssuesModal
+          issues={issues}
+          onClose={() => setIssuesOpen(false)}
+          onOpen={(id) => { jumpToPanel(id); setIssuesOpen(false); }}
+        />
       )}
     </>
   );
 }
 
-function IssuesModal({ issues, onClose }: { issues: ValidationIssue[]; onClose: () => void }) {
+/**
+ * Map a validation issue's `where` prefix to the panel that owns the item.
+ * Returns null for issues that live on the canvas itself (table layout,
+ * mobile screen, card-state chrome) — those rows stay plain text.
+ */
+function sectionForIssue(where: string): SectionId | null {
+  if (where.startsWith('Game info') || where.startsWith('Deck "')) return 'info';
+  if (where.startsWith('Card type "') || where.startsWith('Tag "')) return 'types';
+  if (where.startsWith('Card state')) return null;
+  if (where.startsWith('Card "')) return 'cards';
+  if (where.startsWith('Systems') || where.startsWith('Phase "') || where.startsWith('Zone "')) return 'systems';
+  if (where.startsWith('Action "')) return 'actions';
+  if (where.startsWith('Rule "') || where.startsWith('End condition "')) return 'rules';
+  if (where.startsWith('Filter "')) return 'filters';
+  return null;
+}
+
+function IssuesModal({ issues, onClose, onOpen }: {
+  issues: ValidationIssue[];
+  onClose: () => void;
+  onOpen: (id: SectionId) => void;
+}) {
   return (
     <Modal
       title="Issues"
       onClose={onClose}
       footer={<button type="button" className="btn btn-primary" onClick={onClose}>Close</button>}
     >
-      <p className="faint">Errors block playing the game; warnings are advice.</p>
-      {issues.map((issue, i) => (
-        <div className="ed-issue" key={i}>
-          <span className={issue.severity === 'error' ? 'chip error' : 'chip warn'}>
-            {issue.severity}
-          </span>
-          <div>
-            <div className="ed-issue-where">{issue.where}</div>
-            <div>{issue.message}</div>
-          </div>
-        </div>
-      ))}
+      <p className="faint">Errors block playing the game; warnings are advice. Click an issue to open the panel it lives in.</p>
+      {issues.map((issue, i) => {
+        const section = sectionForIssue(issue.where);
+        const body = (
+          <>
+            <span className={issue.severity === 'error' ? 'chip error' : 'chip warn'}>
+              {issue.severity}
+            </span>
+            <div>
+              <div className="ed-issue-where">{issue.where}</div>
+              <div>{issue.message}</div>
+            </div>
+          </>
+        );
+        return section ? (
+          <button type="button" className="ed-issue ed-issue-btn" key={i} onClick={() => onOpen(section)}>
+            {body}
+            <span className="ed-issue-go" aria-hidden="true">›</span>
+          </button>
+        ) : (
+          <div className="ed-issue" key={i}>{body}</div>
+        );
+      })}
     </Modal>
   );
 }

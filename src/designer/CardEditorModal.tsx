@@ -6,6 +6,7 @@
 import { useRef, useState } from 'react';
 import type { CardDef, GameDef } from '../shared/types';
 import { CardView } from '../components/CardView';
+import { ConfirmModal } from '../editor/common/Modal';
 import { AbilitiesEditor } from './AbilitiesEditor';
 import { cardPreview, deleteCard, duplicateCard, patchCard, setCardField } from './designerUtils';
 
@@ -20,6 +21,7 @@ export function CardEditorModal({ def, cardId, onChange, onClose, onSwitchCard }
   /** Used after "Duplicate" to continue editing the copy. */
   onSwitchCard: (cardId: string) => void;
 }) {
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const card = def.cards.find((c) => c.id === cardId);
   if (!card) return null;
   const template = def.templates.find((t) => t.id === card.templateId) ?? null;
@@ -28,12 +30,6 @@ export function CardEditorModal({ def, cardId, onChange, onClose, onSwitchCard }
     const { def: next, newId } = duplicateCard(def, card.id);
     onChange(next);
     if (newId) onSwitchCard(newId);
-  };
-
-  const remove = () => {
-    if (!window.confirm(`Delete card "${card.name}"? It is also removed from any decks.`)) return;
-    onChange(deleteCard(def, card.id));
-    onClose();
   };
 
   return (
@@ -102,11 +98,24 @@ export function CardEditorModal({ def, cardId, onChange, onClose, onSwitchCard }
         </div>
         <div className="modal-footer">
           <button type="button" className="btn" onClick={duplicate}>Duplicate</button>
-          <button type="button" className="btn btn-danger" onClick={remove}>Delete</button>
+          <button type="button" className="btn btn-danger" onClick={() => setConfirmingDelete(true)}>Delete</button>
           <span className="spacer" />
           <button type="button" className="btn btn-primary" onClick={onClose}>Done</button>
         </div>
       </div>
+      {confirmingDelete && (
+        // Portals to document.body, so it stacks above this hand-rolled backdrop.
+        <ConfirmModal
+          title={`Delete card "${card.name}"?`}
+          message={<p>It is also removed from any decks.</p>}
+          onCancel={() => setConfirmingDelete(false)}
+          onConfirm={() => {
+            setConfirmingDelete(false);
+            onChange(deleteCard(def, card.id));
+            onClose();
+          }}
+        />
+      )}
     </div>
   );
 }

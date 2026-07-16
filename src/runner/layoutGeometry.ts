@@ -741,7 +741,7 @@ export interface ActiveScreen {
 
 /**
  * Pick the layout tree for the current viewport: the mobile variant renders
- * below 1024px when authored (background falls back to the desktop's; aspect
+ * below 720px when authored (background falls back to the desktop's; aspect
  * and scroll are the variant's own), else the desktop tree. Scroll only
  * engages with a positive numeric aspect (the page needs a height).
  */

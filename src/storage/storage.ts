@@ -8,6 +8,18 @@ import { validateGameDef } from '../shared/validate';
 const KEY = 'cardsmith.games.v1';
 
 /**
+ * Raw JSON last read from or written to our key. Lets persistGames skip
+ * writes whose bytes storage already holds (no quota churn, no storage
+ * events waking other tabs) and lets the cross-tab listener in state/store
+ * skip re-parsing an echo of the state it already has.
+ */
+let lastRaw: string | null = null;
+
+export function getPersistedRaw(): string | null {
+  return lastRaw;
+}
+
+/**
  * Structural soundness check: every collection the editors/engine/validators
  * iterate must actually be an array, and meta must be intact. A doc passing
  * this cannot crash validateGameDef/exprToText — it may still have validation
@@ -39,6 +51,7 @@ export function isStructurallySound(g: unknown): g is GameDef {
 export function loadGames(): GameDef[] {
   try {
     const raw = localStorage.getItem(KEY);
+    lastRaw = raw;
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -50,10 +63,14 @@ export function loadGames(): GameDef[] {
 
 export function persistGames(games: GameDef[]): boolean {
   try {
-    localStorage.setItem(KEY, JSON.stringify(games));
+    const json = JSON.stringify(games); // serialized once — compared, then written
+    if (json === lastRaw) return true; // bytes already in storage — skip the write
+    localStorage.setItem(KEY, json);
+    lastRaw = json;
     return true;
   } catch {
-    // Quota exceeded (usually giant card images). The app keeps working in-memory.
+    // Quota exceeded (usually giant card images) or the stringify itself blew
+    // the string limit. The app keeps working in-memory; callers surface it.
     return false;
   }
 }
@@ -63,7 +80,7 @@ export function exportGame(def: GameDef): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `${def.meta.name.replace(/[^a-z0-9-_ ]/gi, '').trim() || 'game'}.cardsmith.json`;
+  a.download = `${def.meta.name.replace(/[^a-z0-9-_ ]/gi, '').trim() || 'game'}.crownfall.json`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -73,10 +90,10 @@ export function parseImportedGame(text: string): GameDef {
   try {
     parsed = JSON.parse(text);
   } catch {
-    throw new Error('Not a valid Cardsmith game file (not JSON).');
+    throw new Error('Not a valid Crownfall game file (not JSON).');
   }
   if (!isStructurallySound(parsed)) {
-    throw new Error('Not a valid Cardsmith game file (missing or corrupted sections).');
+    throw new Error('Not a valid Crownfall game file (missing or corrupted sections).');
   }
   return migrateGameDef(parsed);
 }

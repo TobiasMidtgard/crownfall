@@ -11,13 +11,17 @@
  * plays — is the keeper's alone (PRODUCT.md principle 4, same gate as the
  * mason tools). Everything else in the Forge stays open to every visitor.
  */
-import { HomePage } from '../pages/HomePage';
-import { GameEditorPage } from '../editor/GameEditorPage';
-import { PlayPage } from '../runner/PlayPage';
+import { Suspense, lazy } from 'react';
 import { ensureDominionSeed, DOMINION_GAME_ID } from './seedDominion';
 import { useUser } from '../hall/state/auth';
 import '../styles.css';
 import './dominion-skin.css';
+
+// Each page is its own chunk: taking a seat must not download the editor
+// (or peerjs pulls in only behind the play route), and vice versa.
+const HomePage = lazy(() => import('../pages/HomePage').then((m) => ({ default: m.HomePage })));
+const GameEditorPage = lazy(() => import('../editor/GameEditorPage').then((m) => ({ default: m.GameEditorPage })));
+const PlayPage = lazy(() => import('../runner/PlayPage').then((m) => ({ default: m.PlayPage })));
 
 // Seed the hall's flagship game before any Forge page lists the store.
 ensureDominionSeed();
@@ -74,39 +78,43 @@ export default function ForgeApp({ sub, navigate }: ForgeAppProps) {
 
   return (
     <div className={`forge-root app-shell${skinned ? ' dominion-skin' : ''}`}>
-      {page.kind === 'home' && (
-        <>
-          <header className="app-topbar">
-            <a
-              className="forge-hallreturn"
-              href="#/"
-              onClick={(e) => { e.preventDefault(); navigate('#/'); }}
-            >
-              ← The Hall
-            </a>
-            <span className="brand"><AnvilMark /> The Forge</span>
-            <div className="spacer" />
-            <span className="faint">where the hall's games are made</span>
-          </header>
-          <main className="app-main">
-            <HomePage navigate={forgeNavigate} />
-          </main>
-        </>
-      )}
-      {page.kind === 'edit' && (
-        <GameEditorPage
-          key={page.id}
-          gameId={page.id}
-          navigate={forgeNavigate}
-          readOnly={dominionReadOnly}
-          readOnlyNote={dominionReadOnly
-            ? "This is the hall's own table — only the keeper reshapes it. Sign in as the keeper, or clone it to make your own."
-            : undefined}
-        />
-      )}
-      {page.kind === 'play' && (
-        <PlayPage key={page.id} gameId={page.id} navigate={forgeNavigate} />
-      )}
+      {/* A stale page chunk after a redeploy rejects up to App's
+          RouteErrorBoundary, which owns the reload card. */}
+      <Suspense fallback={<main className="app-main"><p className="faint" role="status">Loading…</p></main>}>
+        {page.kind === 'home' && (
+          <>
+            <header className="app-topbar">
+              <a
+                className="forge-hallreturn"
+                href="#/"
+                onClick={(e) => { e.preventDefault(); navigate('#/'); }}
+              >
+                ← The Hall
+              </a>
+              <span className="brand"><AnvilMark /> The Forge</span>
+              <div className="spacer" />
+              <span className="faint">where the hall's games are made</span>
+            </header>
+            <main className="app-main">
+              <HomePage navigate={forgeNavigate} />
+            </main>
+          </>
+        )}
+        {page.kind === 'edit' && (
+          <GameEditorPage
+            key={page.id}
+            gameId={page.id}
+            navigate={forgeNavigate}
+            readOnly={dominionReadOnly}
+            readOnlyNote={dominionReadOnly
+              ? "This is the hall's own table — only the keeper reshapes it. Sign in as the keeper, or clone it to make your own."
+              : undefined}
+          />
+        )}
+        {page.kind === 'play' && (
+          <PlayPage key={page.id} gameId={page.id} navigate={forgeNavigate} />
+        )}
+      </Suspense>
     </div>
   );
 }

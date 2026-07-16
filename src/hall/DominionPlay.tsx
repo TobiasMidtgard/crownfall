@@ -28,7 +28,7 @@ import { kingdomById } from '../shared/kingdoms';
 import { DOMINION_GAME_ID, ensureDominionSeed } from '../forge/seedDominion';
 import { DOMINION_VP_VAR, buildDominionDef, pickKingdom } from '../forge/dominionGame';
 import { herald } from './Heralds';
-import { getUser, updateUser, useUser } from './state/auth';
+import { getUser, setReturnTo, updateUser, useUser } from './state/auth';
 import { recordMatch } from './state/chronicle';
 
 export interface DominionPlayProps {
@@ -59,6 +59,10 @@ export default function DominionPlay({ params, navigate }: DominionPlayProps) {
   useEffect(() => {
     if (!user && !turnedAway.current) {
       turnedAway.current = true;
+      // Remember the full match link (set/foe/first ride in the hash) so the
+      // Gates can send the visitor back here instead of dumping them at
+      // #/tables — a shared link must survive the sign-in detour.
+      setReturnTo(window.location.hash);
       herald('Sign in to reach the tables.');
       navigate('#/login');
     }

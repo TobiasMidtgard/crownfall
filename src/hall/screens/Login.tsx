@@ -4,12 +4,14 @@
  * panels — Sign in and Create account (username, password with hint, sigil
  * radio picker). Arrow keys move between tabs, as the original did. Errors
  * are plain first with the gate's flavor beneath (.field-error .flavor);
- * success heralds and redirects to #/tables, as does an already-signed-in
- * visit.
+ * success heralds and redirects to the stashed returnTo hash (a gated route
+ * the visitor was turned away from) or #/tables, as does an already-signed-in
+ * visit. '#/login?tab=oath' opens on the Create account panel — the landing
+ * page's 'Create account' CTA points there.
  */
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { herald } from '../Heralds';
-import { register, signIn, useUser, type Sigil } from '../state/auth';
+import { consumeReturnTo, register, signIn, useUser, type Sigil } from '../state/auth';
 import { Edit } from '../state/copy';
 
 interface FieldError {
@@ -30,9 +32,19 @@ const SIGIL_NAMES: Record<Sigil, string> = {
   ember: 'the Ember', raven: 'the Raven', gilt: 'the Gilt', veil: 'the Veil',
 };
 
+/** The router drops hall query params, so read the hash directly:
+ * '#/login?tab=oath' lands on the Create account panel. */
+function gateTabFromHash(): GateTab {
+  const raw = window.location.hash;
+  const q = raw.indexOf('?');
+  return q >= 0 && new URLSearchParams(raw.slice(q + 1)).get('tab') === 'oath'
+    ? 'oath'
+    : 'signin';
+}
+
 export function Login({ navigate }: { navigate: (hash: string) => void }) {
   const user = useUser();
-  const [tab, setTab] = useState<GateTab>('signin');
+  const [tab, setTab] = useState<GateTab>(gateTabFromHash);
 
   const signinTabRef = useRef<HTMLButtonElement>(null);
   const oathTabRef = useRef<HTMLButtonElement>(null);
@@ -46,9 +58,17 @@ export function Login({ navigate }: { navigate: (hash: string) => void }) {
   const [oathNameError, setOathNameError] = useState<FieldError | null>(null);
   const [oathWordError, setOathWordError] = useState<FieldError | null>(null);
 
-  // the sworn need no gate: straight through to the tables
+  // The sworn need no gate: straight through — back to wherever a gate
+  // turned them away from (returnTo), or the tables. This effect is the ONE
+  // navigation point after sign-in/registration; the submit handlers don't
+  // navigate, or their consume would race this effect's '#/tables' default.
+  // The ref guards StrictMode's double effect (consume is destructive).
+  const entered = useRef(false);
   useEffect(() => {
-    if (user) navigate('#/tables');
+    if (user && !entered.current) {
+      entered.current = true;
+      navigate(consumeReturnTo() ?? '#/tables');
+    }
   }, [user, navigate]);
 
   const selectTab = (next: GateTab) => {
@@ -102,7 +122,7 @@ export function Login({ navigate }: { navigate: (hash: string) => void }) {
     }
     form.reset();
     herald(`Signed in as ${result.user.name}.`);
-    navigate('#/tables');
+    // navigation: the user effect above
   };
 
   const onRegister = (e: FormEvent<HTMLFormElement>) => {
@@ -136,7 +156,10 @@ export function Login({ navigate }: { navigate: (hash: string) => void }) {
     }
     form.reset();
     herald(`Account created. The oath is sworn under ${SIGIL_NAMES[sigil]}.`);
-    navigate('#/tables');
+    // The gate christens quietly ('<Handle> of the Yard') — say so once, and
+    // point at the rename before anyone wonders who named them.
+    herald(`You are sworn in as ${result.user.name} — rename yourself under Profile & settings.`);
+    // navigation: the user effect above
   };
 
   return (

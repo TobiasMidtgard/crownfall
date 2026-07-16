@@ -9,9 +9,10 @@
  * On phones the rails collapse into bottom-sheet drawers. ⛶ goes fullscreen
  * (fixed overlay, Esc exits). Keyboard: Esc clears selection, Delete removes
  * the selected elements (layout only), arrows nudge 1% (shift = 5%),
- * Ctrl+Z/Y undo/redo (layout snapshots, bursts coalesced), Ctrl+C/X/V
- * copy/cut/paste (module clipboard, survives variant/tab hops), Ctrl+D
- * duplicate in place, Ctrl+G / Ctrl+Shift+G group/ungroup.
+ * Ctrl+Z/Y undo/redo (layout snapshots, bursts coalesced; one-click creators
+ * snapshot their def slices too, so undo reverts def + layout together),
+ * Ctrl+C/X/V copy/cut/paste (module clipboard, survives variant/tab hops),
+ * Ctrl+D duplicate in place, Ctrl+G / Ctrl+Shift+G group/ungroup.
  *
  * FOCUS MODE (editor-only, never persisted): double-click an element (canvas
  * or Layers row) or hit ⛶ Focus in Properties — the canvas shows just that
@@ -22,7 +23,9 @@
  * Edits GameDef.screenLayout. Defs still carrying the deprecated v3
  * tableLayout are migrated once on open (shared/migrate). Absent layout =
  * the runner's automatic arrangement; switching to "Custom" seeds a starter
- * layout generated from the def, so nothing breaks when you switch.
+ * layout generated from the def — or offers to restore a design discarded
+ * earlier (stashed device-local on discard) — so nothing breaks when you
+ * switch.
  */
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GameDef, Id, ScreenElement, ScreenLayout } from '../../shared/types';
@@ -33,15 +36,16 @@ import { LayersPanel } from './table/LayersPanel';
 import { PropertiesPanel } from './table/PropertiesPanel';
 import { Palette } from './table/Palette';
 import {
-  addComponent, loadComponents, persistComponents, removeComponent, renameComponent,
-  updateComponentEl, type SavedComponent,
+  addComponent, loadComponents, loadDiscardedLayout, persistComponents, removeComponent,
+  renameComponent, stashDiscardedLayout, updateComponentEl, type SavedComponent,
 } from './table/components';
 import { type ZonePartSel } from './table/zoneParts';
 import {
   ASPECT_VALUES, alignElements, buildStarterLayout, cloneElementsWithNewIds, createMobileVariant,
   deleteMobileVariant,
   distributeElements, duplicateEls, elChildren, findEl, groupSiblings, indexElements,
-  insertIntoFocusedChildren, missingDefRefs, pathToEl, placeRelativeEl, pruneNested, removeEls,
+  insertIntoFocusedChildren, insertIntoFocusedChildrenKeepRect, missingDefRefs, pathToEl,
+  placeRelativeEl, pruneNested, removeEls,
   reorderSibling,
   reparentEl, setAbsRect, siblingsOf, ungroupEl, updateEl, validFocusPath, variantElements,
   withElChildren, withVariantElements,
@@ -72,6 +76,14 @@ export function TableTab({ def: rawDef, onChange, onOpenCards }: TableTabProps) 
 
   const layout = def.screenLayout ?? null;
   const [confirmReset, setConfirmReset] = useState(false);
+  // "Custom screen" with a stashed discarded design: restore it or start fresh.
+  const [customChoice, setCustomChoice] = useState(false);
+
+  const goCustom = () => {
+    if (layout) return;
+    if (loadDiscardedLayout(def.meta.id) !== null) setCustomChoice(true);
+    else onChange({ ...def, screenLayout: buildStarterLayout(def) });
+  };
 
   const modeToggle = (
     <div className="tt-seg" role="group" aria-label="Layout mode">
@@ -85,7 +97,7 @@ export function TableTab({ def: rawDef, onChange, onOpenCards }: TableTabProps) 
       <button
         type="button"
         className={layout ? 'tt-active' : ''}
-        onClick={() => { if (!layout) onChange({ ...def, screenLayout: buildStarterLayout(def) }); }}
+        onClick={goCustom}
       >
         Custom screen
       </button>
@@ -95,11 +107,58 @@ export function TableTab({ def: rawDef, onChange, onOpenCards }: TableTabProps) 
   const resetModal = confirmReset && (
     <ConfirmModal
       title="Back to the automatic layout?"
-      message="Your designed screen (element positions, groups, styles, visibility rules and background) will be discarded. The runner will arrange the table automatically again."
+      message="The runner will arrange the table automatically again. Your designed screen (element positions, groups, styles, visibility rules and background) is set aside on this device — switching back to Custom offers to restore it."
       confirmLabel="Discard design"
-      onConfirm={() => { onChange({ ...def, screenLayout: null }); setConfirmReset(false); }}
+      onConfirm={() => {
+        if (layout) stashDiscardedLayout(def.meta.id, layout);
+        onChange({ ...def, screenLayout: null });
+        setConfirmReset(false);
+      }}
       onCancel={() => setConfirmReset(false)}
     />
+  );
+
+  const restoreModal = customChoice && (
+    <Modal
+      title="Bring back your custom screen?"
+      onClose={() => setCustomChoice(false)}
+      footer={<button type="button" className="btn" onClick={() => setCustomChoice(false)}>Cancel</button>}
+    >
+      <p className="faint" style={{ marginTop: 0 }}>
+        This device kept the custom design you discarded earlier.
+      </p>
+      <div className="tt-variant-choices">
+        <button
+          type="button"
+          className="btn"
+          onClick={() => {
+            const stash = loadDiscardedLayout(def.meta.id);
+            setCustomChoice(false);
+            if (stash !== null) onChange({ ...def, screenLayout: stash });
+            else onChange({ ...def, screenLayout: buildStarterLayout(def) });
+          }}
+        >
+          <span className="tt-variant-choice-title">↩ Restore previous design</span>
+          <span className="tt-variant-choice-hint">
+            Pick up exactly where the discarded screen left off.
+          </span>
+        </button>
+        <button
+          type="button"
+          className="btn"
+          onClick={() => {
+            setCustomChoice(false);
+            onChange({ ...def, screenLayout: buildStarterLayout(def) });
+          }}
+        >
+          <span className="tt-variant-choice-title">▭ Start fresh</span>
+          <span className="tt-variant-choice-hint">
+            A new starter layout generated from the game. The stashed design stays
+            recoverable until the next discard.
+          </span>
+        </button>
+      </div>
+    </Modal>
   );
 
   if (!layout) {
@@ -127,6 +186,7 @@ export function TableTab({ def: rawDef, onChange, onOpenCards }: TableTabProps) 
           </p>
         </div>
         {resetModal}
+        {restoreModal}
       </div>
     );
   }
@@ -156,11 +216,18 @@ type Drawer = 'palette' | 'layers' | 'props' | null;
 let clipboardEls: ScreenElement[] = [];
 let pasteSeq = 0;
 
-/** Undo/redo memory: layout snapshots. Bursts (slider scrubs, rapid patches)
- *  within this window coalesce into ONE entry, so undo steps feel like edits,
- *  not mouse events. */
+/** Undo/redo memory: layout snapshots. Compound one-click creators (zone
+ *  holders, the counter's ±1 actions, inline variable + bind) also snapshot
+ *  the def slices they touch, so undo reverts def + layout TOGETHER instead
+ *  of stranding orphan zones/actions ("Deck 2" on redrop). Bursts (slider
+ *  scrubs, rapid patches) within this window coalesce into ONE entry, so
+ *  undo steps feel like edits, not mouse events. */
 const HISTORY_BURST_MS = 400;
 const HISTORY_CAP = 100;
+
+/** Def slices a compound creator snapshots alongside the layout. */
+type DefSnap = Partial<Pick<GameDef, 'zones' | 'actions' | 'phases' | 'variables'>>;
+interface HistoryEntry extends DefSnap { screenLayout: ScreenLayout }
 
 function Workspace({ def, layout, onChange, onOpenCards }: {
   def: GameDef;
@@ -184,36 +251,55 @@ function Workspace({ def, layout, onChange, onOpenCards }: {
   const [partSel, setPartSel] = useState<ZonePartSel | null>(null);
 
   // ----- undo/redo (#4): layout snapshots, coalesced per edit burst -----
-  const historyRef = useRef<{ past: ScreenLayout[]; future: ScreenLayout[]; last: number }>(
+  const historyRef = useRef<{ past: HistoryEntry[]; future: HistoryEntry[]; last: number }>(
     { past: [], future: [], last: 0 },
   );
-  const pushHistory = () => {
+  const pushHistory = (snap?: DefSnap) => {
     const h = historyRef.current;
     const now = Date.now();
-    if (now - h.last > HISTORY_BURST_MS) {
-      h.past.push(layout);
+    // A compound push (def snapshot) always gets its own entry and never
+    // coalesces with the edits around it — undoing one must revert exactly
+    // the one-click creation, nothing more.
+    if (snap !== undefined || now - h.last > HISTORY_BURST_MS) {
+      h.past.push({ screenLayout: layout, ...snap });
       if (h.past.length > HISTORY_CAP) h.past.shift();
     }
-    h.last = now;
+    h.last = snap !== undefined ? 0 : now;
     h.future = [];
   };
-  // Undo/redo swap the CURRENT layout with a snapshot; other tabs' def edits
-  // are never touched (snapshots carry only screenLayout).
+  // Undo/redo swap the CURRENT layout with a snapshot. Ordinary entries carry
+  // only screenLayout, so other tabs' def edits are never touched; compound
+  // entries also swap the def slices their creator wrote (redo re-creates).
+  const mirrorEntry = (like: HistoryEntry): HistoryEntry => ({
+    screenLayout: layout,
+    ...(like.zones !== undefined ? { zones: def.zones } : {}),
+    ...(like.actions !== undefined ? { actions: def.actions } : {}),
+    ...(like.phases !== undefined ? { phases: def.phases } : {}),
+    ...(like.variables !== undefined ? { variables: def.variables } : {}),
+  });
+  const applyEntry = (e: HistoryEntry): GameDef => ({
+    ...def,
+    ...(e.zones !== undefined ? { zones: e.zones } : {}),
+    ...(e.actions !== undefined ? { actions: e.actions } : {}),
+    ...(e.phases !== undefined ? { phases: e.phases } : {}),
+    ...(e.variables !== undefined ? { variables: e.variables } : {}),
+    screenLayout: e.screenLayout,
+  });
   const undo = () => {
     const h = historyRef.current;
     const prev = h.past.pop();
     if (prev === undefined) return;
-    h.future.push(layout);
+    h.future.push(mirrorEntry(prev));
     h.last = 0;
-    onChange({ ...def, screenLayout: prev });
+    onChange(applyEntry(prev));
   };
   const redo = () => {
     const h = historyRef.current;
     const next = h.future.pop();
     if (next === undefined) return;
-    h.past.push(layout);
+    h.past.push(mirrorEntry(next));
     h.last = 0;
-    onChange({ ...def, screenLayout: next });
+    onChange(applyEntry(next));
   };
   // Recomputed every render (each edit re-renders), so the buttons stay live.
   const canUndo = historyRef.current.past.length > 0;
@@ -357,6 +443,10 @@ function Workspace({ def, layout, onChange, onOpenCards }: {
     setSel([]);
   };
 
+  // The focused element's screen-absolute rect (paste/component inserts
+  // convert screen-% rects into its box; null outside focus mode).
+  const focusAbs = focusEl ? index.get(focusEl.id)?.abs ?? null : null;
+
   const insertElement = (el: ScreenElement) => {
     setElements(focusEl
       ? insertIntoFocusedChildren(elements, focusEl.id, el)
@@ -365,32 +455,58 @@ function Workspace({ def, layout, onChange, onOpenCards }: {
     setDrawer(null);
   };
 
+  /** Insert PRESERVING the element's rect (component drops): in focus mode the
+   *  screen-% rect converts into the focused box instead of squashing to the
+   *  centered 30×30 palette default. */
+  const insertKeepingRect = (el: ScreenElement) => {
+    setElements(focusEl && focusAbs
+      ? insertIntoFocusedChildrenKeepRect(elements, focusEl.id, el, focusAbs)
+      : [...elements, el]);
+    setSel([el.id]);
+    setDrawer(null);
+  };
+
   // ----- reusable component library (per-device) ----------------------------
   const [components, setComponents] = useState<SavedComponent[]>(() => loadComponents());
   const persistLibrary = (next: SavedComponent[]) => { setComponents(next); persistComponents(next); };
-  const saveComponent = (el: ScreenElement, name: string) => {
-    // Store a fresh-id clone so the saved copy never shares ids with the live tree.
-    const stored = cloneElementsWithNewIds([el])[0];
-    // Compare with the NORMALIZED name (addComponent trims + falls back), so
-    // "Deck " vs "Deck" offers replace instead of silently duplicating; among
-    // same-name entries, replace the newest — the one the user last saved.
-    const clean = name.trim() || el.name || 'Component';
-    const dupes = components.filter((c) => c.name === clean);
-    const existing = dupes[dupes.length - 1];
-    if (existing && window.confirm(`Replace the saved component "${clean}"? Cancel keeps both.`)) {
-      persistLibrary(updateComponentEl(components, existing.id, stored));
-      return;
-    }
-    persistLibrary(addComponent(components, `c_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`, clean, stored));
-  };
+  // Styled save dialog (name field + explicit Replace/Keep-both on collision).
+  const [saveComp, setSaveComp] = useState<{ el: ScreenElement; nameEl: boolean } | null>(null);
+  // Styled insert confirm when a component's bindings are missing in this def.
+  const [confirmInsert, setConfirmInsert] = useState<{ comp: SavedComponent; summary: string } | null>(null);
+
+  /** ⬡ Save on a single element: name it in the styled modal. */
+  const saveComponent = (el: ScreenElement) => setSaveComp({ el, nameEl: false });
   /** Save a sibling multi-selection as ONE grouped component — the screen
    *  itself is left untouched (the group exists only in the library). */
-  const saveComponentMulti = (name: string) => {
+  const saveComponentMulti = () => {
     const grouped = groupSiblings(elements, sel);
     if (!grouped) return;
     const groupEl = findEl(grouped.elements, grouped.groupId);
-    if (groupEl) saveComponent({ ...groupEl, name }, name);
+    // The library group is ephemeral — it takes the component's name.
+    if (groupEl) setSaveComp({ el: groupEl, nameEl: true });
   };
+  /** Commit from the save modal: replace the newest same-name entry, or append. */
+  const commitSaveComponent = (name: string, replace: boolean) => {
+    if (!saveComp) return;
+    const clean = name.trim() || saveComp.el.name || 'Component';
+    // Store a fresh-id clone so the saved copy never shares ids with the live tree.
+    const stored = cloneElementsWithNewIds([
+      saveComp.nameEl ? { ...saveComp.el, name: clean } : saveComp.el,
+    ])[0];
+    setSaveComp(null);
+    if (replace) {
+      // Among same-name entries, replace the newest — the one last saved.
+      const dupes = components.filter((c) => c.name === clean);
+      const existing = dupes[dupes.length - 1];
+      if (existing) {
+        persistLibrary(updateComponentEl(components, existing.id, stored));
+        return;
+      }
+    }
+    persistLibrary(addComponent(components, `c_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e6).toString(36)}`, clean, stored));
+  };
+  const doInsertComponent = (comp: SavedComponent) =>
+    insertKeepingRect(cloneElementsWithNewIds([comp.el])[0]);
   const insertComponent = (comp: SavedComponent) => {
     // Components travel across games; warn when this def can't satisfy the
     // saved tree's bindings (they'd render unbound and show ⚠ in pickers).
@@ -406,10 +522,11 @@ function Workspace({ def, layout, onChange, onOpenCards }: {
       n(missing.tags, 'card tag'),
       n(missing.filters, 'saved filter'),
     ].filter(Boolean);
-    if (bits.length > 0 && !window.confirm(
-      `"${comp.name}" references ${bits.join(', ')} this game doesn't have — those bindings will show ⚠ in the inspector until you rewire them. Insert anyway?`,
-    )) return;
-    insertElement(cloneElementsWithNewIds([comp.el])[0]);
+    if (bits.length > 0) {
+      setConfirmInsert({ comp, summary: bits.join(', ') });
+      return;
+    }
+    doInsertComponent(comp);
   };
   const deleteComponent = (id: string) => persistLibrary(removeComponent(components, id));
   const renameComponentEntry = (id: string, name: string) => persistLibrary(renameComponent(components, id, name));
@@ -418,7 +535,9 @@ function Workspace({ def, layout, onChange, onOpenCards }: {
     const nextEls = focusEl
       ? insertIntoFocusedChildren(elements, focusEl.id, el)
       : [...elements, el];
-    pushHistory(); // undo restores the layout; the zone def stays (harmless orphan)
+    // Compound entry: undo removes the element AND the zone def together —
+    // no orphan zone on the Systems page, no "Deck 2" on the next drop.
+    pushHistory({ zones: def.zones });
     onChange({
       ...def,
       zones: [...def.zones, zone],
@@ -426,6 +545,25 @@ function Workspace({ def, layout, onChange, onOpenCards }: {
     });
     setSel([el.id]);
     setDrawer(null);
+  };
+
+  /**
+   * Def changes arriving from the inspector. Most are def-only (deck edits)
+   * and stay outside the layout history; the one-click creators (counter ⚡
+   * ±1 actions, inline "+ New variable" + bind) write def slices AND the
+   * layout in one call — snapshot the changed slices with the layout so undo
+   * reverts the whole creation instead of stranding half of it.
+   */
+  const changeDefFromInspector = (next: GameDef) => {
+    if (next.screenLayout !== def.screenLayout) {
+      const snap: DefSnap = {};
+      if (next.zones !== def.zones) snap.zones = def.zones;
+      if (next.actions !== def.actions) snap.actions = def.actions;
+      if (next.phases !== def.phases) snap.phases = def.phases;
+      if (next.variables !== def.variables) snap.variables = def.variables;
+      pushHistory(Object.keys(snap).length > 0 ? snap : undefined);
+    }
+    onChange(next);
   };
 
   // ----- clipboard (#4): copy / cut / paste / duplicate -----
@@ -452,8 +590,13 @@ function Workspace({ def, layout, onChange, onOpenCards }: {
         y: Math.min(Math.max(el.rect.y + off, 0), Math.max(0, 100 - el.rect.h)),
       },
     }));
-    setElements(focusEl
-      ? pasted.reduce((acc, el) => insertIntoFocusedChildren(acc, focusEl.id, el), elements)
+    // Focus mode keeps each pasted rect (converted into the focused box, one
+    // linear map for all) — sizes, aspects and relative arrangement survive.
+    setElements(focusEl && focusAbs
+      ? pasted.reduce(
+          (acc, el) => insertIntoFocusedChildrenKeepRect(acc, focusEl.id, el, focusAbs),
+          elements,
+        )
       : [...elements, ...pasted]);
     setSel(pasted.map((el) => el.id));
   };
@@ -642,7 +785,7 @@ function Workspace({ def, layout, onChange, onOpenCards }: {
       layout={layout}
       variant={variant}
       sel={sel}
-      onChangeDef={onChange}
+      onChangeDef={changeDefFromInspector}
       onPatchEl={patchEl}
       onRemove={removeSelected}
       onGroup={groupSelection}
@@ -794,7 +937,102 @@ function Workspace({ def, layout, onChange, onOpenCards }: {
           onCancel={() => setConfirmDeleteMobile(false)}
         />
       )}
+
+      {saveComp && (
+        <SaveComponentModal
+          defaultName={saveComp.nameEl ? 'Component' : saveComp.el.name}
+          fallbackName={saveComp.el.name || 'Component'}
+          existingNames={components.map((c) => c.name)}
+          onCancel={() => setSaveComp(null)}
+          onSave={commitSaveComponent}
+        />
+      )}
+
+      {confirmInsert && (
+        <ConfirmModal
+          title="Insert with missing bindings?"
+          message={`“${confirmInsert.comp.name}” references ${confirmInsert.summary} this game doesn't have — those bindings will show ⚠ in the inspector until you rewire them.`}
+          confirmLabel="Insert anyway"
+          onConfirm={() => {
+            const { comp } = confirmInsert;
+            setConfirmInsert(null);
+            doInsertComponent(comp);
+          }}
+          onCancel={() => setConfirmInsert(null)}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * "⬡ Save component": name field + an EXPLICIT Replace / Keep-both choice
+ * when the (normalized) name collides with a saved entry — replacing is never
+ * the hidden default. Enter saves as new (the safe path).
+ */
+function SaveComponentModal({ defaultName, fallbackName, existingNames, onCancel, onSave }: {
+  defaultName: string;
+  /** Used when the field is blank (addComponent's trim-and-fall-back rule). */
+  fallbackName: string;
+  existingNames: string[];
+  onCancel: () => void;
+  onSave: (name: string, replace: boolean) => void;
+}) {
+  const [name, setName] = useState(defaultName);
+  // Collision check on the NORMALIZED name ("Deck " vs "Deck" still collides).
+  const effective = name.trim() || fallbackName;
+  const collides = existingNames.includes(effective);
+  return (
+    <Modal
+      title="Save component"
+      onClose={onCancel}
+      footer={(
+        <>
+          <button type="button" className="btn" onClick={onCancel}>Cancel</button>
+          {collides ? (
+            <>
+              <button type="button" className="btn" onClick={() => onSave(name, false)}>
+                Keep both
+              </button>
+              <button type="button" className="btn btn-primary" onClick={() => onSave(name, true)}>
+                Replace “{effective}”
+              </button>
+            </>
+          ) : (
+            <button type="button" className="btn btn-primary" onClick={() => onSave(name, false)}>
+              Save
+            </button>
+          )}
+        </>
+      )}
+    >
+      <label className="field">
+        <span>Name</span>
+        <input
+          type="text"
+          className="input"
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              onSave(name, false);
+            }
+          }}
+        />
+      </label>
+      {collides ? (
+        <p className="faint" style={{ margin: '4px 0 0' }}>
+          A saved component is already named “{effective}” — replace it with this one,
+          or keep both.
+        </p>
+      ) : (
+        <p className="faint" style={{ margin: '4px 0 0' }}>
+          Saved to this device's library — drop copies from the palette in any game.
+        </p>
+      )}
+    </Modal>
   );
 }
 
@@ -810,7 +1048,8 @@ function CreateMobileModal({ onClose, onCreate }: {
       footer={<button type="button" className="btn" onClick={onClose}>Cancel</button>}
     >
       <p className="faint" style={{ marginTop: 0 }}>
-        Narrow screens (below 1024&thinsp;px) get their own page — a tall phone frame you
+        {/* 720px = the runner's NARROW_QUERY breakpoint (ScreenRenderer). */}
+        Narrow screens (below 720&thinsp;px) get their own page — a tall phone frame you
         design separately. The desktop layout stays untouched.
       </p>
       <div className="tt-variant-choices">

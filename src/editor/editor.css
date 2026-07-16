@@ -67,9 +67,22 @@
 
 .ed-save-hint { white-space: nowrap; }
 
+/* Save failure (storage full): never masquerade as "Saving…". */
+.ed-save-error {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--danger);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.ed-save-error-text { white-space: nowrap; }
+
 @media (max-width: 520px) {
   .ed-save-hint { display: none; }
   .ed-topbar { padding: 10px 8px; }
+  /* The error must stay visible on phones — only its prose shrinks away. */
+  .ed-save-error-text { display: none; }
 }
 
 /* ---------- Page chrome ---------- */
@@ -209,6 +222,24 @@
 }
 .ed-banner > span { flex: 1; min-width: 200px; }
 
+/* Read-only: a strip inside every open panel says why controls are off… */
+.ed-panel-readonly {
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+}
+/* …and the fieldset wrapper actually switches them off. */
+.ed-panel-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+}
+.ed-panel-fieldset:disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 .ed-section { margin-bottom: 20px; }
 
 /* Entity rows (zones, variables, decks) */
@@ -267,6 +298,23 @@
 .ed-sys-detail-btn { width: 100%; justify-content: flex-start; text-align: left; }
 .ed-sys-open { border-color: var(--accent-2); }
 .ed-sys-detail { margin-top: 14px; }
+
+/* Collapsed action/trigger/end-condition rows expand in place. */
+.ed-item-detail { margin-top: 12px; }
+
+/* Inline hint links that jump to another panel. */
+.ed-link {
+  appearance: none;
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent-2);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  -webkit-tap-highlight-color: transparent;
+}
+.ed-link:hover, .ed-link:focus-visible { color: var(--text); }
 
 .ed-mini-label {
   display: block;
@@ -376,7 +424,33 @@
 .ed-issue .chip { flex-shrink: 0; margin-top: 2px; }
 .ed-issue-where { font-weight: 600; font-size: 0.85rem; color: var(--muted); }
 
+/* Clickable issue rows jump to the panel that owns the item. */
+.ed-issue-btn {
+  appearance: none;
+  width: 100%;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ed-issue-btn:hover, .ed-issue-btn:focus-visible { background: rgba(255, 255, 255, 0.05); }
+.ed-issue-go {
+  margin-left: auto;
+  align-self: center;
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 1.1rem;
+}
+
 .ed-modal-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+
+/* The dialog receives programmatic focus on open — no ring needed. */
+.forge-root .modal:focus { outline: none; }
 
 /* ============================================================
    Block scripting (blk-)

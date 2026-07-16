@@ -3,7 +3,7 @@
  * rendered live from the VIEWER's perspective.
  *
  *   - TableScreen picks the ACTIVE variant (desktop, or the mobile tree below
- *     1024px — useNarrowViewport) and passes it in as an ActiveScreen.
+ *     720px — useNarrowViewport) and passes it in as an ActiveScreen.
  *   - The stage fills the table area; a numeric `aspect` letterboxes a fixed
  *     w/h stage centered in it, null stretches to fill. Mobile variants with
  *     `scroll` render a tall in-flow page (height = width / aspect) that the

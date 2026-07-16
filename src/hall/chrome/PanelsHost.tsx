@@ -768,7 +768,8 @@ function FriendsBody() {
               </span>
             </span>
             <span className="companion-actions">
-              <button type="button" onClick={() => herald(`Invitation sent to ${c.name}.`)}>Invite</button>
+              {/* honest: no invitation is actually delivered yet */}
+              <button type="button" onClick={() => herald('The invitation scrolls are still being lettered. Soon.')}>Invite</button>
               <button type="button" onClick={() => whisper(c.name)}>Message</button>
             </span>
           </li>

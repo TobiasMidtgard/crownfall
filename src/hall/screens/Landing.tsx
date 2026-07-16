@@ -193,7 +193,7 @@ export function Landing() {
         <div className="cta-inner reveal">
           <p className="eyebrow eyebrow-on-crimson"><Edit id="call-eyebrow" fallback="Season III · The Hollow Crown" /></p>
           <h2 className="cta-title"><Edit id="call-title" fallback="The table is set." /></h2>
-          <a className="btn btn-inverse" href="#/login" data-cta="oath"><Edit id="call-cta" fallback="Create account" /></a>
+          <a className="btn btn-inverse" href="#/login?tab=oath" data-cta="oath"><Edit id="call-cta" fallback="Create account" /></a>
         </div>
       </div>
     ),
@@ -239,7 +239,7 @@ export function Landing() {
           <a href="#/login"><Edit id="footer-link-oath" fallback="Sign in" /></a>
         </nav>
         <p className="footer-note">
-          <Edit id="footer-note" fallback="Crownfall is a front-end demonstration for a card-game platform. Dominion is a game by Donald X. Vaccarino; this hall merely sets its table." />
+          <Edit id="footer-note" fallback="Crownfall is a working hall: a real rules engine beneath the floor, tables played peer-to-peer, and new games forged on site. Dominion is a game by Donald X. Vaccarino; this hall merely sets its table." />
         </p>
       </footer>
     </section>

@@ -1,6 +1,6 @@
 /**
- * CardsSection — toolbar (template filter, add card, count) + card grid;
- * tapping a card opens the CardEditorModal.
+ * CardsSection — toolbar (template filter, name/type-line search, add card,
+ * count) + card grid; tapping a card opens the CardEditorModal.
  */
 import { useState } from 'react';
 import type { GameDef } from '../shared/types';
@@ -16,11 +16,21 @@ export function CardsSection({ def, onChange, onGoTemplates }: {
   onGoTemplates: () => void;
 }) {
   const [filter, setFilter] = useState<string>('all');
+  const [query, setQuery] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  const filtered = filter === 'all' ? def.cards : def.cards.filter((c) => c.templateId === filter);
+  const types = def.cardTypes ?? [];
+  const tags = def.cardTags ?? [];
+  const q = query.trim().toLowerCase();
+  const byTemplate = filter === 'all' ? def.cards : def.cards.filter((c) => c.templateId === filter);
+  // Search matches the card name or its type line (type + tag names),
+  // same idiom as the setup screen's kingdom picker.
+  const filtered = q === '' ? byTemplate : byTemplate.filter((c) =>
+    c.name.toLowerCase().includes(q)
+    || types.some((t) => t.id === c.typeId && t.name.toLowerCase().includes(q))
+    || (c.tags ?? []).some((id) => tags.some((t) => t.id === id && t.name.toLowerCase().includes(q))));
   const total = def.cards.length;
-  const summary = filter === 'all'
+  const summary = filter === 'all' && q === ''
     ? `${total} card${total === 1 ? '' : 's'}`
     : `${filtered.length} of ${total} card${total === 1 ? '' : 's'}`;
 
@@ -55,6 +65,14 @@ export function CardsSection({ def, onChange, onGoTemplates }: {
           <option value="all">All templates</option>
           {def.templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
         </select>
+        <input
+          className="input dz-card-search"
+          type="search"
+          placeholder={`Search ${total} card${total === 1 ? '' : 's'}…`}
+          aria-label="Search cards by name or type line"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
         <span className="chip">{summary}</span>
         <span className="spacer" />
         <button type="button" className="btn btn-primary" onClick={addCard}>+ Add card</button>
@@ -62,8 +80,17 @@ export function CardsSection({ def, onChange, onGoTemplates }: {
 
       {filtered.length === 0 ? (
         <div className="empty-state">
-          <p>{filter === 'all' ? 'No cards yet.' : 'No cards use this template.'}</p>
-          <button type="button" className="btn btn-primary" onClick={addCard}>+ Add card</button>
+          {q !== '' ? (
+            <>
+              <p>Nothing matches &ldquo;{query.trim()}&rdquo;.</p>
+              <button type="button" className="btn" onClick={() => setQuery('')}>Clear search</button>
+            </>
+          ) : (
+            <>
+              <p>{filter === 'all' ? 'No cards yet.' : 'No cards use this template.'}</p>
+              <button type="button" className="btn btn-primary" onClick={addCard}>+ Add card</button>
+            </>
+          )}
         </div>
       ) : (
         <div className="dz-card-grid">

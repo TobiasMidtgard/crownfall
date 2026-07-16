@@ -4,6 +4,7 @@
  */
 import { useState } from 'react';
 import type { CardFieldDef, GameDef, CardTemplate } from '../shared/types';
+import { ConfirmModal } from '../editor/common/Modal';
 import { ColorField, Segmented, Stepper } from './controls';
 import {
   cardsWithFieldValue, newField, patchField, patchTemplate, removeField,
@@ -66,14 +67,11 @@ export function FieldSchemaEditor({ def, template, onChange }: {
   template: CardTemplate;
   onChange: (def: GameDef) => void;
 }) {
-  const remove = (f: CardFieldDef) => {
-    const boundEls = template.elements.filter((el) => el.kind !== 'box' && el.bind === f.id).length;
-    const cardCount = cardsWithFieldValue(def, f.id);
-    const ok = window.confirm(
-      `Remove field "${f.name}"?\n\nThis unbinds ${boundEls} template element(s) and deletes its value from ${cardCount} card(s). This cannot be undone.`,
-    );
-    if (ok) onChange(removeField(def, template.id, f.id));
-  };
+  const [pendingRemove, setPendingRemove] = useState<CardFieldDef | null>(null);
+  const boundEls = pendingRemove
+    ? template.elements.filter((el) => el.kind !== 'box' && el.bind === pendingRemove.id).length
+    : 0;
+  const cardCount = pendingRemove ? cardsWithFieldValue(def, pendingRemove.id) : 0;
 
   return (
     <div className="dz-side-panel">
@@ -99,7 +97,7 @@ export function FieldSchemaEditor({ def, template, onChange }: {
             <option value="number">Number</option>
             <option value="image">Image</option>
           </select>
-          <button type="button" className="btn dz-icon-btn" aria-label={`Remove field ${f.name}`} onClick={() => remove(f)}>
+          <button type="button" className="btn dz-icon-btn" aria-label={`Remove field ${f.name}`} onClick={() => setPendingRemove(f)}>
             ✕
           </button>
         </div>
@@ -111,6 +109,26 @@ export function FieldSchemaEditor({ def, template, onChange }: {
       >
         + Add field
       </button>
+      {pendingRemove && (
+        <ConfirmModal
+          title={`Remove field "${pendingRemove.name}"?`}
+          confirmLabel="Remove"
+          message={(
+            <>
+              <p>
+                This unbinds <strong>{boundEls}</strong> template element{boundEls === 1 ? '' : 's'} and
+                deletes its value from <strong>{cardCount}</strong> card{cardCount === 1 ? '' : 's'}.
+              </p>
+              <p className="faint">This cannot be undone.</p>
+            </>
+          )}
+          onCancel={() => setPendingRemove(null)}
+          onConfirm={() => {
+            onChange(removeField(def, template.id, pendingRemove.id));
+            setPendingRemove(null);
+          }}
+        />
+      )}
     </div>
   );
 }

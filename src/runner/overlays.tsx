@@ -84,7 +84,9 @@ export function GameOverOverlay({ def, state, onPlayAgain, onHome, homeLabel = '
   const result = state.result;
   if (!result) return null;
   const winnerNames = result.winners.map((id) => state.players.find((p) => p.id === id)?.name ?? id);
-  const perVars = def.variables.filter((v) => v.scope === 'perPlayer');
+  // Hidden vars are engine bookkeeping — the scoreboard shows player-facing
+  // values only (same filter as the status bar's global chips).
+  const perVars = def.variables.filter((v) => v.scope === 'perPlayer' && !v.hidden);
   return (
     <div
       className="rn-gameover"
@@ -135,27 +137,57 @@ export function LogDrawer({ entries, onClose }: { entries: LogEntry[]; onClose: 
     const el = bodyRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [entries.length]);
+  // Modal manners (same treatment as the sheets and the game-over card):
+  // Escape closes, and Tab cycles inside the drawer instead of walking the
+  // obscured, backdrop-covered table behind it.
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      onClose();
+      return;
+    }
+    if (e.key !== 'Tab') return;
+    const drawer = drawerRef.current;
+    if (!drawer) return;
+    const focusables = Array.from(
+      drawer.querySelectorAll<HTMLElement>('button:not(:disabled), [tabindex="0"]'),
+    );
+    if (focusables.length === 0) {
+      e.preventDefault();
+      return;
+    }
+    // indexOf is -1 while focus sits on the drawer itself (tabIndex -1): both
+    // directions wrap instead of escaping.
+    const idx = focusables.indexOf(document.activeElement as HTMLElement);
+    if (e.shiftKey) {
+      if (idx <= 0) {
+        e.preventDefault();
+        focusables[focusables.length - 1].focus();
+      }
+    } else if (idx === -1 || idx === focusables.length - 1) {
+      e.preventDefault();
+      focusables[0].focus();
+    }
+  };
   return (
     <>
       <div className="rn-log-backdrop" onClick={onClose} />
       <aside
         className="rn-log"
+        role="dialog"
+        aria-modal="true"
         aria-label="Game log"
         tabIndex={-1}
         ref={drawerRef}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') {
-            e.stopPropagation();
-            onClose();
-          }
-        }}
+        onKeyDown={onKeyDown}
       >
         <div className="rn-log-head">
           Game log
           <div className="spacer" />
           <button className="btn rn-statusbtn" onClick={onClose} aria-label="Close log">✕</button>
         </div>
-        <div className="rn-log-body" ref={bodyRef}>
+        {/* tabIndex 0: the scroller itself is focusable so arrow keys work. */}
+        <div className="rn-log-body" ref={bodyRef} tabIndex={0}>
           {entries.length === 0 && <p className="muted">Nothing has happened yet.</p>}
           {entries.map((e, i) => (
             <div className="rn-log-entry" key={i}>
@@ -170,16 +202,22 @@ export function LogDrawer({ entries, onClose }: { entries: LogEntry[]; onClose: 
 }
 
 /**
- * Announcement pill for new log entries. The role=status container stays
+ * Announcement pills for new log entries. The role=status container stays
  * permanently mounted (a live region must exist BEFORE its content changes
  * for screen readers to announce reliably — inserting a region already
- * holding text is routinely dropped); only the styled pill inside comes and
- * goes, keyed per message so the entry animation replays.
+ * holding text is routinely dropped); only the styled pills inside come and
+ * go, keyed per log index so entry animations replay. One engine settle
+ * often lands several entries (play Smithy: plays + draws), so up to three
+ * stack oldest-first — TableScreen's queue drains them in order — and any
+ * deeper backlog shows as a "+N more" hint instead of vanishing.
  */
-export function Snackbar({ text, seq }: { text: string; seq: number }) {
+export function Snackbar({ items }: { items: { text: string; n: number }[] }) {
+  const shown = items.slice(0, 3);
+  const extra = items.length - shown.length;
   return (
     <div className="rn-snackwrap" role="status">
-      {text !== '' && <div className="rn-snackbar" key={seq}>{text}</div>}
+      {shown.map((it) => <div className="rn-snackbar" key={it.n}>{it.text}</div>)}
+      {extra > 0 && <div className="rn-snackmore">+{extra} more…</div>}
     </div>
   );
 }

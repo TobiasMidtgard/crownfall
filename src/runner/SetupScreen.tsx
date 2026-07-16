@@ -3,7 +3,7 @@
  * configuration (count stepper, names, Human/AI toggles), and a reproducible
  * random seed with a reroll button.
  */
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { GameDef, ValidationIssue } from '../shared/types';
 import type { KingdomSet } from '../shared/kingdoms';
 import { rollSeed } from './layout';
@@ -58,11 +58,37 @@ export function SetupScreen({ def, issues, navigate, onStart, online, onHost, on
   const [showWarnings, setShowWarnings] = useState(false);
   const [joinCode, setJoinCode] = useState('');
   const [cardSearch, setCardSearch] = useState('');
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (!copied) return;
+    const t = window.setTimeout(() => setCopied(false), 1600);
+    return () => window.clearTimeout(t);
+  }, [copied]);
   const allAI = seats.every((s) => s.isAI);
   const myName = (seats[0]?.name ?? '').trim() || 'Player 1';
   const onlineCapable = onHost !== undefined && onJoin !== undefined
     && errors.length === 0 && minP <= 2 && maxP >= 2;
   const kingdomReady = kingdom == null || kingdom.value.length === kingdom.size;
+  // The def + seed ship at the host/join click, so later edits would be
+  // silently discarded — lock the form (visibly) while a room is pending.
+  const onlineLocked = online != null && online.mode !== 'error';
+  const lockedPanel = `panel${onlineLocked ? ' rn-setup-locked' : ''}`;
+  // Disabled buttons can't show title tooltips on touch — the gate reason
+  // renders as visible helper text under the Start button instead.
+  const startNote = onlineLocked
+    ? 'The room below is open — cancel it to start a local game.'
+    : errors.length > 0
+      ? 'Fix the errors above to start.'
+      : kingdom != null && !kingdomReady
+        ? `Pick exactly ${kingdom.size} kingdom piles first — ${kingdom.value.length} chosen.`
+        : null;
+
+  const copyCode = () => {
+    if (online?.mode !== 'hosting' || !navigator.clipboard) return;
+    navigator.clipboard.writeText(online.code)
+      .then(() => setCopied(true))
+      .catch(() => undefined); // clipboard blocked — the code stays selectable
+  };
 
   const setCount = (n: number) => {
     const next = Math.min(maxP, Math.max(minP, n));
@@ -119,13 +145,13 @@ export function SetupScreen({ def, issues, navigate, onStart, online, onHost, on
           </div>
         )}
 
-        <div className="panel" style={{ marginBottom: 14 }}>
+        <div className={lockedPanel} style={{ marginBottom: 14 }}>
           <label className="field" style={{ marginBottom: 6 }}><span>Players</span></label>
           <div className="rn-stepper">
             <button
               className="btn"
               onClick={() => setCount(seats.length - 1)}
-              disabled={seats.length <= minP}
+              disabled={seats.length <= minP || onlineLocked}
               aria-label="Fewer players"
             >
               −
@@ -134,7 +160,7 @@ export function SetupScreen({ def, issues, navigate, onStart, online, onHost, on
             <button
               className="btn"
               onClick={() => setCount(seats.length + 1)}
-              disabled={seats.length >= maxP}
+              disabled={seats.length >= maxP || onlineLocked}
               aria-label="More players"
             >
               +
@@ -148,13 +174,22 @@ export function SetupScreen({ def, issues, navigate, onStart, online, onHost, on
                 maxLength={20}
                 placeholder={`Player ${i + 1}`}
                 aria-label={`Player ${i + 1} name`}
+                disabled={onlineLocked}
                 onChange={(e) => updateSeat(i, { name: e.target.value })}
               />
               <div className="rn-seg" role="group" aria-label={`Player ${i + 1} controller`}>
-                <button className={s.isAI ? '' : 'rn-active'} onClick={() => updateSeat(i, { isAI: false })}>
+                <button
+                  className={s.isAI ? '' : 'rn-active'}
+                  disabled={onlineLocked}
+                  onClick={() => updateSeat(i, { isAI: false })}
+                >
                   Human
                 </button>
-                <button className={s.isAI ? 'rn-active' : ''} onClick={() => updateSeat(i, { isAI: true })}>
+                <button
+                  className={s.isAI ? 'rn-active' : ''}
+                  disabled={onlineLocked}
+                  onClick={() => updateSeat(i, { isAI: true })}
+                >
                   AI
                 </button>
               </div>
@@ -187,14 +222,16 @@ export function SetupScreen({ def, issues, navigate, onStart, online, onHost, on
             : kingdom.catalog.filter((c) =>
               c.name.toLowerCase().includes(q) || c.kind.toLowerCase().includes(q));
           return (
-            <div className="panel" style={{ marginBottom: 14 }}>
+            <div className={lockedPanel} style={{ marginBottom: 14 }}>
               <div className="row" style={{ alignItems: 'baseline', gap: 10 }}>
                 <label className="field" style={{ marginBottom: 4 }}><span>Kingdom</span></label>
                 <span className={`chip${kingdomReady ? '' : ' warn'}`}>
                   {kingdom.value.length} of {kingdom.size} piles
                 </span>
                 <div className="spacer" />
-                <button className="btn" onClick={randomTen}>🎲 Random {kingdom.size}</button>
+                <button className="btn" disabled={onlineLocked} onClick={randomTen}>
+                  🎲 Random {kingdom.size}
+                </button>
               </div>
               <div className="rn-kchips">
                 {kingdom.sets.map((s) => (
@@ -202,6 +239,7 @@ export function SetupScreen({ def, issues, navigate, onStart, online, onHost, on
                     key={s.id}
                     className={`btn rn-kset${activeSet?.id === s.id ? ' rn-kset-on' : ''}`}
                     title={s.motto}
+                    disabled={onlineLocked}
                     onClick={() => kingdom.onChange([...s.cards])}
                   >
                     {s.name}
@@ -226,12 +264,16 @@ export function SetupScreen({ def, issues, navigate, onStart, online, onHost, on
                       key={c.name}
                       className={`rn-kcard${on ? ' rn-kcard-on' : ''}`}
                       aria-pressed={on}
-                      disabled={full}
+                      disabled={full || onlineLocked}
                       title={full ? `The kingdom already holds ${kingdom.size} piles — remove one first.` : c.kind}
                       onClick={() => toggle(c.name)}
                     >
                       <span className="rn-kcost">{c.cost}</span>
-                      <span className="rn-kname">{c.name}</span>
+                      <span className="rn-kname">
+                        {/* Non-color selected cue (hover shares the accent border). */}
+                        {on && <span className="rn-kcheck" aria-hidden="true">✓ </span>}
+                        {c.name}
+                      </span>
                       <span className="rn-kkind">{c.kind}</span>
                     </button>
                   );
@@ -246,24 +288,26 @@ export function SetupScreen({ def, issues, navigate, onStart, online, onHost, on
           );
         })()}
 
-        <div className="panel" style={{ marginBottom: 14 }}>
+        <div className={lockedPanel} style={{ marginBottom: 14 }}>
           <label className="field" style={{ marginBottom: 4 }}><span>Random seed</span></label>
           <div className="row">
             <span className="rn-seed">{seed}</span>
             <div className="spacer" />
-            <button className="btn" onClick={() => setSeed(rollSeed())}>🎲 Reroll</button>
+            <button className="btn" disabled={onlineLocked} onClick={() => setSeed(rollSeed())}>
+              🎲 Reroll
+            </button>
           </div>
           <p className="faint" style={{ margin: '6px 0 0' }}>Same seed, same shuffles — handy for replays.</p>
         </div>
 
         <button
           className="btn btn-primary rn-start"
-          disabled={errors.length > 0 || !kingdomReady}
-          title={kingdomReady ? undefined : `Pick exactly ${kingdom!.size} kingdom piles first.`}
+          disabled={errors.length > 0 || !kingdomReady || onlineLocked}
           onClick={start}
         >
           {allAI ? '▶ Watch the AIs play' : '▶ Start game'}
         </button>
+        {startNote && <p className="rn-gatenote">{startNote}</p>}
 
         {onlineCapable && (
           <div className="panel" style={{ marginTop: 14 }}>
@@ -279,7 +323,6 @@ export function SetupScreen({ def, issues, navigate, onStart, online, onHost, on
                   <button
                     className="btn btn-primary"
                     disabled={!kingdomReady}
-                    title={kingdomReady ? undefined : 'Finish the kingdom first — the host\'s supply is what both players get.'}
                     onClick={() => onHost!(myName, seed)}
                   >
                     🌐 Host a room
@@ -302,6 +345,12 @@ export function SetupScreen({ def, issues, navigate, onStart, online, onHost, on
                     Join
                   </button>
                 </div>
+                {!kingdomReady && kingdom != null && (
+                  <p className="rn-gatenote">
+                    Finish the kingdom first — the host's supply is what both players
+                    get ({kingdom.value.length} of {kingdom.size} piles picked).
+                  </p>
+                )}
               </>
             )}
             {online?.mode === 'hosting' && (
@@ -314,8 +363,15 @@ export function SetupScreen({ def, issues, navigate, onStart, online, onHost, on
                 </p>
                 <p className="faint" style={{ margin: '0 0 10px' }}>
                   Waiting for a challenger… the game starts the moment they join.
+                  Players, kingdom and seed are locked while the room is open —
+                  cancel to change them.
                 </p>
-                <button className="btn" onClick={onCancelOnline}>Cancel</button>
+                <div className="row" style={{ gap: 8 }}>
+                  <button className="btn" onClick={copyCode}>
+                    {copied ? '✓ Copied' : '📋 Copy code'}
+                  </button>
+                  <button className="btn" onClick={onCancelOnline}>Cancel</button>
+                </div>
               </div>
             )}
             {online?.mode === 'joining' && (

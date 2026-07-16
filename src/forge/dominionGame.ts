@@ -1265,8 +1265,9 @@ export function buildDominionDef(): GameDef {
       "The hall's flagship table, forged here: the classic deck-builder for two. "
       + 'Buy from a shared supply, grow an engine, and weather Militia raids and '
       + 'midnight Curses — reveal a Moat in the response window to stay safe. '
-      + 'The lobby picks one of three kingdom sets; the game ends when the '
-      + 'Provinces (or any three piles) run out, and most victory points wins.',
+      + 'Pick one of seven kingdom sets or hand-pick your ten from all 54 piles; '
+      + 'the game ends when the Provinces (or any three piles) run out, and most '
+      + 'victory points wins.',
   };
 
   // New zone: the kingdom reserve (hidden). The old transient PICKROW is
@@ -1279,15 +1280,17 @@ export function buildDominionDef(): GameDef {
   );
 
   def.variables.push(
-    { id: SCRATCH, name: 'Scratch counter', scope: 'perPlayer', type: 'number', initial: 0 },
+    { id: SCRATCH, name: 'Scratch counter', scope: 'perPlayer', type: 'number', initial: 0, hidden: true },
     { id: GAME_OVER, name: 'Game over pending', scope: 'global', type: 'number', initial: 0, hidden: true },
     { id: DISCOUNT, name: 'Cost discount', scope: 'global', type: 'number', initial: 0, hidden: true },
     ...EXPANSIONS.flatMap((x) => x.variables ?? []),
   );
-  // The empty-pile counter (inherited from the example) is bookkeeping too —
-  // the table's supply already shows the piles themselves.
+  // The empty-pile counter and the attack-immunity flag (inherited from the
+  // example) are bookkeeping too — the table shows piles and Moat reveals.
   const emptyPilesVar = def.variables.find((v) => v.id === EMPTY_PILES);
   if (emptyPilesVar) emptyPilesVar.hidden = true;
+  const immuneVar = def.variables.find((v) => v.id === 'dom_var_immune');
+  if (immuneVar) immuneVar.hidden = true;
 
   def.cards.push(...EXTRA_CARDS, ...EXPANSIONS.flatMap((x) => x.buildCards(KIT)));
 

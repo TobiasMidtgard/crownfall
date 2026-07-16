@@ -12,10 +12,15 @@ import { useReveal } from '../effects/useReveal';
 import { CardView } from '../../components/CardView';
 import { cardPreview } from '../../designer/designerUtils';
 import { getGameById } from '../../state/store';
-import { DOMINION_GAME_ID } from '../../forge/seedDominion';
+import { DOMINION_GAME_ID, ensureDominionSeed } from '../../forge/seedDominion';
 import { buildDominionDef } from '../../forge/dominionGame';
 import type { CardDef, GameDef } from '../../shared/types';
 import { COST_BANDS, COST_LABELS, type CostBand } from './codexCards';
+
+// Once per load of this (lazy) chunk, before first render: a codex-only visit
+// must still pick up the SEED_VERSION bump, or returning visitors browse the
+// stale pre-deploy catalog out of localStorage.
+ensureDominionSeed();
 
 type CostFilter = 'all' | CostBand;
 /** 'all' | 'type:<id>' | 'tag:<id>' — types and tags share one chip row. */

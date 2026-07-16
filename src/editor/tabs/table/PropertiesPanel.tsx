@@ -24,7 +24,7 @@
  * already hosts it inside the mobile bottom-sheet drawer (`tt-sheet`); the
  * class widens touch targets to ≥44px and relaxes the control grid.
  */
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import type {
   ActionDef, DeckDef, ElementState, FlowLayout, GameDef, Id, LayoutStyle, MotionSpec, RevealAnim,
   ScreenElement, ScreenLayout, SeatRef, ShadowSpec, ShapeKind, TextStyle, VariableDef, ZoneDef,
@@ -96,8 +96,8 @@ export interface PropertiesPanelProps {
   onDistribute: (axis: 'h' | 'v') => void;
   /** ⛶ Focus the element on the canvas (edit the elements on top of it). */
   onFocus: (id: Id) => void;
-  /** Save the element (with its subtree + styling) to the reusable library. */
-  onSaveComponent: (el: ScreenElement, name: string) => void;
+  /** Open the styled save-component dialog for the element (workspace-owned). */
+  onSaveComponent: (el: ScreenElement) => void;
   /** Layout-level patches (backgrounds, motion, mobile settings). */
   onSetLayout: (layout: ScreenLayout) => void;
   /** Asks the workspace to confirm-delete the mobile layout. */
@@ -110,8 +110,8 @@ export interface PropertiesPanelProps {
   onPartSel?: (p: ZonePartSel | null) => void;
   /** Replace the canvas selection (the group-children list rows). */
   onSelect?: (ids: Id[]) => void;
-  /** Save the whole multi-selection as ONE reusable component. */
-  onSaveComponentMulti?: (name: string) => void;
+  /** Open the save dialog for the whole multi-selection as ONE component. */
+  onSaveComponentMulti?: () => void;
 }
 
 /** The runner's narrow breakpoint (ScreenRenderer's NARROW_QUERY pattern). */
@@ -176,8 +176,10 @@ function ScreenProps({ layout, onSetLayout }: PropertiesPanelProps) {
         <h3>Screen</h3>
       </div>
       <p className="faint tt-prop-hint">
-        Select an element to edit it. Drag empty felt to pan, ctrl-scroll or pinch to zoom.
-        Shift-click selects more than one element.
+        Select an element to edit it — drag empty felt to select several (shift-click adds
+        more). Hold Space or drag with the middle button to pan; ctrl-scroll or pinch to
+        zoom. Double-click steps into a group, and double-click on plain text or a button
+        edits it in place. The ⌨ toolbar button lists every shortcut.
       </p>
       <section className="tt-prop-section">
         <h4>Background</h4>
@@ -221,7 +223,8 @@ function MobileScreenProps({ layout, onSetLayout, onDeleteMobile }: PropertiesPa
         <span className="chip">phone 9:19.5</span>
       </div>
       <p className="faint tt-prop-hint">
-        Shown on narrow screens (below 1024&thinsp;px) instead of the desktop layout.
+        {/* 720px = the runner's NARROW_QUERY breakpoint (ScreenRenderer). */}
+        Shown on narrow screens (below 720&thinsp;px) instead of the desktop layout.
       </p>
       <section className="tt-prop-section">
         <h4>Background</h4>
@@ -333,10 +336,7 @@ function MultiProps({ sel, canGroup, onGroup, onAlign, onDistribute, onRemove, o
         className="btn"
         disabled={!canGroup}
         title="Save the selected elements together as one reusable component"
-        onClick={() => {
-          const name = window.prompt('Component name', 'Component');
-          if (name !== null) onSaveComponentMulti?.(name);
-        }}
+        onClick={() => onSaveComponentMulti?.()}
       >
         ⬡ Save as component
       </button>
@@ -405,10 +405,7 @@ function ElementProps(props: PropertiesPanelProps & { el: ScreenElement }) {
           type="button"
           className="btn btn-small"
           title="Save this element (with its styling and children) to your reusable component library"
-          onClick={() => {
-            const name = window.prompt('Save component as…', el.name);
-            if (name !== null) onSaveComponent(el, name);
-          }}
+          onClick={() => onSaveComponent(el)}
         >
           ⬡ Save
         </button>
@@ -808,6 +805,9 @@ function ZoneSection(props: PropertiesPanelProps & { el: ZoneEl }) {
         </label>
       )}
 
+      <Check label="Show zone name" checked={el.showName !== false} onChange={(showName) => patch({ showName })} />
+      <Check label="Show card count" checked={el.showCount === true} onChange={(showCount) => patch({ showCount: showCount || undefined })} />
+
       <label className="field">
         <span>Empty-state text</span>
         <input
@@ -823,72 +823,119 @@ function ZoneSection(props: PropertiesPanelProps & { el: ZoneEl }) {
         normally render nothing when empty — text here gives them an empty state too.
       </p>
 
-      <StyleSection
-        title="Card style (this element)"
-        hint="Chrome painted over every card face or pile tile THIS element shows — a gold
-          hairline, a darker plate, rounder corners — without touching the card template
-          or other views of the same zone."
-        style={el.cardStyle}
-        onChange={(cardStyle) => patch({ cardStyle })}
-      />
-
-      <ZonePartsEditor el={el} partSel={partSel} onPartSel={onPartSel} onPatchEl={onPatchEl} />
-
-      <label className="field">
-        <span>Card filter</span>
-        <ConditionBuilder
-          def={def}
-          value={el.cardFilter ?? null}
-          onChange={(cardFilter) => patch({ cardFilter: cardFilter ?? undefined })}
-          bindings={['$card']}
-          allowNull
-          nullLabel="All cards"
+      {/* Niche clusters collapse so the everyday knobs above stay one glance
+          away; a canvas part-click force-opens the chrome group. */}
+      <CollapseGroup
+        id="zone.chrome"
+        title="Card chrome & parts"
+        forceOpen={partSel != null && partSel.elId === el.id}
+      >
+        <StyleSection
+          title="Card style (this element)"
+          hint="Chrome painted over every card face or pile tile THIS element shows — a gold
+            hairline, a darker plate, rounder corners — without touching the card template
+            or other views of the same zone."
+          style={el.cardStyle}
+          onChange={(cardStyle) => patch({ cardStyle })}
         />
-      </label>
-      <p className="faint tt-prop-hint">
-        Display-only slice: this element shows just the matching cards, so several elements
-        can each show part of one zone (treasure / victory / kingdom regions of a supply).
-      </p>
+        <ZonePartsEditor el={el} partSel={partSel} onPartSel={onPartSel} onPatchEl={onPatchEl} />
+      </CollapseGroup>
 
-      <label className="field">
-        <span>When cards arrive</span>
-        <select
-          className="select"
-          value={el.arriveEffect ?? 'none'}
-          onChange={(e) => patch({ arriveEffect: e.target.value === 'none' ? undefined : 'burn' })}
-        >
-          <option value="none">No effect</option>
-          <option value="burn">Burn (char + embers)</option>
-        </select>
-      </label>
+      <CollapseGroup id="zone.power" title="Power features">
+        <label className="field">
+          <span>Card filter</span>
+          <ConditionBuilder
+            def={def}
+            value={el.cardFilter ?? null}
+            onChange={(cardFilter) => patch({ cardFilter: cardFilter ?? undefined })}
+            bindings={['$card']}
+            allowNull
+            nullLabel="All cards"
+          />
+        </label>
+        <p className="faint tt-prop-hint">
+          Display-only slice: this element shows just the matching cards, so several elements
+          can each show part of one zone (treasure / victory / kingdom regions of a supply).
+        </p>
 
-      <label className="field">
-        <span>Keyboard group</span>
-        <select
-          className="select"
-          value={el.keyGroup ?? 'off'}
-          onChange={(e) => patch({
-            keyGroup: e.target.value === 'off'
-              ? undefined
-              : e.target.value as 'plain' | 'shift' | 'ctrl' | 'alt',
-          })}
-        >
-          <option value="off">No keyboard marking</option>
-          <option value="plain">Digits (no modifier)</option>
-          <option value="shift">Shift + digits</option>
-          <option value="ctrl">Ctrl + digits</option>
-          <option value="alt">Alt + digits</option>
-        </select>
-      </label>
-      <p className="faint tt-prop-hint">
-        Desktop keyboard play: holding the modifier spotlights this zone (everything else
-        dims) and its playable cards show 1–9/0 badges; the digit plays the card. "Digits"
-        works without a modifier — the hand.
-      </p>
+        <label className="field">
+          <span>When cards arrive</span>
+          <select
+            className="select"
+            value={el.arriveEffect ?? 'none'}
+            onChange={(e) => patch({ arriveEffect: e.target.value === 'none' ? undefined : 'burn' })}
+          >
+            <option value="none">No effect</option>
+            <option value="burn">Burn (char + embers)</option>
+          </select>
+        </label>
 
-      <Check label="Show zone name" checked={el.showName !== false} onChange={(showName) => patch({ showName })} />
-      <Check label="Show card count" checked={el.showCount === true} onChange={(showCount) => patch({ showCount: showCount || undefined })} />
+        <label className="field">
+          <span>Keyboard group</span>
+          <select
+            className="select"
+            value={el.keyGroup ?? 'off'}
+            onChange={(e) => patch({
+              keyGroup: e.target.value === 'off'
+                ? undefined
+                : e.target.value as 'plain' | 'shift' | 'ctrl' | 'alt',
+            })}
+          >
+            <option value="off">No keyboard marking</option>
+            <option value="plain">Digits (no modifier)</option>
+            <option value="shift">Shift + digits</option>
+            <option value="ctrl">Ctrl + digits</option>
+            <option value="alt">Alt + digits</option>
+          </select>
+        </label>
+        <p className="faint tt-prop-hint">
+          Desktop keyboard play: holding the modifier spotlights this zone (everything else
+          dims) and its playable cards show 1–9/0 badges; the digit plays the card. "Digits"
+          works without a modifier — the hand.
+        </p>
+      </CollapseGroup>
     </section>
+  );
+}
+
+// Collapsed-group memory (session-only): niche clusters stay open once the
+// author opens them, across selections and elements.
+const collapseGroupMem = new Map<string, boolean>();
+
+/**
+ * A collapsed sub-cluster for niche controls (the Zone inspector's advanced
+ * groups). Open state is remembered per `id` for the session; `forceOpen`
+ * pops it open from outside (a canvas card-part click).
+ */
+function CollapseGroup({ id, title, forceOpen = false, children }: {
+  id: string;
+  title: string;
+  forceOpen?: boolean;
+  children: ReactNode;
+}) {
+  const [open, setOpen] = useState(() => collapseGroupMem.get(id) === true);
+  useEffect(() => {
+    if (forceOpen) {
+      collapseGroupMem.set(id, true);
+      setOpen(true);
+    }
+  }, [forceOpen, id]);
+  return (
+    <div className="tt-adv">
+      <button
+        type="button"
+        className="tt-adv-head"
+        aria-expanded={open}
+        onClick={() => {
+          collapseGroupMem.set(id, !open);
+          setOpen(!open);
+        }}
+      >
+        <span className="tt-adv-chev" aria-hidden="true">{open ? '▾' : '▸'}</span>
+        <span>{title}</span>
+      </button>
+      {open && <div className="tt-adv-body">{children}</div>}
+    </div>
   );
 }
 

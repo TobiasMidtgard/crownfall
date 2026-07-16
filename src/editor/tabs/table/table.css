@@ -264,6 +264,50 @@
 }
 .tt-toolbar-top::-webkit-scrollbar { display: none; }
 
+/* ⌨ shortcuts & gestures cheat sheet — docked over the canvas, top-right. */
+.tt-keys {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 30; /* above the canvas + floating toolbar, below modals */
+  width: min(560px, calc(100% - 16px));
+  max-height: calc(100% - 16px);
+  overflow-y: auto;
+  padding: 10px 12px;
+  background: rgba(15, 16, 24, 0.96);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-m);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+}
+.tt-keys-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.tt-keys-title { font-weight: 800; font-size: 0.9rem; }
+.tt-keys-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 4px 18px;
+}
+.tt-keys-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 0.8rem;
+}
+.tt-keys-k {
+  flex-shrink: 0;
+  min-width: 148px;
+  font-weight: 700;
+  color: var(--text);
+}
+.tt-keys-w { color: var(--muted); }
+
 /* SCREEN | INSPECTOR tabs over the properties box: "Screen" clears the
    selection (screen-level settings), "Inspector" reflects it. */
 .tt-insp-tabs { width: 100%; margin-bottom: 8px; display: flex; }
@@ -809,6 +853,17 @@
 .tt-guide-v { top: 0; bottom: 0; width: 2px; margin-left: -1px; }
 .tt-guide-h { left: 0; right: 0; height: 2px; margin-top: -1px; }
 
+/* ---------- marquee (rubber-band) selection ---------- */
+
+.tt-marquee {
+  position: absolute;
+  pointer-events: none;
+  z-index: 1400;
+  border: calc(1.5px * var(--tt-hit, 1)) dashed var(--accent-2, #2dd4bf);
+  background: rgba(45, 212, 191, 0.08);
+  border-radius: 2px;
+}
+
 /* 44px ON-SCREEN touch zone centered on the bottom-right corner: the stage
    scales with zoom, so the grip counter-scales by --tt-hit (= 1/zoom). */
 .tt-handle {
@@ -1042,6 +1097,39 @@
 }
 .tt-unit { font-weight: 600; color: var(--faint); text-transform: none; letter-spacing: 0; }
 .tt-prop-remove { margin-top: 12px; width: 100%; }
+
+/* Collapsed sub-clusters for niche controls (Zone "Card chrome"/"Power
+   features") — everyday knobs stay above them, one glance away. */
+.tt-adv {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--panel-2);
+  margin: 10px 0 0;
+}
+.tt-adv-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 44px;
+  padding: 0 10px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.74rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.tt-adv-head:hover { color: var(--text); }
+.tt-adv-chev { flex-shrink: 0; }
+.tt-adv-body { padding: 0 10px 10px; }
+/* Nested sections inside a cluster keep their divider rhythm. */
+.tt-adv-body > .tt-prop-section:first-child { border-top: none; padding-top: 0; margin-top: 0; }
 
 .tt-grid {
   display: grid;

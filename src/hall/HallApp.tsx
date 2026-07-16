@@ -4,7 +4,7 @@
  * heralds region, panels host, mason bar, and the active screen. All hall
  * styling is scoped under .hall-root (crownfall.css owns the :root tokens).
  */
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import './crownfall.css';
 import './state/theme'; // applies crownfall.theme + crownfall.calm on load
 import { Icons } from './Icons';
@@ -16,14 +16,27 @@ import { MasonBar } from './chrome/MasonBar';
 import { Landing } from './screens/Landing';
 import { Login } from './screens/Login';
 import { Tables } from './screens/Tables';
-import { Codex } from './screens/Codex';
 import { EngineBerth } from './screens/EngineBerth';
+
+// Lazy: the Codex drags the whole Dominion def builder + CardView with it —
+// keeping it out of the eager graph roughly halves the landing bundle.
+const Codex = lazy(() => import('./screens/Codex').then((m) => ({ default: m.Codex })));
 
 export type HallPage = 'landing' | 'login' | 'tables' | 'codex' | 'engine';
 
 export interface HallAppProps {
   page: HallPage;
   navigate: (hash: string) => void;
+}
+
+/** Same shape as App.tsx's RouteLoading — base.css classes, hall voice. */
+function ScreenLoading() {
+  return (
+    <div className="route-loading" role="status" aria-live="polite">
+      <span className="route-loading-mark" aria-hidden="true">◆</span>
+      <span>The codex opens…</span>
+    </div>
+  );
 }
 
 const NAV_LINKS: Array<{ page: HallPage; hash: string; editId: string; label: string }> = [
@@ -79,7 +92,11 @@ export function HallApp({ page, navigate }: HallAppProps) {
         {page === 'landing' && <Landing />}
         {page === 'login' && <Login navigate={navigate} />}
         {page === 'tables' && <Tables navigate={navigate} />}
-        {page === 'codex' && <Codex />}
+        {page === 'codex' && (
+          <Suspense fallback={<ScreenLoading />}>
+            <Codex />
+          </Suspense>
+        )}
         {page === 'engine' && <EngineBerth />}
       </main>
 
@@ -124,6 +141,17 @@ function ProfileMenu({ user, navigate }: { user: HallUser; navigate: (hash: stri
   const pick = (fn: () => void) => () => { close(false); fn(); };
   const panel = (id: PanelId) => pick(() => openPanel(id));
 
+  // Tabbing past Sign out (or shift-tabbing before the trigger) must not
+  // leave the menu floating over the page; onBlur bubbles like focusout.
+  // relatedTarget is null when a click steals no focus (Safari buttons) —
+  // closing then would unmount the item before its click lands, so skip it;
+  // the pointerdown listener above owns the click-outside case.
+  const onFocusOut = (e: React.FocusEvent) => {
+    if (open && e.relatedTarget && !rootRef.current?.contains(e.relatedTarget as Node)) {
+      setOpen(false);
+    }
+  };
+
   const onSignOut = pick(() => {
     closeAllPanels();
     setEditMode(false);
@@ -133,7 +161,7 @@ function ProfileMenu({ user, navigate }: { user: HallUser; navigate: (hash: stri
   });
 
   return (
-    <div className="profile-menu" ref={rootRef}>
+    <div className="profile-menu" ref={rootRef} onBlur={onFocusOut}>
       <button
         ref={triggerRef}
         className="player-chip profile-trigger"

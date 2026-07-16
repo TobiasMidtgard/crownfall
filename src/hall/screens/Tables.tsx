@@ -15,7 +15,7 @@
  */
 import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import { herald } from '../Heralds';
-import { signOut, useUser, type Sigil } from '../state/auth';
+import { isDemoAccount, signOut, useUser, type Sigil } from '../state/auth';
 import { Edit, setEditMode, useCopy } from '../state/copy';
 import { useChronicle, type ChronicleEntry } from '../state/chronicle';
 import { KINGDOM_SETS, kingdomById, type KingdomSet } from '../../shared/kingdoms';
@@ -127,7 +127,9 @@ export function Tables({ navigate }: { navigate: (hash: string) => void }) {
   const [anchor] = useState(chronicleAnchor);
 
   // One timeline: real entries and anchored fixtures, newest first, labels
-  // aging together — a fresh match can never sit below 'Last night'.
+  // aging together — a fresh match can never sit below 'Last night'. The
+  // fixtures wear a 'hall lore' mark so they never read as the player's own
+  // falsified history.
   const chronicleRows = [
     ...chronicle.map((e) => ({
       key: e.id,
@@ -136,6 +138,7 @@ export function Tables({ navigate }: { navigate: (hash: string) => void }) {
       text: chronicleText(e),
       kingdom: e.kingdom,
       turns: e.turns,
+      lore: false,
     })),
     ...CHRONICLE_FIXTURES.map((c) => {
       const date = anchor - c.nights * 86400000;
@@ -146,6 +149,7 @@ export function Tables({ navigate }: { navigate: (hash: string) => void }) {
         text: c.text,
         kingdom: c.kingdom,
         turns: c.turns,
+        lore: true,
       };
     }),
   ].sort((a, b) => b.date - a.date);
@@ -194,6 +198,12 @@ export function Tables({ navigate }: { navigate: (hash: string) => void }) {
             <div><span>Games at table</span><strong>{user.games.toLocaleString()}</strong></div>
             <div><span>Favorite kingdom</span><strong>{user.favorite}</strong></div>
           </div>
+          {isDemoAccount(user.handle) && (
+            <p className="profile-lore">
+              A storied name — this ledger arrived with it, hall lore rather
+              than record.
+            </p>
+          )}
           <button className="profile-signout" type="button" onClick={onSignOut}>
             Sign out
           </button>
@@ -319,7 +329,10 @@ export function Tables({ navigate }: { navigate: (hash: string) => void }) {
                 <li className="chronicle-row" key={r.key}>
                   <span className="chronicle-when">{r.when}</span>
                   <span className="chronicle-text">{r.text}</span>
-                  <span className="chronicle-meta">{r.kingdom} · {r.turns} turns</span>
+                  <span className="chronicle-meta">
+                    {r.kingdom} · {r.turns} turns
+                    {r.lore && <span className="chronicle-lore">hall lore</span>}
+                  </span>
                 </li>
               ))}
             </ol>

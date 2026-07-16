@@ -6,9 +6,10 @@
  * Two table modes share the status bar and every overlay:
  *   - def.screenLayout set -> the authored single-page screen (ScreenRenderer)
  *     with the action bar filtered down to moves no visible screen button
- *     already covers. Below 1024px an authored mobile variant replaces the
- *     desktop tree (activeScreenVariant). (The deprecated tableLayout never
- *     renders — it is migrated to screenLayout upstream at load.)
+ *     already covers. Below 720px (useNarrowViewport's breakpoint) an authored
+ *     mobile variant replaces the desktop tree (activeScreenVariant). (The
+ *     deprecated tableLayout never renders — it is migrated to screenLayout
+ *     upstream at load.)
  *   - otherwise -> the classic automatic layout (opponents strip / shared
  *     center / viewer area).
  * Card moves animate in BOTH modes via the FLIP layer (see flip.tsx), tuned
@@ -29,6 +30,8 @@ import {
 import './runner.css';
 import type { GameDef, GameState, Id, Move } from '../shared/types';
 import { PASS_ACTION_ID } from '../shared/types';
+import { isCardVisibleTo } from '../engine';
+import { ConfirmModal } from '../editor/common/Modal';
 import {
   actingSeat, bucketZones, burnZoneKeys, buttonMoves, formatVarValue, movesByCard,
   movesByZoneInstance, noneTargetMoveByAction, pickViewer, selectionVersion,
@@ -122,11 +125,12 @@ export function TableScreen({ def, seats, seed, navigate, onPlayAgain, onBackToS
       onPlayAgain={onPlayAgain}
       homeLabel={homeLabel}
       viewAs={viewAs}
+      online={net != null}
     />
   );
 }
 
-function Table({ def, session, snap, navigate, onPlayAgain, homeLabel, viewAs }: {
+function Table({ def, session, snap, navigate, onPlayAgain, homeLabel, viewAs, online }: {
   def: GameDef;
   session: GameSession;
   snap: SessionSnapshot;
@@ -134,12 +138,14 @@ function Table({ def, session, snap, navigate, onPlayAgain, homeLabel, viewAs }:
   onPlayAgain: () => void;
   homeLabel?: string;
   viewAs?: Id;
+  /** True when remote seats play over a net link (leaving kills the match). */
+  online: boolean;
 }) {
   const state = snap.state;
   const accent = def.meta.accentColor ?? '#7c5cff';
   const buckets = useMemo(() => bucketZones(def), [def]);
   const screen = def.screenLayout ?? null;
-  // The active variant: the mobile tree below 1024px when authored.
+  // The active variant: the mobile tree below 720px when authored.
   const narrow = useNarrowViewport();
   const active = useMemo(
     () => (screen ? activeScreenVariant(screen, narrow) : null),
@@ -161,7 +167,11 @@ function Table({ def, session, snap, navigate, onPlayAgain, homeLabel, viewAs }:
   const humanSeats = state.players.filter((p) => !p.isAI).length;
   const needsPrivacy = viewAs === undefined
     && humanSeats > 1 && def.zones.some((z) => z.visibility === 'owner');
-  const [revealedSeat, setRevealedSeat] = useState<Id | null>(null);
+  // The seat that pressed Start is already holding the device, so the first
+  // human viewer opens revealed — the curtain waits for the first handoff.
+  const [revealedSeat, setRevealedSeat] = useState<Id | null>(
+    () => (viewerIsHuman ? viewerId : null),
+  );
   const showCurtain = needsPrivacy && viewerIsHuman && !snap.finished && revealedSeat !== viewerId;
 
   // ----- legal-move indexes (empty unless a human may act right now) -----
@@ -195,6 +205,18 @@ function Table({ def, session, snap, navigate, onPlayAgain, homeLabel, viewAs }:
 
   const [pick, setPick] = useState<{ title: string; moves: Move[] } | null>(null);
   useEffect(() => setPick(null), [snap.moves]); // legal moves changed -> picker is stale
+
+  // ----- leave-game guard: the status-bar ✕ confirms before killing a live
+  // table (a mis-tap must not end a 45-minute game); nothing at stake before
+  // the first shuffle offline or after the verdict.
+  const [confirmLeave, setConfirmLeave] = useState(false);
+  useEffect(() => {
+    if (snap.finished) setConfirmLeave(false); // verdict overlay took over
+  }, [snap.finished]);
+  const requestLeave = useCallback(() => {
+    if (snap.finished || (!snap.started && !online)) navigate('#/');
+    else setConfirmLeave(true);
+  }, [snap.finished, snap.started, online, navigate]);
 
   const doMove = useCallback((m: Move) => {
     setPick(null);
@@ -241,8 +263,16 @@ function Table({ def, session, snap, navigate, onPlayAgain, homeLabel, viewAs }:
       return;
     }
     if (ms.length === 1) doMove(ms[0]);
-    else setPick({ title: state.cards[cardId]?.name ?? 'Choose an action', moves: ms });
-  }, [cardMoves, doMove, state, humanCanAct, refuse]);
+    else {
+      // Blind-flip defs make face-down cards tappable — never headline a
+      // card the viewer can't see (mirrors ZoneViews' aria-label convention).
+      const shown = isCardVisibleTo(def, state, cardId, viewerId);
+      setPick({
+        title: shown ? state.cards[cardId]?.name ?? 'Choose an action' : 'Face-down card',
+        moves: ms,
+      });
+    }
+  }, [cardMoves, doMove, def, state, viewerId, humanCanAct, refuse]);
 
   const onZoneTap = useCallback((instKey: string, el?: HTMLElement | null) => {
     const ms = zoneMoves.get(instKey);
@@ -296,7 +326,7 @@ function Table({ def, session, snap, navigate, onPlayAgain, homeLabel, viewAs }:
   // Any sheet/choice/dialog (or the curtain) suspends the bindings; digit
   // selection of sheet options keeps working via [data-choice-digit].
   const overlayOpen = pick !== null || choice !== null || logOpen
-    || state.result !== null || showCurtain;
+    || state.result !== null || showCurtain || confirmLeave;
   const keyboard = useTableKeyboard({
     def,
     state,
@@ -329,21 +359,41 @@ function Table({ def, session, snap, navigate, onPlayAgain, homeLabel, viewAs }:
   );
 
   // ----- announcement snackbar from new log entries -----
-  const [snack, setSnack] = useState<{ text: string; n: number } | null>(null);
+  // Every entry of a settle batch queues (one settle routinely lands several:
+  // 'plays Smithy' + 'draws 3 cards'), keyed by log index. The drain timer
+  // runs faster while a backlog waits so a burst never lingers; the Snackbar
+  // stacks up to three and hints at the rest.
+  const [snacks, setSnacks] = useState<{ text: string; n: number }[]>([]);
   const logLenRef = useRef(state.log.length);
   useEffect(() => {
-    if (state.log.length > logLenRef.current) {
-      setSnack({ text: state.log[state.log.length - 1].text, n: state.log.length });
+    const prev = logLenRef.current;
+    if (state.log.length > prev) {
+      const fresh = state.log.slice(prev).map((e, i) => ({ text: e.text, n: prev + i + 1 }));
+      // Bounded: a huge AI chain keeps only the newest six announcements.
+      setSnacks((q) => [...q, ...fresh].slice(-6));
     }
     logLenRef.current = state.log.length;
   }, [state.log]);
   useEffect(() => {
-    if (snack === null) return;
-    const t = window.setTimeout(() => setSnack(null), 2600);
+    if (snacks.length === 0) return;
+    const t = window.setTimeout(
+      () => setSnacks((q) => q.slice(1)),
+      snacks.length > 1 ? 1400 : 2600,
+    );
     return () => window.clearTimeout(t);
-  }, [snack]);
+  }, [snacks]);
 
   const globalVars = def.variables.filter((v) => v.scope === 'global');
+  // Chip rows: hidden vars are engine bookkeeping, so VarChips (the viewer's
+  // row and the opponents' panels) gets a def without them. Chips only —
+  // ctx.def stays complete because authored varText elements may bind hidden
+  // vars on purpose. The strip's subtree otherwise reads def just for
+  // templates and zone visibility, which the filter leaves untouched.
+  const chipDef = useMemo(
+    () => ({ ...def, variables: def.variables.filter((v) => !v.hidden) }),
+    [def],
+  );
+  const oppCtx: TableCtx = useMemo(() => ({ ...ctx, def: chipDef }), [ctx, chipDef]);
 
   // Screen-reader page heading: the table itself has no visible headings
   // until the game-over h2, so heading navigation needs this landmark.
@@ -371,7 +421,7 @@ function Table({ def, session, snap, navigate, onPlayAgain, homeLabel, viewAs }:
 
   const statusContent = (
     <>
-      <button className="btn rn-statusbtn" onClick={() => navigate('#/')} aria-label="Leave game">✕</button>
+      <button className="btn rn-statusbtn" onClick={requestLeave} aria-label="Leave game">✕</button>
       <span className="rn-stat">Turn {state.turnNumber}</span>
       {phase && <span className="rn-stat">{phase.name}</span>}
       {current && <span className={`chip${current.isAI ? '' : ' accent'}`}>{current.name}</span>}
@@ -460,7 +510,7 @@ function Table({ def, session, snap, navigate, onPlayAgain, homeLabel, viewAs }:
         ) : (
           <>
             <OpponentsStrip
-              ctx={ctx}
+              ctx={oppCtx}
               seatZones={buckets.perPlayerSeat}
               currentPlayerId={current?.id ?? null}
               holderId={holderId}
@@ -513,7 +563,7 @@ function Table({ def, session, snap, navigate, onPlayAgain, homeLabel, viewAs }:
                   {!viewer.isAI && holderId === viewer.id ? ' — respond or pass'
                     : viewer.id === current?.id && !viewer.isAI ? ' — your turn' : ''}
                 </span>
-                <VarChips def={def} player={viewer} />
+                <VarChips def={chipDef} player={viewer} />
               </div>
             )}
             {buckets.perPlayerSeat.length > 0 && (
@@ -552,7 +602,7 @@ function Table({ def, session, snap, navigate, onPlayAgain, homeLabel, viewAs }:
         <ErrorBanner message={snap.scriptError} onDismiss={() => session.dismissScriptError()} />
       )}
       {/* Always mounted: the live region must exist before a message lands. */}
-      <Snackbar text={snack?.text ?? ''} seq={snack?.n ?? 0} />
+      <Snackbar items={snacks} />
 
       {pick && (
         <ActionPickSheet
@@ -573,6 +623,17 @@ function Table({ def, session, snap, navigate, onPlayAgain, homeLabel, viewAs }:
         />
       )}
       {logOpen && <LogDrawer entries={state.log} onClose={() => setLogOpen(false)} />}
+      {confirmLeave && (
+        <ConfirmModal
+          title={online ? 'Leave the match?' : 'Leave the game?'}
+          message={online
+            ? "Your opponent's table will freeze, and there's no way to rejoin this match."
+            : 'Progress is lost — this table is not saved.'}
+          confirmLabel="Leave"
+          onConfirm={() => navigate('#/')}
+          onCancel={() => setConfirmLeave(false)}
+        />
+      )}
       {state.result && (
         <GameOverOverlay
           def={def}

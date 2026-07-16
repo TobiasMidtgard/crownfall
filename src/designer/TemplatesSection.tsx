@@ -10,6 +10,7 @@ import { useState } from 'react';
 import type { GameDef } from '../shared/types';
 import { newTemplate } from '../shared/defaults';
 import { CardView } from '../components/CardView';
+import { ConfirmModal } from '../editor/common/Modal';
 import { EdIcon, type EdIconName } from '../editor/common/icons';
 import { TemplateCanvas } from './TemplateCanvas';
 import { ElementInspector } from './ElementInspector';
@@ -34,6 +35,7 @@ export function TemplatesSection({ def, onChange }: {
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(def.templates[0]?.id ?? null);
   const [selectedElId, setSelectedElId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string; used: number } | null>(null);
 
   // Fall back to the first template if the selected one was deleted elsewhere.
   const template = def.templates.find((t) => t.id === selectedId) ?? def.templates[0] ?? null;
@@ -59,14 +61,11 @@ export function TemplatesSection({ def, onChange }: {
 
   const remove = () => {
     if (!template) return;
-    const used = cardsUsingTemplate(def, template.id).length;
-    const msg = used > 0
-      ? `Delete template "${template.name}"?\n\n${used} card(s) use it and will be deleted too. This cannot be undone.`
-      : `Delete template "${template.name}"?`;
-    if (!window.confirm(msg)) return;
-    const next = deleteTemplate(def, template.id);
-    onChange(next);
-    selectTemplate(next.templates[0]?.id ?? '');
+    setPendingDelete({
+      id: template.id,
+      name: template.name,
+      used: cardsUsingTemplate(def, template.id).length,
+    });
   };
 
   const addTool = (tool: ToolKind) => {
@@ -203,6 +202,30 @@ export function TemplatesSection({ def, onChange }: {
           <p className="faint">A template is the visual layout custom cards are drawn with.</p>
           <button type="button" className="btn btn-primary" onClick={addTemplate}>+ New template</button>
         </div>
+      )}
+
+      {pendingDelete && (
+        <ConfirmModal
+          title={`Delete template "${pendingDelete.name}"?`}
+          message={pendingDelete.used > 0 ? (
+            <>
+              <p>
+                <strong>{pendingDelete.used}</strong> card{pendingDelete.used === 1 ? ' uses' : 's use'} it
+                and will be deleted too.
+              </p>
+              <p className="faint">This cannot be undone.</p>
+            </>
+          ) : (
+            <p>This cannot be undone.</p>
+          )}
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => {
+            const next = deleteTemplate(def, pendingDelete.id);
+            onChange(next);
+            selectTemplate(next.templates[0]?.id ?? '');
+            setPendingDelete(null);
+          }}
+        />
       )}
     </div>
   );

@@ -422,13 +422,35 @@ export function reparentEl(
 /**
  * FOCUS-MODE palette insert: the new element joins the FOCUSED element's
  * children, centered with a ~30×30% rect — 30% of the focused box, not the
- * screen, so it lands at a sensible size whatever is focused.
+ * screen, so it lands at a sensible size whatever is focused. BRAND-NEW
+ * palette drops only; paste/component inserts keep their rects via
+ * insertIntoFocusedChildrenKeepRect.
  */
 export function insertIntoFocusedChildren(
   elements: ScreenElement[], focusId: Id, el: ScreenElement,
 ): ScreenElement[] {
   const centered: ScreenElement = { ...el, rect: { x: 35, y: 35, w: 30, h: 30 } };
   return updateEl(elements, focusId, (p) => withElChildren(p, [...elChildren(p), centered]));
+}
+
+/**
+ * FOCUS-MODE paste / component insert: the element joins the focused
+ * element's children KEEPING its rect — the incoming screen-% rect converts
+ * to %-of-the-focused-box via `focusAbs` (the focused element's screen-
+ * absolute rect) and clamps inside it. Sizes, aspect ratios and — because
+ * the conversion is linear — the relative arrangement of a multi-paste all
+ * survive, instead of everything squashing to one centered 30×30 box.
+ */
+export function insertIntoFocusedChildrenKeepRect(
+  elements: ScreenElement[], focusId: Id, el: ScreenElement, focusAbs: PlainRect,
+): ScreenElement[] {
+  const rel = absToGroupRel(el.rect, focusAbs);
+  const w = Math.min(100, Math.max(MIN_W, rel.w));
+  const h = Math.min(100, Math.max(MIN_H, rel.h));
+  const x = Math.min(Math.max(rel.x, 0), 100 - w);
+  const y = Math.min(Math.max(rel.y, 0), 100 - h);
+  const placed: ScreenElement = { ...el, rect: roundRect({ x, y, w, h }) };
+  return updateEl(elements, focusId, (p) => withElChildren(p, [...elChildren(p), placed]));
 }
 
 // ---------------------------------------------------------------------------

@@ -4,9 +4,11 @@
  * optional phase, a condition expression, and a block script.
  * Scripts run with $self = this card, $owner = its controller.
  */
+import { useState } from 'react';
 import type { AbilityDef, CardDef, GameDef } from '../shared/types';
 import { BlockScriptEditor } from '../editor/blocks/BlockScriptEditor';
 import { ConditionBuilder } from '../editor/blocks/ConditionBuilder';
+import { ConfirmModal } from '../editor/common/Modal';
 import { newAbility } from './designerUtils';
 
 const ABILITY_BINDINGS = ['$self', '$owner'];
@@ -25,6 +27,8 @@ export function AbilitiesEditor({ def, card, onAbilities }: {
   card: CardDef;
   onAbilities: (abilities: AbilityDef[]) => void;
 }) {
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
+
   const update = (id: string, patch: Partial<AbilityDef>) =>
     onAbilities(card.abilities.map((a) => (a.id === id ? { ...a, ...patch } : a)));
 
@@ -62,11 +66,7 @@ export function AbilitiesEditor({ def, card, onAbilities }: {
                 type="button"
                 className="btn btn-ghost dz-icon-btn dz-danger-text"
                 aria-label={`Delete ability ${a.name}`}
-                onClick={() => {
-                  if (window.confirm(`Delete ability "${a.name}"?`)) {
-                    onAbilities(card.abilities.filter((x) => x.id !== a.id));
-                  }
-                }}
+                onClick={() => setPendingDelete({ id: a.id, name: a.name })}
               >
                 ✕
               </button>
@@ -140,6 +140,17 @@ export function AbilitiesEditor({ def, card, onAbilities }: {
       >
         + Add ability
       </button>
+      {pendingDelete && (
+        <ConfirmModal
+          title={`Delete ability "${pendingDelete.name}"?`}
+          message={<p>Its condition and effect script are deleted with it.</p>}
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={() => {
+            onAbilities(card.abilities.filter((x) => x.id !== pendingDelete.id));
+            setPendingDelete(null);
+          }}
+        />
+      )}
     </div>
   );
 }

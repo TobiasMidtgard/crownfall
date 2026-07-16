@@ -144,6 +144,35 @@ export function register(handle: string, word: string, sigil: Sigil): RegisterRe
 
 export function signOut() { setSession(null); }
 
+/** True for the storied demo names — their opening ledgers are hall lore,
+ * not records this player earned. */
+export function isDemoAccount(handle: string): boolean {
+  return handle in DEMO_USERS;
+}
+
+/* ── returnTo — where the gate turned a visitor away from ──
+ * A gated route stashes its hash before bouncing to #/login; the Gates send
+ * the visitor back there on success instead of hard-coding #/tables.
+ * sessionStorage: per-tab, survives the redirect, gone with the tab. */
+
+const RETURN_KEY = 'crownfall.returnTo';
+let memoryReturnTo: string | null = null;
+
+export function setReturnTo(hash: string) {
+  memoryReturnTo = hash;
+  try { window.sessionStorage.setItem(RETURN_KEY, hash); } catch { /* memory only */ }
+}
+
+export function consumeReturnTo(): string | null {
+  let hash = memoryReturnTo;
+  try {
+    hash = window.sessionStorage.getItem(RETURN_KEY) ?? hash;
+    window.sessionStorage.removeItem(RETURN_KEY);
+  } catch { /* memory only */ }
+  memoryReturnTo = null;
+  return hash;
+}
+
 /** Patch the session and (for registered accounts) the stored record. */
 export function updateUser(patch: Partial<Omit<HallUser, 'handle'>>) {
   if (!session) return;

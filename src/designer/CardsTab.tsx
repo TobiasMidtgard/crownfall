@@ -11,10 +11,17 @@ import './designer.css';
 export interface CardsTabProps {
   def: GameDef;
   onChange: (def: GameDef) => void;
+  /** Land on a specific sub-section on mount (the canvas's "Edit card design"
+   *  bridge wants Templates regardless of the card count). */
+  initialSection?: 'templates' | 'cards';
 }
 
-export function CardsTab({ def, onChange }: CardsTabProps) {
-  const [section, setSection] = useState<'templates' | 'cards'>('templates');
+export function CardsTab({ def, onChange, initialSection }: CardsTabProps) {
+  // Card-heavy games open on the card list; games with no cards yet start
+  // at Templates (a card needs a template first).
+  const [section, setSection] = useState<'templates' | 'cards'>(
+    () => initialSection ?? (def.cards.length > 0 ? 'cards' : 'templates'),
+  );
 
   return (
     <div className="dz-root">

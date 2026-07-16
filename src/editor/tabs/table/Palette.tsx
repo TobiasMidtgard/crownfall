@@ -80,6 +80,8 @@ export function Palette({
 }: PaletteProps) {
   const [zoneModal, setZoneModal] = useState(false);
   const [presetModal, setPresetModal] = useState<string | null>(null);
+  // Styled rename dialog for a saved component (id + working name).
+  const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
   const hasVars = def.variables.some((v) => v.scope !== 'perCard');
   const hasPhases = def.phases.length > 0;
 
@@ -194,10 +196,7 @@ export function Palette({
                     className="btn tt-comp-del"
                     aria-label={`Rename component ${c.name}`}
                     title="Rename"
-                    onClick={() => {
-                      const name = window.prompt('Rename component', c.name);
-                      if (name !== null) onRenameComponent(c.id, name);
-                    }}
+                    onClick={() => setRenaming({ id: c.id, name: c.name })}
                   >
                     ✎
                   </button>
@@ -223,6 +222,16 @@ export function Palette({
           ? `Focus mode: new elements drop ON TOP of “${focusName}”, centered in its box.`
           : 'New elements drop in the middle of the screen — drag them into place.'}
       </p>
+      {renaming && onRenameComponent && (
+        <RenameComponentModal
+          name={renaming.name}
+          onClose={() => setRenaming(null)}
+          onRename={(name) => {
+            setRenaming(null);
+            onRenameComponent(renaming.id, name);
+          }}
+        />
+      )}
       {presetModal === panelSwitcherPreset.id && (
         <PanelSwitcherModal
           onClose={() => setPresetModal(null)}
@@ -250,6 +259,49 @@ export function Palette({
         />
       )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Rename a saved component (styled stand-in for the old window.prompt)
+// ---------------------------------------------------------------------------
+
+function RenameComponentModal({ name: initial, onClose, onRename }: {
+  name: string;
+  onClose: () => void;
+  onRename: (name: string) => void;
+}) {
+  const [name, setName] = useState(initial);
+  return (
+    <Modal
+      title="Rename component"
+      onClose={onClose}
+      footer={(
+        <>
+          <button type="button" className="btn" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn btn-primary" onClick={() => onRename(name)}>
+            Rename
+          </button>
+        </>
+      )}
+    >
+      <label className="field">
+        <span>Name</span>
+        <input
+          type="text"
+          className="input"
+          autoFocus
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              onRename(name);
+            }
+          }}
+        />
+      </label>
+    </Modal>
   );
 }
 

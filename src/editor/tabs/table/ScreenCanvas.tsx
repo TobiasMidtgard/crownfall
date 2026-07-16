@@ -4,11 +4,16 @@
  * from the proven v3 canvas):
  *   - drag an element to move (1% snap + smart alignment guides), the
  *     bottom-right handle resizes; dragging a multi-selection moves it as one
- *   - drag empty canvas / space-drag / two-finger = pan; pinch & ctrl-wheel
- *     zoom (25-200%), toolbar − / % / + / Fit / ⛶ and the ASPECT preset
+ *   - plain left-drag on empty felt = MARQUEE select (intersecting top-level
+ *     elements of the scope; shift adds to the selection); space-drag,
+ *     middle-drag, wheel and one-finger touch drag pan; pinch & ctrl-wheel
+ *     zoom (25-200%), toolbar − / % / + / Fit / ⛶ and the ASPECT preset;
+ *     the viewport refits itself on window resize/rotation until the author
+ *     pans or zooms by hand
  *   - drop targets resolve to the DEEPEST group under the pointer (hover
  *     highlight); dropping joins, dragging out leaves — groups nest
- *   - shift-click toggles multi-select; clicking empty felt clears it
+ *   - shift-click toggles multi-select; clicking empty felt clears it; the ⌨
+ *     toolbar button opens the shortcuts/gestures cheat sheet
  *   - double-click/double-tap an element = FOCUS MODE: the element becomes
  *     the whole surface (its chrome as the backdrop) and its CHILDREN are
  *     edited with 1%-of-its-box snapping — super fine detail. A breadcrumb
@@ -202,6 +207,9 @@ export function ScreenCanvas({
     setToolsSlot(document.getElementById('ed-tools-slot'));
   }, []);
   const toolsInTopbar = toolsSlot !== null && !fullscreen;
+
+  // ⌨ shortcuts/gestures cheat sheet (docked over the canvas, top-right).
+  const [showKeys, setShowKeys] = useState(false);
 
   // ----- live preview (headless sample game) ---------------------------------
   // The canvas ALWAYS renders the real game (one WYSIWYG view = the game screen);
@@ -410,12 +418,18 @@ export function ScreenCanvas({
 
   // ----- fit / zoom ---------------------------------------------------------
 
+  // True once the user pans/zooms by hand; Fit resets it. Viewport resizes
+  // (window snap, device rotation) auto-refit only while the view is still
+  // the fitted one, so a deliberate zoom/pan survives a resize.
+  const userViewRef = useRef(false);
+
   const fit = () => {
     const rect = viewportRef.current?.getBoundingClientRect();
     if (!rect || rect.width === 0) return;
     // Tall scroll pages fit to the phone FRAME — pan/scroll reaches the rest.
     const fitH = isMobile && !focusEl ? Math.min(screenH, frameH) : screenH;
     const z = clampZoom(Math.min((rect.width - 24) / SCREEN_W, (rect.height - 48) / fitH));
+    userViewRef.current = false;
     setView({
       z,
       x: Math.max(12, (rect.width - SCREEN_W * z) / 2),
@@ -432,6 +446,31 @@ export function ScreenCanvas({
     return () => cancelAnimationFrame(raf);
   }, [fullscreen, preset, variant, focusKey]);
 
+  // Refit on viewport resize (window snap, rail collapse, device rotation) —
+  // debounced, and only while the user hasn't panned/zoomed since the last
+  // fit, so the stage never strands mostly off-screen after a rotation.
+  useEffect(() => {
+    const node = viewportRef.current;
+    if (!node || typeof ResizeObserver === 'undefined') return;
+    let t: number | undefined;
+    let last = { w: node.clientWidth, h: node.clientHeight };
+    const ro = new ResizeObserver(() => {
+      const w = node.clientWidth;
+      const h = node.clientHeight;
+      if (Math.abs(w - last.w) < 1 && Math.abs(h - last.h) < 1) return;
+      last = { w, h };
+      window.clearTimeout(t);
+      t = window.setTimeout(() => {
+        if (!userViewRef.current) fitRef.current();
+      }, 150);
+    });
+    ro.observe(node);
+    return () => {
+      window.clearTimeout(t);
+      ro.disconnect();
+    };
+  }, []);
+
   /** Center + zoom the view onto one element (touch double-tap). */
   const zoomToFitEl = (id: Id) => {
     const info = index.get(id);
@@ -442,6 +481,7 @@ export function ScreenCanvas({
     const z = clampZoom(Math.min((rect.width - 48) / pxW, (rect.height - 64) / pxH));
     const cx = ((info.abs.x + info.abs.w / 2) / 100) * SCREEN_W;
     const cy = ((info.abs.y + info.abs.h / 2) / 100) * screenH;
+    userViewRef.current = true;
     setView({ z, x: rect.width / 2 - cx * z, y: rect.height / 2 - cy * z });
   };
 
@@ -449,6 +489,7 @@ export function ScreenCanvas({
     const rect = viewportRef.current?.getBoundingClientRect();
     const cx = rect ? rect.width / 2 : 0;
     const cy = rect ? rect.height / 2 : 0;
+    userViewRef.current = true;
     setView((v) => {
       const z = clampZoom(v.z * factor);
       const k = z / v.z;
@@ -787,13 +828,40 @@ export function ScreenCanvas({
     setLive(null);
   };
 
-  // ----- canvas pan & pinch ---------------------------------------------------
+  // ----- canvas marquee select, pan & pinch -----------------------------------
 
   const gestureRef = useRef<{
     pointers: Map<number, { x: number; y: number; sx: number; sy: number }>;
     moved: boolean;
     lastPinch: { x: number; y: number; dist: number } | null;
   }>({ pointers: new Map(), moved: false, lastPinch: null });
+
+  // Marquee (rubber-band select): plain LEFT-mouse drag on empty felt. Pan
+  // stays on space-drag, middle-drag, wheel and the touch gestures, so the
+  // marquee is mouse-only and phones keep their one-finger pan.
+  const marqueeRef = useRef<{
+    pointerId: number;
+    additive: boolean;
+    /** Screen-% anchor. */
+    x1: number;
+    y1: number;
+    /** Client-px start (drag threshold). */
+    sx: number;
+    sy: number;
+  } | null>(null);
+  const marqueeBoxRef = useRef<PlainRect | null>(null);
+  const [marqueeBox, setMarqueeBoxState] = useState<PlainRect | null>(null);
+  const setMarqueeBox = (r: PlainRect | null) => {
+    marqueeBoxRef.current = r;
+    setMarqueeBoxState(r);
+  };
+
+  /** Pointer position in screen-% (may run past 0-100 on the outer felt). */
+  const toScreenPct = (clientX: number, clientY: number): { x: number; y: number } | null => {
+    const r = screenRef.current?.getBoundingClientRect();
+    if (!r || r.width === 0 || r.height === 0) return null;
+    return { x: ((clientX - r.left) / r.width) * 100, y: ((clientY - r.top) / r.height) * 100 };
+  };
 
   const isBackground = (target: EventTarget | null) =>
     spaceRef.current
@@ -802,7 +870,20 @@ export function ScreenCanvas({
   const onCanvasDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (dragRef.current) return;
     if (!isBackground(e.target)) return;
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (e.pointerType === 'mouse' && e.button !== 0 && e.button !== 1) return;
+    // Middle button = pan; kill the browser's autoscroll widget.
+    if (e.pointerType === 'mouse' && e.button === 1) e.preventDefault();
+    if (e.pointerType === 'mouse' && e.button === 0 && !spaceRef.current) {
+      const at = toScreenPct(e.clientX, e.clientY);
+      if (at) {
+        viewportRef.current?.setPointerCapture(e.pointerId);
+        marqueeRef.current = {
+          pointerId: e.pointerId, additive: e.shiftKey,
+          x1: at.x, y1: at.y, sx: e.clientX, sy: e.clientY,
+        };
+        return;
+      }
+    }
     const g = gestureRef.current;
     viewportRef.current?.setPointerCapture(e.pointerId);
     g.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY });
@@ -811,6 +892,20 @@ export function ScreenCanvas({
   };
 
   const onCanvasMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const mq = marqueeRef.current;
+    if (mq && e.pointerId === mq.pointerId) {
+      if (marqueeBoxRef.current === null
+        && Math.hypot(e.clientX - mq.sx, e.clientY - mq.sy) < 4) return;
+      const at = toScreenPct(e.clientX, e.clientY);
+      if (!at) return;
+      setMarqueeBox({
+        x: Math.min(mq.x1, at.x),
+        y: Math.min(mq.y1, at.y),
+        w: Math.abs(at.x - mq.x1),
+        h: Math.abs(at.y - mq.y1),
+      });
+      return;
+    }
     const g = gestureRef.current;
     const p = g.pointers.get(e.pointerId);
     if (!p) return;
@@ -818,7 +913,10 @@ export function ScreenCanvas({
       const dx = e.clientX - p.x;
       const dy = e.clientY - p.y;
       if (Math.hypot(e.clientX - p.sx, e.clientY - p.sy) > 5) g.moved = true;
-      if (dx !== 0 || dy !== 0) setView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
+      if (dx !== 0 || dy !== 0) {
+        userViewRef.current = true;
+        setView((v) => ({ ...v, x: v.x + dx, y: v.y + dy }));
+      }
       g.pointers.set(e.pointerId, { ...p, x: e.clientX, y: e.clientY });
     } else if (g.pointers.size === 2) {
       g.pointers.set(e.pointerId, { ...p, x: e.clientX, y: e.clientY });
@@ -831,6 +929,7 @@ export function ScreenCanvas({
       const last = g.lastPinch;
       if (last) {
         const factor = dist / Math.max(1, last.dist);
+        userViewRef.current = true;
         setView((v) => {
           const z = clampZoom(v.z * factor);
           const k = z / v.z;
@@ -841,7 +940,37 @@ export function ScreenCanvas({
     }
   };
 
+  /** Release the marquee: select intersecting top-level scope elements. */
+  const endMarquee = (cancelled: boolean) => {
+    const mq = marqueeRef.current;
+    marqueeRef.current = null;
+    const box = marqueeBoxRef.current;
+    setMarqueeBox(null);
+    if (!mq) return;
+    if (cancelled) return;
+    if (box === null) {
+      // A plain left click on empty felt: clear the selection (as before).
+      if (!mq.additive) onSelect([]);
+      return;
+    }
+    const hits = elements
+      .filter((el) => {
+        // Preview-hidden elements aren't painted — never marquee-catch them.
+        if (pvVisibleMap !== null && pvVisibleMap.get(el.id) === false) return false;
+        const abs = index.get(el.id)?.abs ?? el.rect;
+        return abs.x < box.x + box.w && abs.x + abs.w > box.x
+          && abs.y < box.y + box.h && abs.y + abs.h > box.y;
+      })
+      .map((el) => el.id);
+    if (mq.additive) onSelect([...new Set([...sel, ...hits])]);
+    else onSelect(hits);
+  };
+
   const onCanvasUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (marqueeRef.current?.pointerId === e.pointerId) {
+      endMarquee(e.type === 'pointercancel');
+      return;
+    }
     const g = gestureRef.current;
     if (!g.pointers.has(e.pointerId)) return;
     g.pointers.delete(e.pointerId);
@@ -866,6 +995,7 @@ export function ScreenCanvas({
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
+      userViewRef.current = true;
       if (e.ctrlKey || e.metaKey) {
         const rect = el.getBoundingClientRect();
         const px = e.clientX - rect.left;
@@ -1288,6 +1418,16 @@ export function ScreenCanvas({
                 aria-hidden="true"
               />
             ))}
+            {marqueeBox && (
+              <div
+                className="tt-marquee"
+                style={{
+                  left: `${marqueeBox.x}%`, top: `${marqueeBox.y}%`,
+                  width: `${marqueeBox.w}%`, height: `${marqueeBox.h}%`,
+                }}
+                aria-hidden="true"
+              />
+            )}
           </div>
         </div>
         {focusEl !== null && focusEl.kind === 'zone' && (
@@ -1303,6 +1443,8 @@ export function ScreenCanvas({
           />
         )}
       </div>
+
+      {showKeys && <ShortcutsPopover onClose={() => setShowKeys(false)} />}
 
       {(() => {
         const bar = (
@@ -1396,6 +1538,16 @@ export function ScreenCanvas({
         </button>
         <button
           type="button"
+          className={showKeys ? 'btn btn-small tt-pv-live' : 'btn btn-small'}
+          aria-label="Shortcuts and gestures"
+          aria-expanded={showKeys}
+          title="Keyboard shortcuts & mouse gestures"
+          onClick={() => setShowKeys((s) => !s)}
+        >
+          ⌨
+        </button>
+        <button
+          type="button"
           className={fullscreen ? 'btn btn-small tt-fs-btn tt-fs-on' : 'btn btn-small tt-fs-btn'}
           aria-label={fullscreen ? 'Exit full screen' : 'Edit full screen'}
           title={fullscreen ? 'Exit full screen (Esc)' : 'Fill the window with the editor'}
@@ -1460,6 +1612,60 @@ export function ScreenCanvas({
           })}
         </div>
       )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ⌨ Shortcuts & gestures cheat sheet (static popover, canvas top-right)
+// ---------------------------------------------------------------------------
+
+function ShortcutsPopover({ onClose }: { onClose: () => void }) {
+  const row = (keys: string, what: string) => (
+    <div className="tt-keys-row" key={keys}>
+      <span className="tt-keys-k">{keys}</span>
+      <span className="tt-keys-w">{what}</span>
+    </div>
+  );
+  return (
+    <div className="tt-keys" role="dialog" aria-label="Shortcuts and gestures">
+      <div className="tt-keys-head">
+        <span className="tt-keys-title">Shortcuts &amp; gestures</span>
+        <button
+          type="button"
+          className="btn btn-small"
+          aria-label="Close shortcuts"
+          onClick={onClose}
+        >
+          ✕
+        </button>
+      </div>
+      <div className="tt-keys-cols">
+        <div>
+          <span className="tt-mini-label">Mouse &amp; touch</span>
+          {row('Click · Shift-click', 'Select · add/remove from selection')}
+          {row('Drag empty felt', 'Marquee select (Shift adds)')}
+          {row('Space-drag · middle-drag', 'Pan (touch: one-finger drag)')}
+          {row('Scroll · Ctrl+scroll · pinch', 'Pan · zoom')}
+          {row('Double-click a group', 'Step inside — clicks pick siblings')}
+          {row('Double-click text/button', 'Edit its text in place')}
+          {row('Double-click deeper', 'Focus mode — fine-edit its children')}
+          {row('Ctrl+click', 'Deep-select the exact element')}
+          {row('Drag onto a group', 'Join it; drag out to leave')}
+          {row('Rotate handle + Shift', 'Snap to 15°')}
+          {row('Layers: double-click name', 'Rename the element')}
+        </div>
+        <div>
+          <span className="tt-mini-label">Keyboard</span>
+          {row('Arrows · Shift+arrows', 'Nudge 1% · 5%')}
+          {row('Delete', 'Remove selection (screen only)')}
+          {row('Ctrl+Z · Ctrl+Y', 'Undo · redo')}
+          {row('Ctrl+C / X / V', 'Copy / cut / paste — works across variants')}
+          {row('Ctrl+D', 'Duplicate in place')}
+          {row('Ctrl+G · Ctrl+Shift+G', 'Group · ungroup')}
+          {row('Esc', 'Clear selection, then back out of focus')}
+        </div>
+      </div>
     </div>
   );
 }

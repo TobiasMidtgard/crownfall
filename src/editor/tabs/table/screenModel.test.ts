@@ -21,7 +21,8 @@ import {
   newImageElement, slotChildrenOf,
   buildStarterLayout, cloneElementsWithNewIds, createMobileVariant, deckCardCount,
   deepestGroupAt, deleteMobileVariant, distributeElements, duplicateEls, findEl, groupSiblings,
-  indexElements, insertIntoFocusedChildren, makeActionDef, makeCounterActions, makeVariableDef,
+  indexElements, insertIntoFocusedChildren, insertIntoFocusedChildrenKeepRect, makeActionDef,
+  makeCounterActions, makeVariableDef,
   makeZoneDef,
   moveElementState, newCounterElement, newCustomDeckAt, newElementState, newLineElement, newLogElement,
   newPhaseTrackElement, newShapeElement, patchMobileVariant, patchMotion, pathToEl,
@@ -956,6 +957,49 @@ describe('insertIntoFocusedChildren', () => {
   it('no-ops for an unknown focus id', () => {
     const t = [btn('seal', rect(0, 0, 50, 50))];
     expect(insertIntoFocusedChildren(t, 'ghost', el('d'))).toBe(t);
+  });
+});
+
+describe('insertIntoFocusedChildrenKeepRect (paste / component inserts)', () => {
+  const focusAbs = rect(25, 25, 50, 50);
+
+  it('converts the screen-% rect into the focused box (sizes/aspect kept)', () => {
+    const t = [btn('seal', focusAbs)];
+    // 30 wide × 10 tall at the screen center → 60×20 inside the 50×50 box.
+    const next = insertIntoFocusedChildrenKeepRect(t, 'seal', el('d', rect(35, 45, 30, 10)), focusAbs);
+    expect(next[0].children![0].rect).toEqual(rect(20, 40, 60, 20));
+  });
+
+  it('preserves the relative arrangement of a multi-paste (one linear map)', () => {
+    let t: ScreenElement[] = [btn('seal', focusAbs)];
+    t = insertIntoFocusedChildrenKeepRect(t, 'seal', el('a', rect(30, 30, 10, 10)), focusAbs);
+    t = insertIntoFocusedChildrenKeepRect(t, 'seal', el('b', rect(45, 30, 10, 20)), focusAbs);
+    const [a, b] = t[0].children!;
+    // b sits 15 screen-% right of a → 30 box-%; both keep their proportions.
+    expect(b.rect.x - a.rect.x).toBe(30);
+    expect(b.rect.y).toBe(a.rect.y);
+    expect(a.rect).toEqual(rect(10, 10, 20, 20));
+    expect(b.rect).toEqual(rect(40, 10, 20, 40));
+  });
+
+  it('clamps oversized and out-of-box rects inside 0-100 of the box', () => {
+    const t = [btn('seal', rect(40, 40, 10, 10))];
+    // 30-wide on screen = 300% of a 10-wide box → capped at 100, pinned at 0.
+    const next = insertIntoFocusedChildrenKeepRect(t, 'seal', el('d', rect(60, 60, 30, 30)), rect(40, 40, 10, 10));
+    expect(next[0].children![0].rect).toEqual(rect(0, 0, 100, 100));
+  });
+
+  it('enforces the minimum size for slivers', () => {
+    const focus = rect(0, 0, 100, 100);
+    const t = [btn('seal', focus)];
+    const next = insertIntoFocusedChildrenKeepRect(t, 'seal', el('d', rect(10, 10, 1, 1)), focus);
+    expect(next[0].children![0].rect.w).toBeGreaterThanOrEqual(4);
+    expect(next[0].children![0].rect.h).toBeGreaterThanOrEqual(4);
+  });
+
+  it('no-ops for an unknown focus id', () => {
+    const t = [btn('seal', rect(0, 0, 50, 50))];
+    expect(insertIntoFocusedChildrenKeepRect(t, 'ghost', el('d'), rect(0, 0, 50, 50))).toBe(t);
   });
 });
 

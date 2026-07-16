@@ -34,6 +34,14 @@ export interface CardKit {
     IMMUNE: string; EMPTY_PILES: string; SCRATCH: string;
     /** Global cost reduction this turn (Bridge); reset at cleanup. */
     DISCOUNT: string;
+    /** Per-player VP chips (Bishop, Monument…): added to every recount,
+     *  never reset — earn with changeVar(VP_TOKENS, n, who). */
+    VP_TOKENS: string;
+    /** Per-player banked coins (Guilds/Renaissance): the core ships a
+     *  "Spend a Coffer" buy-phase action + status-strip button. */
+    COFFERS: string;
+    /** Per-player banked actions (Renaissance): core spend action too. */
+    VILLAGERS: string;
   };
   fields: { COST: string; COINS_F: string; VP_F: string; TEXT: string };
   types: { ACTION: string; TREASURE: string; VICTORY: string; CURSE: string };
@@ -112,6 +120,13 @@ export interface ExpansionModule {
   variables?: VariableDef[];
   /** Extra zones the cards need (per-player mats: Island, Native Village). */
   zones?: ZoneDef[];
+  /**
+   * Non-supply stock (Cornucopia's Prizes, Menagerie's Horses, Spoils…):
+   * spawned into the named zone at setup, never a kingdom pick — excluded
+   * from the catalog, the picker and the empty-pile watcher. Names still
+   * need TYPE_LINE membership via the attack/victory/treasure name lists.
+   */
+  nonSupply?: { zoneId: string; piles: PileSpec[] }[];
   buildTriggers?(kit: CardKit): TriggerDef[];
   /** Extra actions (e.g. a card's own response-speed reaction). */
   buildActions?(kit: CardKit): ActionDef[];

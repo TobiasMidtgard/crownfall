@@ -60,6 +60,21 @@ export const KINGDOM_SETS: KingdomSet[] = [
     motto: 'The tide keeps its own ledger.',
     cards: ['Astrolabe', 'Lighthouse', 'Lookout', 'Sea Chart', 'Monkey', 'Smugglers', 'Blockade', 'Sea Witch', 'Treasury', 'Bazaar'],
   },
+  {
+    id: 'royal-mint', name: 'The Royal Mint', icon: 'glyph-coin',
+    motto: 'Coin begets coin begets crown.',
+    cards: ['Bishop', 'Monument', "Worker's Village", 'City', 'Mint', 'Grand Market', 'Hoard', 'Bank', "King's Court", 'Peddler'],
+  },
+  {
+    id: 'bounty-hunt', name: 'Bounty of the Hunt', icon: 'crest-dominion',
+    motto: 'The fair rewards the bold.',
+    cards: ['Harvest', 'Horn of Plenty', 'Hunting Party', 'Menagerie', 'Tournament', 'Cellar', 'Festival', 'Militia', 'Moneylender', 'Smithy'],
+  },
+  {
+    id: 'arts-crafts', name: 'Arts and Crafts', icon: 'crest-veil',
+    motto: 'Guild coin is patient coin.',
+    cards: ['Stonemason', 'Advisor', 'Baker', 'Journeyman', 'Merchant Guild', 'Laboratory', 'Cellar', 'Workshop', 'Festival', 'Moneylender'],
+  },
 ];
 
 export const DEFAULT_KINGDOM_ID = 'first-game';

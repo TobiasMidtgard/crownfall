@@ -41,10 +41,10 @@ import {
 } from './dominionGame';
 
 const BASIC_NAMES = ['Copper', 'Silver', 'Gold', 'Estate', 'Duchy', 'Province', 'Curse'];
-/** Basics 46+40+30+8+8+8+10, kingdom stock 80 piles of 10 (18 core + 10 Base
- *  2E + 26 Intrigue 2E + 26 Seaside 2E), Prosperity basics 12+8, starters
- *  2 × 10. */
-const TOTAL_CARDS = 150 + 800 + 20 + 20;
+/** Basics 46+40+30+8+8+8+10, kingdom stock 131 piles of 10 (18 core + 10 Base
+ *  2E + 26 Intrigue 2E + 26 Seaside 2E + 25 Prosperity 2E + 13 Cornucopia +
+ *  13 Guilds), Prosperity basics 12+8, starters 2 × 10, 5 Prizes. */
+const TOTAL_CARDS = 150 + 1310 + 20 + 20 + 5;
 
 const errorsOf = (def: GameDef) =>
   validateGameDef(def).filter((i) => i.severity === 'error');
@@ -164,7 +164,9 @@ describe('the schema-v2 vocabulary (no staging machinery left)', () => {
     const turnEnd = def.triggers.find((t) => t.id === 'dom_trigger_vp')!;
     expect(turnEnd.event).toEqual({ kind: 'turnEnd' });
     expect(json(turnEnd.script)).toContain('"kind":"sumCards"');
-    expect(json(turnEnd.script)).not.toContain('"kind":"forEachCard"');
+    // (Cornucopia's Fairgrounds vpTerm legitimately sweeps per-card for its
+    // exact distinct-name count — the old per-site staging stays banned via
+    // the buy-action check below, not a blanket forEachCard ban.)
     const onGain = def.triggers.find((t) => t.id === 'dom_trigger_vp_gain')!;
     expect(onGain.event).toEqual({ kind: 'cardEnterZone', zoneId: null, tag: 'gain' });
     // The old per-site recount splices are gone from the buy action.
@@ -197,9 +199,14 @@ describe('the schema-v2 vocabulary (no staging machinery left)', () => {
   });
 
   it('every card carries a primary type + tags (basics Basic, kingdom Kingdom)', () => {
+    // Non-supply stock (the Prizes) is deliberately untagged — neither a
+    // Kingdom pile nor a Basic; Attack still rides when printed (Followers).
+    const pickable = new Set([...kingdomCardNames(def), ...BASIC_NAMES, 'Platinum', 'Colony']);
     for (const c of def.cards) {
       expect(c.typeId, `${c.name} is typed`).toBeTruthy();
-      expect(c.tags !== undefined && c.tags.length > 0, `${c.name} is tagged`).toBe(true);
+      if (pickable.has(c.name)) {
+        expect(c.tags !== undefined && c.tags.length > 0, `${c.name} is tagged`).toBe(true);
+      }
     }
     const typeOf = (n: string) => cardByName(n).typeId;
     for (const n of ['Copper', 'Silver', 'Gold']) expect(typeOf(n)).toBe('dom_type_treasure');
@@ -898,11 +905,17 @@ describe('kingdom picker helpers (the setup screen surface)', () => {
   it('tags every catalog entry with its printed set; Prosperity basics are not picks', () => {
     const cat = kingdomCatalog(def);
     const sets = new Set(cat.map((c) => c.expansion));
-    expect([...sets].sort()).toEqual(['Base', 'Intrigue', 'Seaside']);
+    expect([...sets].sort()).toEqual(['Base', 'Cornucopia', 'Guilds', 'Intrigue', 'Prosperity', 'Seaside']);
     expect(cat.filter((c) => c.expansion === 'Intrigue')).toHaveLength(26);
     expect(cat.filter((c) => c.expansion === 'Seaside')).toHaveLength(26);
+    expect(cat.filter((c) => c.expansion === 'Prosperity')).toHaveLength(25);
+    expect(cat.filter((c) => c.expansion === 'Cornucopia')).toHaveLength(13);
+    expect(cat.filter((c) => c.expansion === 'Guilds')).toHaveLength(13);
     expect(cat.some((c) => c.name === 'Platinum' || c.name === 'Colony')).toBe(false);
+    // Non-supply stock (the five Prizes) is nobody's kingdom pick either.
+    expect(cat.some((c) => c.name === 'Princess' || c.name === 'Diadem')).toBe(false);
     expect(kingdomCardNames(def)).not.toContain('Platinum');
+    expect(kingdomCardNames(def)).not.toContain('Followers');
   });
 });
 

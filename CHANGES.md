@@ -54,6 +54,12 @@ One sweep across the whole platform, from the review report in `docs/site-review
 - Phase **scripts and allowed-action lists need width**, so phase rows stay compact (number, name, mode, reorder, delete) and an "N actions · N script blocks — edit ›" button opens a **full-width detail panel below the grid** with the block-script editor and action checkboxes. The **Setup script** is a pinned row at the top of the phases column and opens the same way.
 - Everything the old three panels could edit survives: zone owner/visibility/layout/area with hints and the delete-warning modal, variable scope/type/adaptive initial value/status-bar visibility, phase reordering.
 
+## ✅ Done — Dominion wave 3: PROSPERITY 2E + CORNUCOPIA + GUILDS — 51 cards (SEED_VERSION → 19)
+- **Three sets at once** — the catalog now spans **131 piles across six expansions**: Prosperity 2E (25: Anvil→Peddler incl. King's Court, Bank, Grand Market, Watchtower), Cornucopia (13 + the five **Prizes** as a real non-supply stock Tournament digs into), Guilds (13). Picker chips: All (131) / Base (28) / Intrigue (26) / Seaside (26) / Prosperity (25) / Cornucopia (13) / Guilds (13). Three new lobby sets: **The Royal Mint**, **Bounty of the Hunt**, **Arts and Crafts**.
+- **New core mechanics, shipped once and shared**: per-player **VP tokens** (Bishop/Monument/Collection bank chips that ride every recount), **Coffers** (Guilds' coin tokens — banked by cards, spent one at a time via a real "+$1" status-strip button gated to your buy phase; Renaissance's **Villagers** got the same machinery ahead of time), and **non-supply piles** (module-declared stock outside the catalog/picker/pile-watcher — Prizes today; Horses, Spoils, Loot tomorrow).
+- **Exact distinct-name counting** (Fairgrounds' 2VP-per-5-names, Menagerie's no-duplicates reveal, Horn of Plenty's cap, Harvest) implemented EXACTLY via per-card mark sweeps — not approximated. Deviations that ARE approximations are documented per card in the module headers (the honest list: Grand Market doesn't enforce its no-Copper buy rule, Peddler costs a flat 8, Quarry rides the global Bridge discount, Young Witch has no Bane pile, overpay resolves as post-buy "+$1 more?" prompts capped at $8).
+- 84 new engine-probe tests; suite now 1062 green. All four modules were authored in one parallel agent wave against the live engine.
+
 ## ✅ Done — Dominion wave 2b: SEASIDE 2E — 26 cards, Durations live (SEED_VERSION → 18)
 - **Durations work**: play a Wharf and it parks in the new **Set aside** strip through cleanup, fires its second half at the start of your next turn, marches back to In Play and discards normally. Table strips: your harbor-band SET ASIDE panel, a floating foe strip (incoming Wharf draws are public), and a mobile overlay. Parked cards still score VP at game end; Throne-Roomed durations repeat the now-half but park once (probed).
 - **All 26 Seaside 2E cards** (Outpost excluded — extra turns are real engine work, still on the roadmap): Haven, Caravan, Fishing Village, Lighthouse, Merchant Ship, Wharf, Astrolabe (a Treasure-Duration), Bazaar, Warehouse, Cutpurse, Sea Witch, Corsair, Blockade, Monkey, Pirate, Smugglers, Lookout, Sea Chart, Island + Native Village (each with its own per-player **mat**), Tactician, Treasure Map, Treasury, Salvager, Sailor, Tide Pools. Two new lobby sets — **High Tide** and **Deep Currents** — both proven by seeded full-game playthroughs with card conservation. Deviations documented per card in the module headers (notably: Lighthouse waves off attacks Moat-style from the strip; Blockade/Corsair's ongoing watchers are one-shot approximations; Smugglers tracks the opponent's last qualifying gain by name).
@@ -80,18 +86,18 @@ One sweep across the whole platform, from the review report in `docs/site-review
 
 ## 🔥 Open — the remaining Dominion expansions (engine roadmap)
 Each set below needs the named engine mechanic before its cards can be faithful; everything else in it is already expressible:
-- **Seaside / all Duration cards** — NEXT UP. Design note: durations look expressible with today's engine — a hidden perCard hold counter set on play, a phase-start ability (`while in In Play`) that fires when the hold is up and clears it, and a cleanup discard that skips held cards; Throne Room multiplies the hold. Needs a filtered cleanup sweep + probes. The hard stragglers: Outpost (extra turns — real engine work), Island/Native Village (per-player mats = new zones, fine), Smugglers/Monkey (opponent-gain watchers — tagFilter 'gain' works today).
-- **Prosperity kingdom cards** — basics (Platinum/Colony) SHIPPED as the setup toggle; the 25 kingdom cards next: VP tokens = a per-player variable (expressible today); Trade Route needs a supply-mat watcher; Peddler needs in-play counting (expressible).
-- **Alchemy** — Potion as a second cost currency in buy legality.
-- **Hinterlands** — mostly expressible now (on-gain abilities via tagFilter 'gain').
-- **Dark Ages** — on-trash triggers work today; Ruins/Shelters/Knights need mixed/randomized piles.
-- **Guilds/Cornucopia** — overpay at buy time; Coffers as a banked variable (expressible).
-- **Adventures** — Tavern mat (a reserve-with-call zone) + Events (buyable non-cards) + tokens.
-- **Empires** — Debt (negative-coin buys), Landmarks, split piles.
+SHIPPED so far: Base 2E, Intrigue 2E, Seaside 2E (Durations, mats; Outpost excluded pending extra turns), Prosperity 2E (VP tokens; basics toggle), Cornucopia (Prizes as non-supply stock), Guilds (Coffers + spend button). Still open, in build order:
+- **Hinterlands 2E + Promos** — NEXT UP: mostly expressible now (on-gain abilities via tagFilter 'gain'/'buy' — the Watchtower/Hoard idiom).
+- **Alchemy** — Potion as a second cost currency in buy legality (core buy-action surgery).
+- **Menagerie kingdom** — Exile mat (per-player zone), Horses (non-supply stock SHIPPED as a mechanic); Ways wait for the landscape engine.
+- **Landscape engine** `(large)` — buyable/visible non-card sideboard: Events (buy-time scripts), Landmarks (scoring hooks), Projects (persistent per-player flags), Ways (play substitution), Traits/Prophecies; setup-screen landscape picker. Unlocks the sets below.
+- **Adventures** — Tavern mat (reserve-with-call), adventure tokens, Travellers (pile-exchange lines), Events.
+- **Empires** — Debt (negative-coin buys), Landmarks, split/gathering piles.
 - **Nocturne** — Night as a fourth phase (PhaseDef works today); Boons/Hexes decks; Heirlooms.
-- **Renaissance** — Villagers/Coffers (variables), Projects (persistent buys), Artifacts.
-- **Menagerie** — Exile mat, Horses (non-supply gains work — the Reserve pattern), Ways.
-- **Allies / Plunder / Rising Sun** — favors/allies, Loot, prophecies (furthest out).
+- **Renaissance** — Villagers machinery SHIPPED (bank + spend button); Projects (landscape), Artifacts (pass-around markers).
+- **Dark Ages** — on-trash triggers work today; Ruins/Shelters/Knights need mixed/randomized piles; Spoils/Madman ride the non-supply mechanic.
+- **Allies / Plunder / Rising Sun** — Favors + Ally cards + rotating split piles; Loot deck + Traits; Shadow cards + Prophecies + Debt events (furthest out).
+- **Outpost (Seaside)** — extra turns: a real engine block (turn-order injection), queued with the heavy engine work.
 
 ## ✅ Done — auto-resolve, centered carousels, ONLINE MULTIPLAYER
 - **Forced choices resolve themselves**: any request with exactly ONE valid answer (single mandatory card/pile candidate, a lone option, a lone player target, min = max = every candidate) never opens a sheet — the engine answers it with a log line ("… only one option; resolved automatically"). Revealed choices are exempt (the sheet is the reveal), optional picks and yes/no always ask. Phases where the current player has zero legal moves already auto-skipped; response windows already auto-passed — the table now never waits on a non-decision.

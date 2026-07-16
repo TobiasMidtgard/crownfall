@@ -99,6 +99,14 @@ const EMPTY_PILES = 'dom_var_empty_piles';
 const SCRATCH = 'dom_var_scratch';
 /** Global cost reduction this turn (Bridge); reset at cleanup. Costs floor at 0. */
 const DISCOUNT = 'dom_var_cost_discount';
+/** Per-player VP chips (Bishop / Monument / Collection): counted by every
+ *  recount on top of the owned-card sum; never reset — chips are earned. */
+const VP_TOKENS = 'dom_var_vp_tokens';
+/** Per-player banked coins (Guilds' Coffers): spent one at a time through a
+ *  buy-phase action + status-strip button; persists across turns. */
+const COFFERS = 'dom_var_coffers';
+/** Per-player banked actions (Renaissance's Villagers): same shape. */
+const VILLAGERS = 'dom_var_villagers';
 /** Set at turn end when the supply says the game is over (see buildDominionDef). */
 const GAME_OVER = 'dom_var_game_over';
 
@@ -327,6 +335,13 @@ for (const x of EXPANSIONS) {
   for (const p of x.piles) EXPANSION_OF[p.name] = x.setName ?? 'Base';
 }
 
+/** Non-supply stock (Prizes, Horses, Spoils…) grouped by destination zone:
+ *  spawned at setup, invisible to the catalog/picker/pile-watcher. */
+const NONSUPPLY_GROUPS = EXPANSIONS.flatMap((x) =>
+  (x.nonSupply ?? []).map((g, i) => ({ deckId: `dom_deck_ns_${x.id}_${i}`, ...g })));
+const NONSUPPLY_PILES: PileSpec[] = NONSUPPLY_GROUPS.flatMap((g) => g.piles);
+const NONSUPPLY_NAME_SET = new Set(NONSUPPLY_PILES.map((p) => p.name));
+
 const cardIdFor = (name: string): string =>
   NEW_CARD_ID[name] ?? EXAMPLE_CARD_ID[name] ?? EXPANSION_CARD_ID[name];
 
@@ -356,6 +371,19 @@ const VICTORY_NAMES = new Set(['Gardens', ...EXPANSIONS.flatMap((x) => x.victory
 const TREASURE_NAMES = new Set(EXPANSIONS.flatMap((x) => x.treasureNames ?? []));
 for (const p of KINGDOM_PILES) {
   const tags = [TAG_KINGDOM];
+  if (ATTACK_NAMES.has(p.name)) tags.push(TAG_ATTACK);
+  if (REACTION_NAMES.has(p.name)) tags.push(TAG_REACTION);
+  TYPE_LINE[p.name] = {
+    typeId: VICTORY_NAMES.has(p.name) ? TYPE_VICTORY
+      : TREASURE_NAMES.has(p.name) ? TYPE_TREASURE
+        : TYPE_ACTION,
+    tags,
+  };
+}
+// Non-supply stock wears neither Kingdom nor Basic — it is nobody's pile.
+// Primary type + attack/reaction tags come off the same module name lists.
+for (const p of NONSUPPLY_PILES) {
+  const tags: string[] = [];
   if (ATTACK_NAMES.has(p.name)) tags.push(TAG_ATTACK);
   if (REACTION_NAMES.has(p.name)) tags.push(TAG_REACTION);
   TYPE_LINE[p.name] = {
@@ -420,6 +448,9 @@ const RECOUNT_VP_BODY: Block[] = [
   setVar(VP, ownedVpTotal, PLAYER),
   // floor(total / 10) as (total - total % 10) / 10 — exact integer math.
   changeVar(VP, mul(gardensTotal, div(sub(ownedTotal, mod(ownedTotal, num(10))), num(10))), PLAYER),
+  // Earned VP chips (Bishop / Monument / Collection) ride on every recount:
+  // the recount rebuilds VP from scratch, so the bank re-adds itself here.
+  changeVar(VP, getVar(VP_TOKENS, PLAYER), PLAYER),
 ];
 
 /**
@@ -499,7 +530,7 @@ function durationPair(idBase: string, name: string, now: Block[], later: Block[]
 
 const KIT: CardKit = {
   zones: { SUPPLY, TRASH, DECK, HAND, DISCARD, INPLAY, RESERVE, LOOK, DURATION },
-  vars: { ACTIONS, BUYS, COINS, VP, IMMUNE, EMPTY_PILES, SCRATCH, DISCOUNT },
+  vars: { ACTIONS, BUYS, COINS, VP, IMMUNE, EMPTY_PILES, SCRATCH, DISCOUNT, VP_TOKENS, COFFERS, VILLAGERS },
   fields: { COST, COINS_F, VP_F, TEXT },
   types: { ACTION: TYPE_ACTION, TREASURE: TYPE_TREASURE, VICTORY: TYPE_VICTORY, CURSE: TYPE_CURSE },
   tags: { ATTACK: TAG_ATTACK, REACTION: TAG_REACTION, KINGDOM: TAG_KINGDOM },
@@ -1220,6 +1251,58 @@ function buildMobileScreen(): ScreenVariant {
         ticker: true,
       },
       mLabel('dom_el_m_counter_coins_label', 'COINS', 24, 46.6, 9),
+      // Banked resources (appear once earned) + their spend buttons on the
+      // band's free top row — same phase-gated core actions as desktop.
+      {
+        kind: 'varText', id: 'dom_el_m_counter_vptokens', name: 'VP tokens ticker',
+        rect: { x: 33.5, y: 42.6, w: 8, h: 3.6 },
+        varId: VP_TOKENS, seat: 'viewer', fontSize: 4.2, bold: true, align: 'center', color: '#69d18c',
+        ticker: true, visible: gt(getVar(VP_TOKENS, VIEWER), num(0)), reveal: 'fade',
+      },
+      {
+        kind: 'text', id: 'dom_el_m_counter_vptokens_label', name: 'TOKENS',
+        rect: { x: 33.5, y: 46.6, w: 8, h: 1.6 },
+        text: 'TOKENS', fontSize: 1.9, align: 'center', color: ASH,
+        visible: gt(getVar(VP_TOKENS, VIEWER), num(0)), reveal: 'fade',
+      },
+      {
+        kind: 'varText', id: 'dom_el_m_counter_coffers', name: 'Coffers ticker',
+        rect: { x: 42.5, y: 42.6, w: 8, h: 3.6 },
+        varId: COFFERS, seat: 'viewer', fontSize: 4.2, bold: true, align: 'center', color: GOLD,
+        ticker: true, visible: gt(getVar(COFFERS, VIEWER), num(0)), reveal: 'fade',
+      },
+      {
+        kind: 'text', id: 'dom_el_m_counter_coffers_label', name: 'COFFERS',
+        rect: { x: 42.5, y: 46.6, w: 8, h: 1.6 },
+        text: 'COFFERS', fontSize: 1.9, align: 'center', color: ASH,
+        visible: gt(getVar(COFFERS, VIEWER), num(0)), reveal: 'fade',
+      },
+      {
+        kind: 'varText', id: 'dom_el_m_counter_villagers', name: 'Villagers ticker',
+        rect: { x: 51.5, y: 42.6, w: 8, h: 3.6 },
+        varId: VILLAGERS, seat: 'viewer', fontSize: 4.2, bold: true, align: 'center', color: '#a68cff',
+        ticker: true, visible: gt(getVar(VILLAGERS, VIEWER), num(0)), reveal: 'fade',
+      },
+      {
+        kind: 'text', id: 'dom_el_m_counter_villagers_label', name: 'VILLAGE',
+        rect: { x: 51.5, y: 46.6, w: 8, h: 1.6 },
+        text: 'VILLAGE', fontSize: 1.9, align: 'center', color: ASH,
+        visible: gt(getVar(VILLAGERS, VIEWER), num(0)), reveal: 'fade',
+      },
+      {
+        kind: 'button', id: 'dom_el_m_btn_spend_coffer', name: 'Spend a Coffer',
+        rect: { x: 33.5, y: 39.4, w: 11.5, h: 2.8 },
+        actionId: 'dom_action_spend_coffer', label: 'Coffer +$1', fontSize: 2,
+        visible: allOf(MY_TURN, IN_BUY, gt(getVar(COFFERS, VIEWER), num(0))),
+        reveal: 'fade',
+      },
+      {
+        kind: 'button', id: 'dom_el_m_btn_spend_villager', name: 'Spend a Villager',
+        rect: { x: 46.5, y: 39.4, w: 12.5, h: 2.8 },
+        actionId: 'dom_action_spend_villager', label: 'Villager +1', fontSize: 2,
+        visible: allOf(MY_TURN, IN_ACTION, gt(getVar(VILLAGERS, VIEWER), num(0))),
+        reveal: 'fade',
+      },
       // The compact seal (spec "Mobile (≤45rem)": tighter box, 1.05rem name,
       // no key hint) — same five render-states, same stamp on every change.
       {
@@ -1293,7 +1376,8 @@ function buildMobileScreen(): ScreenVariant {
 /** Names of every kingdom card the def can put in a supply (validation aid). */
 export function kingdomCardNames(def: GameDef): string[] {
   return def.cards
-    .filter((c) => !BASIC_NAME_SET.has(c.name) && !PROSPERITY_NAME_SET.has(c.name))
+    .filter((c) => !BASIC_NAME_SET.has(c.name) && !PROSPERITY_NAME_SET.has(c.name)
+      && !NONSUPPLY_NAME_SET.has(c.name))
     .map((c) => c.name);
 }
 
@@ -1324,7 +1408,8 @@ export interface KingdomCatalogEntry {
 
 export function kingdomCatalog(def: GameDef): KingdomCatalogEntry[] {
   return def.cards
-    .filter((c) => !BASIC_NAME_SET.has(c.name) && !PROSPERITY_NAME_SET.has(c.name))
+    .filter((c) => !BASIC_NAME_SET.has(c.name) && !PROSPERITY_NAME_SET.has(c.name)
+      && !NONSUPPLY_NAME_SET.has(c.name))
     .map((c) => ({
       name: c.name,
       cost: Number(c.fields[COST] ?? 0),
@@ -1353,7 +1438,7 @@ export function buildDominionDef(): GameDef {
       "The hall's flagship table, forged here: the classic deck-builder for two. "
       + 'Buy from a shared supply, grow an engine, and weather Militia raids and '
       + 'midnight Curses — reveal a Moat in the response window to stay safe. '
-      + 'Pick one of seven kingdom sets or hand-pick your ten from all 54 piles; '
+      + 'Pick one of twelve kingdom sets or hand-pick your ten from all 131 piles; '
       + 'the game ends when the Provinces (or any three piles) run out, and most '
       + 'victory points wins.',
   };
@@ -1373,6 +1458,10 @@ export function buildDominionDef(): GameDef {
     { id: SCRATCH, name: 'Scratch counter', scope: 'perPlayer', type: 'number', initial: 0, hidden: true },
     { id: GAME_OVER, name: 'Game over pending', scope: 'global', type: 'number', initial: 0, hidden: true },
     { id: DISCOUNT, name: 'Cost discount', scope: 'global', type: 'number', initial: 0, hidden: true },
+    // Player-facing banks (status-strip chips appear once they hold anything).
+    { id: VP_TOKENS, name: 'VP tokens', scope: 'perPlayer', type: 'number', initial: 0 },
+    { id: COFFERS, name: 'Coffers', scope: 'perPlayer', type: 'number', initial: 0 },
+    { id: VILLAGERS, name: 'Villagers', scope: 'perPlayer', type: 'number', initial: 0 },
     ...EXPANSIONS.flatMap((x) => x.variables ?? []),
   );
   // The empty-pile counter and the attack-immunity flag (inherited from the
@@ -1456,6 +1545,17 @@ export function buildDominionDef(): GameDef {
       initialZone: RESERVE,
       shuffle: false,
     },
+    // Non-supply stock (Prizes, Horses…) — straight into its module's zone.
+    ...NONSUPPLY_GROUPS.map((g) => ({
+      id: g.deckId,
+      name: 'Non-supply stock',
+      source: {
+        kind: 'custom' as const,
+        entries: g.piles.map((p) => ({ cardId: cardIdFor(p.name), count: p.count })),
+      },
+      initialZone: g.zoneId,
+      shuffle: false,
+    })),
     ...(starter ? [starter] : []),
   ];
 
@@ -1556,6 +1656,35 @@ export function buildDominionDef(): GameDef {
       END_PHASE,
     ],
   });
+  // The banked-resource spends: one chip at a time, gated to the phase where
+  // the resource matters (legality.ts enumerates a phase's actionIds only).
+  // The status-strip buttons below fire these; the random AI may spend too.
+  def.actions.push(
+    {
+      id: 'dom_action_spend_coffer', name: 'Spend a Coffer',
+      target: { kind: 'none' },
+      legality: gt(getVar(COFFERS), num(0)),
+      script: [
+        changeVar(COFFERS, num(-1)),
+        changeVar(COINS, num(1)),
+        announce(CURRENT, ' spends a Coffer (+$1).'),
+      ],
+    },
+    {
+      id: 'dom_action_spend_villager', name: 'Spend a Villager',
+      target: { kind: 'none' },
+      legality: gt(getVar(VILLAGERS), num(0)),
+      script: [
+        changeVar(VILLAGERS, num(-1)),
+        changeVar(ACTIONS, num(1)),
+        announce(CURRENT, ' spends a Villager (+1 Action).'),
+      ],
+    },
+  );
+  const buyPhase = def.phases.find((p) => p.id === PHASE_BUY);
+  if (buyPhase) buyPhase.actionIds.push('dom_action_spend_coffer');
+  const actionPhase = def.phases.find((p) => p.id === PHASE_ACTION);
+  if (actionPhase) actionPhase.actionIds.push('dom_action_spend_villager');
   def.actions.push(...EXPANSIONS.flatMap((x) => x.buildActions?.(KIT) ?? []));
 
   // Triggers: the Gardens-aware recount runs at turn end AND on every
@@ -1752,6 +1881,46 @@ export function buildDominionDef(): GameDef {
     chip('dom_el_counter_actions', 21.4, '#a68cff', 'rgba(124, 92, 255, 0.10)');
     chip('dom_el_counter_buys', 27.6, HDR_GREEN, 'rgba(79, 158, 99, 0.10)');
     chip('dom_el_counter_coins', 33.8, GOLD, 'rgba(210, 171, 102, 0.10)');
+
+    // Banked resources (VP tokens / Coffers / Villagers) join the strip only
+    // once earned; Coffers and Villagers each grow a spend button while
+    // spending is legal (the buttons fire the phase-gated core actions).
+    const bankChip = (
+      idBase: string, varId: string, label: string, x: number, tint: string, soft: string,
+    ): ScreenElement[] => [
+      {
+        kind: 'varText', id: `dom_el_counter_${idBase}`, name: `${label} chip`,
+        rect: { x, y: 56.4, w: 5.6, h: 5.8 },
+        varId, seat: 'viewer', fontSize: 1.9, bold: true, align: 'center', color: INK,
+        style: { background: soft, borderColor: tint, borderWidth: 1, borderRadius: 10 },
+        ticker: true, visible: gt(getVar(varId, VIEWER), num(0)), reveal: 'fade',
+      },
+      {
+        kind: 'text', id: `dom_el_counter_${idBase}_label`, name: `${label} label`,
+        rect: { x, y: 60.3, w: 5.6, h: 1.3 },
+        text: label, fontSize: 0.62, align: 'center', color: tint,
+        visible: gt(getVar(varId, VIEWER), num(0)), reveal: 'fade',
+      },
+    ];
+    els.push(
+      ...bankChip('vptokens', VP_TOKENS, 'VP TOKENS', 40, '#69d18c', 'rgba(105, 209, 140, 0.10)'),
+      ...bankChip('coffers', COFFERS, 'COFFERS', 46.2, GOLD, 'rgba(210, 171, 102, 0.10)'),
+      {
+        kind: 'button', id: 'dom_el_btn_spend_coffer', name: 'Spend a Coffer',
+        rect: { x: 52, y: 56.4, w: 4.6, h: 5.8 },
+        actionId: 'dom_action_spend_coffer', label: '+$1', fontSize: 1.1,
+        visible: allOf(MY_TURN, IN_BUY, gt(getVar(COFFERS, VIEWER), num(0))),
+        reveal: 'fade',
+      },
+      ...bankChip('villagers', VILLAGERS, 'VILLAGERS', 57.8, '#a68cff', 'rgba(124, 92, 255, 0.10)'),
+      {
+        kind: 'button', id: 'dom_el_btn_spend_villager', name: 'Spend a Villager',
+        rect: { x: 63.6, y: 56.4, w: 4.6, h: 5.8 },
+        actionId: 'dom_action_spend_villager', label: '+1 Act', fontSize: 0.85,
+        visible: allOf(MY_TURN, IN_ACTION, gt(getVar(VILLAGERS, VIEWER), num(0))),
+        reveal: 'fade',
+      },
+    );
 
     // Realm header band: "<You>'S REALM" + the ACTIVE TURN chip + drop hint.
     els.push(

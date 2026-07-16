@@ -37,13 +37,13 @@ import { renderTextParts } from '../runner/layout';
 import { filterDisplayCards } from '../runner/layoutGeometry';
 import {
   activeKingdomCards, buildDominionDef, kingdomCardNames, kingdomCatalog, pickKingdom,
-  supportsKingdomPicking,
+  prosperityEnabled, supportsKingdomPicking, supportsProsperityBasics, withProsperityBasics,
 } from './dominionGame';
 
 const BASIC_NAMES = ['Copper', 'Silver', 'Gold', 'Estate', 'Duchy', 'Province', 'Curse'];
 /** Basics 46+40+30+8+8+8+10, kingdom stock 54 piles of 10 (18 core + 10 Base
- *  2E + 26 Intrigue 2E), starters 2 × 10. */
-const TOTAL_CARDS = 150 + 540 + 20;
+ *  2E + 26 Intrigue 2E), Prosperity basics 12+8, starters 2 × 10. */
+const TOTAL_CARDS = 150 + 540 + 20 + 20;
 
 const errorsOf = (def: GameDef) =>
   validateGameDef(def).filter((i) => i.severity === 'error');
@@ -892,6 +892,62 @@ describe('kingdom picker helpers (the setup screen surface)', () => {
     const ten = kingdomCatalog(def).slice(0, 10).map((c) => c.name);
     const picked = pickKingdom(def, ten);
     expect([...activeKingdomCards(picked)].sort()).toEqual([...ten].sort());
+  });
+
+  it('tags every catalog entry with its printed set; Prosperity basics are not picks', () => {
+    const cat = kingdomCatalog(def);
+    expect(cat.every((c) => c.expansion === 'Base' || c.expansion === 'Intrigue')).toBe(true);
+    expect(cat.filter((c) => c.expansion === 'Intrigue')).toHaveLength(26);
+    expect(cat.some((c) => c.name === 'Platinum' || c.name === 'Colony')).toBe(false);
+    expect(kingdomCardNames(def)).not.toContain('Platinum');
+  });
+});
+
+describe('Prosperity basics toggle (Platinum & Colony)', () => {
+  const def = buildDominionDef();
+
+  it('is carried by the def but disabled until toggled', () => {
+    expect(supportsProsperityBasics(def)).toBe(true);
+    expect(prosperityEnabled(def)).toBe(false);
+    expect(def.cards.some((c) => c.name === 'Platinum')).toBe(true);
+    expect(def.cards.some((c) => c.name === 'Colony')).toBe(true);
+  });
+
+  it('toggles on and off, purely and idempotently', () => {
+    const on = withProsperityBasics(def, true);
+    expect(prosperityEnabled(on)).toBe(true);
+    expect(on.endConditions.some((e) => e.id === 'dom_end_colonies')).toBe(true);
+    // The kingdom picker must not mistake the promotion for kingdom picks.
+    expect(activeKingdomCards(on)).toEqual(activeKingdomCards(def));
+    const onAgain = withProsperityBasics(on, true);
+    expect(onAgain.setup).toHaveLength(on.setup.length);
+    const off = withProsperityBasics(on, false);
+    expect(prosperityEnabled(off)).toBe(false);
+    expect(off.endConditions.some((e) => e.id === 'dom_end_colonies')).toBe(false);
+    expect(off.setup).toHaveLength(def.setup.length);
+    expect(prosperityEnabled(def)).toBe(false); // the input never mutates
+  });
+
+  it('survives a pickKingdom AFTER enabling (watcher keeps the piles)', () => {
+    const ten = kingdomCatalog(def).slice(0, 10).map((c) => c.name);
+    const both = pickKingdom(withProsperityBasics(def, true), ten);
+    expect(prosperityEnabled(both)).toBe(true);
+    expect([...activeKingdomCards(both)].sort()).toEqual([...ten].sort());
+  });
+
+  it('puts 12 Platinum + 8 Colony in the live supply and validates clean', async () => {
+    const on = withProsperityBasics(buildDominionDef(), true);
+    expect(errorsOf(on)).toEqual([]);
+    const { names, errors } = await startedSupply(on);
+    expect(errors).toEqual([]);
+    expect(names.has('Platinum')).toBe(true);
+    expect(names.has('Colony')).toBe(true);
+  });
+
+  it('stays out of the supply when disabled', async () => {
+    const { names } = await startedSupply(buildDominionDef());
+    expect(names.has('Platinum')).toBe(false);
+    expect(names.has('Colony')).toBe(false);
   });
 });
 

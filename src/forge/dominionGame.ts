@@ -238,6 +238,19 @@ const BASIC_PILES: PileSpec[] = [
 const BASIC_NAMES = BASIC_PILES.map((p) => p.name);
 const BASIC_NAME_SET = new Set(BASIC_NAMES);
 
+/**
+ * Prosperity's basic-supply upgrades. Spawned into the RESERVE like kingdom
+ * stock, but they are NOT kingdom picks — the setup screen's "Prosperity
+ * basics" toggle promotes them via withProsperityBasics, which also adds the
+ * Colonies-exhausted end condition and counts them for the three-pile rule.
+ */
+const PROSPERITY_PILES: PileSpec[] = [
+  { name: 'Platinum', cost: 9, treasure: true, count: 12 },
+  { name: 'Colony', cost: 11, count: 8 },
+];
+export const PROSPERITY_NAMES = PROSPERITY_PILES.map((p) => p.name);
+const PROSPERITY_NAME_SET = new Set(PROSPERITY_NAMES);
+
 /** Every kingdom card the def knows (union of the three sets + spares). */
 const KINGDOM_PILES: PileSpec[] = [
   // Already in the example def.
@@ -275,6 +288,8 @@ const NEW_CARD_ID: Record<string, string> = {
   Gardens: 'dom_card_gardens',
   Mine: 'dom_card_mine',
   Witch: 'dom_card_witch',
+  Platinum: 'dom_card_platinum',
+  Colony: 'dom_card_colony',
 };
 
 /** Example card ids by name (mirrors src/examples/dominion.ts literals). */
@@ -298,6 +313,13 @@ const EXAMPLE_CARD_ID: Record<string, string> = {
 
 const EXPANSION_CARD_ID: Record<string, string> = Object.assign({}, ...EXPANSIONS.map((x) => x.ids));
 
+/** Kingdom card name → the printed set it belongs to (picker filter chips). */
+const EXPANSION_OF: Record<string, string> = {};
+for (const p of KINGDOM_PILES) EXPANSION_OF[p.name] = 'Base';
+for (const x of EXPANSIONS) {
+  for (const p of x.piles) EXPANSION_OF[p.name] = x.setName ?? 'Base';
+}
+
 const cardIdFor = (name: string): string =>
   NEW_CARD_ID[name] ?? EXAMPLE_CARD_ID[name] ?? EXPANSION_CARD_ID[name];
 
@@ -312,7 +334,7 @@ interface TypeLine { typeId: string; tags: string[] }
  * Militia/Witch add Attack, Moat adds Reaction (see the MOAT DECISION note).
  */
 const TYPE_LINE: Record<string, TypeLine> = {};
-for (const p of BASIC_PILES) {
+for (const p of [...BASIC_PILES, ...PROSPERITY_PILES]) {
   TYPE_LINE[p.name] = {
     typeId: p.treasure === true ? TYPE_TREASURE : p.name === 'Curse' ? TYPE_CURSE : TYPE_VICTORY,
     tags: [TAG_BASIC],
@@ -1209,7 +1231,9 @@ function buildMobileScreen(): ScreenVariant {
 
 /** Names of every kingdom card the def can put in a supply (validation aid). */
 export function kingdomCardNames(def: GameDef): string[] {
-  return def.cards.filter((c) => !BASIC_NAME_SET.has(c.name)).map((c) => c.name);
+  return def.cards
+    .filter((c) => !BASIC_NAME_SET.has(c.name) && !PROSPERITY_NAME_SET.has(c.name))
+    .map((c) => c.name);
 }
 
 /**
@@ -1233,15 +1257,18 @@ export interface KingdomCatalogEntry {
   cost: number;
   /** The display type line ("Action – Attack"). */
   kind: string;
+  /** The printed set the card belongs to ("Base", "Intrigue", …). */
+  expansion: string;
 }
 
 export function kingdomCatalog(def: GameDef): KingdomCatalogEntry[] {
   return def.cards
-    .filter((c) => !BASIC_NAME_SET.has(c.name))
+    .filter((c) => !BASIC_NAME_SET.has(c.name) && !PROSPERITY_NAME_SET.has(c.name))
     .map((c) => ({
       name: c.name,
       cost: Number(c.fields[COST] ?? 0),
       kind: String(c.fields[KIND_F] ?? ''),
+      expansion: EXPANSION_OF[c.name] ?? 'Base',
     }))
     .sort((a, b) => a.cost - b.cost || a.name.localeCompare(b.name));
 }
@@ -1292,7 +1319,13 @@ export function buildDominionDef(): GameDef {
   const immuneVar = def.variables.find((v) => v.id === 'dom_var_immune');
   if (immuneVar) immuneVar.hidden = true;
 
-  def.cards.push(...EXTRA_CARDS, ...EXPANSIONS.flatMap((x) => x.buildCards(KIT)));
+  def.cards.push(
+    ...EXTRA_CARDS,
+    // Prosperity basics — reserve stock until the setup toggle promotes them.
+    card('Platinum', 9, 5, 0, 'Worth 5 coins.'),
+    card('Colony', 11, 0, 10, 'Worth 10 victory points.'),
+    ...EXPANSIONS.flatMap((x) => x.buildCards(KIT)),
+  );
 
   // The type/tag vocabulary + the one named filter (spec A §Dominion
   // migration). Deep-cloned: the def is keeper-editable stored data and must
@@ -1346,6 +1379,16 @@ export function buildDominionDef(): GameDef {
       source: {
         kind: 'custom',
         entries: KINGDOM_PILES.map((p) => ({ cardId: cardIdFor(p.name), count: p.count })),
+      },
+      initialZone: RESERVE,
+      shuffle: false,
+    },
+    {
+      id: 'dom_deck_prosperity',
+      name: 'Prosperity basics',
+      source: {
+        kind: 'custom',
+        entries: PROSPERITY_PILES.map((p) => ({ cardId: cardIdFor(p.name), count: p.count })),
       },
       initialZone: RESERVE,
       shuffle: false,
@@ -1812,6 +1855,77 @@ export function pickKingdom(def: GameDef, cardNames: string[]): GameDef {
     ...keep.slice(insertAt),
   ];
   const watcher = out.triggers.find((t) => t.id === 'dom_trigger_piles');
-  if (watcher) watcher.script = pileWatcherScript(cardNames);
+  if (watcher) {
+    watcher.script = pileWatcherScript(
+      prosperityEnabled(out) ? [...cardNames, ...PROSPERITY_NAMES] : cardNames,
+    );
+  }
+  return out;
+}
+
+// --- Prosperity basics toggle (Platinum & Colony) ------------------------------
+
+const END_COLONY_ID = 'dom_end_colonies';
+
+/** True when the def carries the Prosperity basics in its reserve stock. */
+export function supportsProsperityBasics(def: GameDef): boolean {
+  return PROSPERITY_NAMES.every((n) => def.cards.some((c) => c.name === n));
+}
+
+/**
+ * The setup block that promotes Platinum & Colony. Wrapped in a trivially
+ * true `iff` so its shape can never be mistaken for a kingdomPileBlock —
+ * the kingdom picker must not count these as picks.
+ */
+function prosperityBlock(): Block {
+  return iff(gte(num(1), num(1)), PROSPERITY_NAMES.map((n) =>
+    move({ kind: 'filter', filter: nameIs(n) }, zone(RESERVE), zone(SUPPLY), { faceUp: true })));
+}
+
+function isProsperityBlock(b: Block): boolean {
+  if (b.kind !== 'if') return false;
+  const first = b.then[0];
+  return first !== undefined && first.kind === 'moveCards'
+    && first.from.zoneId === RESERVE && first.to.zoneId === SUPPLY
+    && first.cards.kind === 'filter'
+    && first.cards.filter.kind === 'compare'
+    && first.cards.filter.right.kind === 'str'
+    && first.cards.filter.right.value === 'Platinum';
+}
+
+/** True when this def's setup promotes the Prosperity basics. */
+export function prosperityEnabled(def: GameDef): boolean {
+  return def.setup.some(isProsperityBlock);
+}
+
+/**
+ * Turn the Prosperity basics on/off — pure and idempotent. Apply AFTER
+ * pickKingdom (pickKingdom rebuilds the pile watcher from its own list, but
+ * respects an already-enabled toggle; this transform re-adds the prosperity
+ * names to the watcher either way). Adds/removes: the supply promotion, the
+ * Colonies-exhausted end condition, and the piles' three-pile-rule entries.
+ */
+export function withProsperityBasics(def: GameDef, on: boolean): GameDef {
+  const out = deepClone(def);
+  out.setup = out.setup.filter((b) => !isProsperityBlock(b));
+  out.endConditions = out.endConditions.filter((e) => e.id !== END_COLONY_ID);
+  if (on) {
+    // Promote right after the kingdom piles (before hands are dealt).
+    let last = -1;
+    out.setup.forEach((b, i) => { if (kingdomPileBlockName(b) !== null) last = i; });
+    out.setup.splice(last + 1, 0, prosperityBlock());
+    out.endConditions.push({
+      id: END_COLONY_ID,
+      name: 'Colonies exhausted',
+      condition: eq(countCards(zone(SUPPLY), nameIs('Colony')), num(0)),
+      winner: { kind: 'highestVar', varId: VP },
+    });
+  }
+  const watcher = out.triggers.find((t) => t.id === 'dom_trigger_piles');
+  if (watcher) {
+    watcher.script = pileWatcherScript(
+      on ? [...activeKingdomCards(out), ...PROSPERITY_NAMES] : activeKingdomCards(out),
+    );
+  }
   return out;
 }

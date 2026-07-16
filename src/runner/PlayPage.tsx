@@ -17,6 +17,7 @@ import { KINGDOM_SETS } from '../shared/kingdoms';
 import { getGameById } from '../state/store';
 import {
   activeKingdomCards, kingdomCatalog, pickKingdom, supportsKingdomPicking,
+  supportsProsperityBasics, withProsperityBasics,
 } from '../forge/dominionGame';
 import { rollSeed } from './layout';
 import { hostGame, joinGame, type MatchStart, type NetAdapter, type NetFault } from './net';
@@ -59,6 +60,8 @@ export function PlayPage({ gameId, navigate }: PlayPageProps) {
   // ----- the Kingdom picker (defs whose setup swaps supply piles) -----
   const kingdomable = useMemo(() => (def ? supportsKingdomPicking(def) : false), [def]);
   const [kingdomCards, setKingdomCards] = useState<string[] | null>(null); // null = def's own
+  const prosperityAble = useMemo(() => (def ? supportsProsperityBasics(def) : false), [def]);
+  const [prosperity, setProsperity] = useState(false);
   const pickerData = useMemo(() => {
     if (!def || !kingdomable) return null;
     return {
@@ -68,18 +71,24 @@ export function PlayPage({ gameId, navigate }: PlayPageProps) {
       value: kingdomCards ?? activeKingdomCards(def),
     };
   }, [def, kingdomable, kingdomCards]);
-  /** The def the TABLE runs: the stored def with the chosen kingdom applied. */
+  /** The def the TABLE runs: the stored def with the chosen kingdom applied,
+   *  then the Prosperity basics toggle (order matters — see the transform). */
   const runDef = useMemo(() => {
-    if (!def || !kingdomable || kingdomCards === null) return def;
-    const active = activeKingdomCards(def);
-    const same = active.length === kingdomCards.length
-      && kingdomCards.every((n) => active.includes(n));
-    try {
-      return same ? def : pickKingdom(def, kingdomCards);
-    } catch {
-      return def; // an unknown name (keeper deleted a card) — fall back
+    if (!def) return def;
+    let out = def;
+    if (kingdomable && kingdomCards !== null) {
+      const active = activeKingdomCards(def);
+      const same = active.length === kingdomCards.length
+        && kingdomCards.every((n) => active.includes(n));
+      try {
+        if (!same) out = pickKingdom(out, kingdomCards);
+      } catch {
+        out = def; // an unknown name (keeper deleted a card) — fall back
+      }
     }
-  }, [def, kingdomable, kingdomCards]);
+    if (prosperityAble && prosperity) out = withProsperityBasics(out, true);
+    return out;
+  }, [def, kingdomable, kingdomCards, prosperityAble, prosperity]);
 
   // Leaving an online table (or the page) hangs up the link.
   useEffect(() => () => {
@@ -230,7 +239,11 @@ export function PlayPage({ gameId, navigate }: PlayPageProps) {
           online?.cancel();
           setOnline(null);
         }}
-        kingdom={pickerData === null ? null : { ...pickerData, onChange: setKingdomCards }}
+        kingdom={pickerData === null ? null : {
+          ...pickerData,
+          onChange: setKingdomCards,
+          prosperity: prosperityAble ? { value: prosperity, onChange: setProsperity } : null,
+        }}
       />
     );
   }

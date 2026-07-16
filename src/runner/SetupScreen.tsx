@@ -13,7 +13,7 @@ import type { SeatSetup } from './session';
  *  host page (PlayPage) for defs whose setup supports kingdom swapping. */
 export interface KingdomPicker {
   /** Every pickable card: name + printed cost + type line, cost-sorted. */
-  catalog: { name: string; cost: number; kind: string }[];
+  catalog: { name: string; cost: number; kind: string; expansion?: string }[];
   /** Preset sets (exactly ten names each). */
   sets: KingdomSet[];
   /** How many cards a kingdom needs (Dominion: 10). */
@@ -21,6 +21,9 @@ export interface KingdomPicker {
   /** The currently selected names. */
   value: string[];
   onChange: (cards: string[]) => void;
+  /** Prosperity basics (Platinum & Colony) toggle — absent when the def
+   *  doesn't carry them. */
+  prosperity?: { value: boolean; onChange: (on: boolean) => void } | null;
 }
 
 function makeSeats(count: number, prev: SeatSetup[] = []): SeatSetup[] {
@@ -58,6 +61,8 @@ export function SetupScreen({ def, issues, navigate, onStart, online, onHost, on
   const [showWarnings, setShowWarnings] = useState(false);
   const [joinCode, setJoinCode] = useState('');
   const [cardSearch, setCardSearch] = useState('');
+  // Kingdom grid scope: one printed set, or every card ('All').
+  const [expansionFilter, setExpansionFilter] = useState('All');
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     if (!copied) return;
@@ -216,11 +221,14 @@ export function SetupScreen({ def, issues, navigate, onStart, online, onHost, on
             }
             kingdom.onChange(pool.slice(0, kingdom.size).sort());
           };
+          // Expansion filter chips render only when the catalog spans sets.
+          const expansions = [...new Set(kingdom.catalog.map((c) => c.expansion ?? ''))]
+            .filter((x) => x !== '');
+          const inExpansion = (c: { expansion?: string }) =>
+            expansionFilter === 'All' || (c.expansion ?? '') === expansionFilter;
           const q = cardSearch.trim().toLowerCase();
-          const shown = q === ''
-            ? kingdom.catalog
-            : kingdom.catalog.filter((c) =>
-              c.name.toLowerCase().includes(q) || c.kind.toLowerCase().includes(q));
+          const shown = kingdom.catalog.filter((c) => inExpansion(c)
+            && (q === '' || c.name.toLowerCase().includes(q) || c.kind.toLowerCase().includes(q)));
           return (
             <div className={lockedPanel} style={{ marginBottom: 14 }}>
               <div className="row" style={{ alignItems: 'baseline', gap: 10 }}>
@@ -246,6 +254,22 @@ export function SetupScreen({ def, issues, navigate, onStart, online, onHost, on
                   </button>
                 ))}
               </div>
+              {expansions.length > 1 && (
+                <div className="rn-kexp" role="group" aria-label="Filter by expansion">
+                  {['All', ...expansions].map((x) => (
+                    <button
+                      key={x}
+                      className={`btn btn-small${expansionFilter === x ? ' rn-kexp-on' : ''}`}
+                      aria-pressed={expansionFilter === x}
+                      onClick={() => setExpansionFilter(x)}
+                    >
+                      {x === 'All'
+                        ? `All (${kingdom.catalog.length})`
+                        : `${x} (${kingdom.catalog.filter((c) => (c.expansion ?? '') === x).length})`}
+                    </button>
+                  ))}
+                </div>
+              )}
               <input
                 className="input"
                 style={{ margin: '8px 0' }}
@@ -284,6 +308,21 @@ export function SetupScreen({ def, issues, navigate, onStart, online, onHost, on
                 Pick a preset or build your own supply — exactly {kingdom.size} piles take the
                 table. Unpicked cards wait in the reserve (the Black Market's stock).
               </p>
+              {kingdom.prosperity != null && (
+                <label className="rn-kprosperity">
+                  <input
+                    type="checkbox"
+                    checked={kingdom.prosperity.value}
+                    disabled={onlineLocked}
+                    onChange={(e) => kingdom.prosperity?.onChange(e.target.checked)}
+                  />
+                  <span>
+                    <strong>Prosperity basics</strong> — add Platinum (9<span aria-hidden="true">🪙</span>,
+                    worth 5) and Colony (11<span aria-hidden="true">🪙</span>, 10 VP) to the supply.
+                    The game also ends when the Colonies run out.
+                  </span>
+                </label>
+              )}
             </div>
           );
         })()}

@@ -335,6 +335,7 @@ function buildCards(kit: CardKit): CardDef[] {
 
 export const intrigue2eA: ExpansionModule = {
   id: 'intrigue2eA',
+  setName: 'Intrigue',
   piles: [
     { name: 'Courtyard', cost: 2, count: 10 },
     { name: 'Lurker', cost: 2, count: 10 },

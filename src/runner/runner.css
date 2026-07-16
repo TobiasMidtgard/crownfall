@@ -1782,6 +1782,27 @@ button.rn-ptile:hover { translate: 0 -3px; }
   color: var(--accent-2);
   background: color-mix(in srgb, var(--accent-2) 10%, transparent);
 }
+/* Expansion filter chips — scope the grid to one printed set. */
+.rn-kexp { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.rn-kexp .rn-kexp-on {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+/* Prosperity basics toggle (Platinum & Colony). */
+.rn-kprosperity {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: color-mix(in srgb, var(--accent-2) 5%, transparent);
+  cursor: pointer;
+}
+.rn-kprosperity input { margin-top: 3px; }
+.rn-kprosperity span { font-size: 0.9rem; }
 .rn-kgrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));

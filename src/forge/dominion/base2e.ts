@@ -72,6 +72,7 @@ const IDS: Record<string, string> = {
 
 export const base2e: ExpansionModule = {
   id: 'base2e',
+  setName: 'Base',
 
   piles: [
     { name: 'Harbinger', cost: 3, count: 10 },

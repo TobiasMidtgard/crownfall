@@ -25,6 +25,7 @@ export const REPLACE_VICTORY_VAR = 'dom_var_replace_victory';
 
 export const intrigue2eC: ExpansionModule = {
   id: 'intrigue2eC',
+  setName: 'Intrigue',
 
   piles: [
     { name: 'Harem', cost: 6, count: 10 },

@@ -82,6 +82,9 @@ export interface CardKit {
 export interface ExpansionModule {
   /** Stable slug, e.g. 'base2e'. */
   id: string;
+  /** The printed set's display name ('Base', 'Intrigue', 'Seaside' …) —
+   *  drives the setup screen's expansion filter chips. */
+  setName?: string;
   /** New kingdom piles (count 10 each). */
   piles: PileSpec[];
   /** Card name → dom_card_* id (globally unique). */

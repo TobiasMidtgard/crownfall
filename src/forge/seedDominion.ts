@@ -23,7 +23,7 @@ import { getGameById, saveGame } from '../state/store';
 import { buildDominionDef } from './dominionGame';
 
 export const DOMINION_GAME_ID = 'dominion-crownfall';
-export const SEED_VERSION = 15; // v15: Prosperity basics (Platinum & Colony) join the reserve stock
+export const SEED_VERSION = 16; // v16: supply columns auto-reflow for the Prosperity piles
 
 const STAMP_KEY = 'crownfall.seed.dominion';
 const TOMBSTONE_KEY = 'crownfall.seed.dominion.deleted';

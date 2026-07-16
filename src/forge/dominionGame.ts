@@ -1592,7 +1592,9 @@ export function buildDominionDef(): GameDef {
     patchZoneEl(els, 'dom_el_supply_treasures', {
       rect: { x: 1.2, y: 10.6, w: 14.6, h: 44 },
       cardFilter: IS_TREASURE_CARD, keyGroup: 'shift',
-      rows: null, columns: 1, cardScale: 5.2, gap: 1.8, padding: 1,
+      // Auto grid: 3 basics stack the classic column; Prosperity's Platinum
+      // makes it 4 — the fit engine reflows instead of shrinking to slivers.
+      rows: null, columns: null, cardScale: 5.2, gap: 1.8, padding: 1,
       style: undefined, showName: false,
       countBadge: 'bottom', badgeShape: 'round',
       cardStyle: { ...GOLD_CARD_EDGE, borderColor: 'rgba(210, 171, 102, 0.4)' },
@@ -1604,7 +1606,8 @@ export function buildDominionDef(): GameDef {
     patchZoneEl(els, 'dom_el_supply_victory', {
       rect: { x: 18, y: 10.6, w: 14.6, h: 44 },
       cardFilter: IS_BASIC_VICTORY_PILE, keyGroup: 'ctrl',
-      rows: null, columns: 1, cardScale: 4.7, gap: 1.4, padding: 1,
+      // Auto grid — Colony makes this five piles (see the treasures note).
+      rows: null, columns: null, cardScale: 4.7, gap: 1.4, padding: 1,
       style: undefined, showName: false,
       countBadge: 'bottom', badgeShape: 'round',
       cardStyle: { ...GOLD_CARD_EDGE, borderColor: 'rgba(143, 191, 143, 0.35)' },

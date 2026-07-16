@@ -120,6 +120,10 @@ const VILLAGERS = 'dom_var_villagers';
  *  checked against dom_field_cost_potion and spent alongside coins; reset
  *  at cleanup (potions never carry over). */
 const POTIONS = 'dom_var_potions';
+/** Owed coin (Empires / Rising Sun): while above zero NOTHING can be bought
+ *  (cards or events) — pay it down $1 at a time via the buy-phase action.
+ *  Debt persists across turns; debt-cost events add to it when bought. */
+const DEBT = 'dom_var_debt';
 /** Set at turn end when the supply says the game is over (see buildDominionDef). */
 const GAME_OVER = 'dom_var_game_over';
 
@@ -578,7 +582,7 @@ function durationPair(idBase: string, name: string, now: Block[], later: Block[]
 
 const KIT: CardKit = {
   zones: { SUPPLY, TRASH, DECK, HAND, DISCARD, INPLAY, RESERVE, LOOK, DURATION },
-  vars: { ACTIONS, BUYS, COINS, VP, IMMUNE, EMPTY_PILES, SCRATCH, DISCOUNT, VP_TOKENS, COFFERS, VILLAGERS, POTIONS },
+  vars: { ACTIONS, BUYS, COINS, VP, IMMUNE, EMPTY_PILES, SCRATCH, DISCOUNT, VP_TOKENS, COFFERS, VILLAGERS, POTIONS, DEBT },
   fields: { COST, COINS_F, VP_F, TEXT, COST_POTION },
   types: { ACTION: TYPE_ACTION, TREASURE: TYPE_TREASURE, VICTORY: TYPE_VICTORY, CURSE: TYPE_CURSE },
   tags: { ATTACK: TAG_ATTACK, REACTION: TAG_REACTION, KINGDOM: TAG_KINGDOM },
@@ -1371,6 +1375,15 @@ function buildMobileScreen(): ScreenVariant {
         visible: allOf(MY_TURN, IN_ACTION, gt(getVar(VILLAGERS, VIEWER), num(0))),
         reveal: 'fade',
       },
+      // Debt pay-down shares the villager button slot: villagers spend in
+      // the ACTION phase, debt pays in the BUY phase — never both at once.
+      {
+        kind: 'button', id: 'dom_el_m_btn_pay_debt', name: 'Pay off debt',
+        rect: { x: 46.5, y: 39.4, w: 12.5, h: 2.8 },
+        actionId: 'dom_action_pay_debt', label: 'Pay debt $1', fontSize: 2,
+        visible: allOf(MY_TURN, IN_BUY, gt(getVar(DEBT, VIEWER), num(0))),
+        reveal: 'fade',
+      },
       // The compact seal (spec "Mobile (≤45rem)": tighter box, 1.05rem name,
       // no key hint) — same five render-states, same stamp on every change.
       {
@@ -1553,6 +1566,7 @@ export function buildDominionDef(): GameDef {
     { id: COFFERS, name: 'Coffers', scope: 'perPlayer', type: 'number', initial: 0 },
     { id: VILLAGERS, name: 'Villagers', scope: 'perPlayer', type: 'number', initial: 0 },
     { id: POTIONS, name: 'Potions', scope: 'perPlayer', type: 'number', initial: 0 },
+    { id: DEBT, name: 'Debt', scope: 'perPlayer', type: 'number', initial: 0 },
     ...EXPANSIONS.flatMap((x) => x.variables ?? []),
   );
   // The empty-pile counter and the attack-immunity flag (inherited from the
@@ -1732,6 +1746,8 @@ export function buildDominionDef(): GameDef {
       lte(field(CARD, COST), add(getVar(COINS), getVar(DISCOUNT))),
       // Alchemy's second currency: the potion half is never discounted.
       lte(field(CARD, COST_POTION), getVar(POTIONS)),
+      // Empires debt: while you owe coin, you buy nothing.
+      eq(getVar(DEBT), num(0)),
     );
     buy.script = [
       setVar(SCRATCH, sub(field(CARD, COST), getVar(DISCOUNT))),
@@ -1805,6 +1821,16 @@ export function buildDominionDef(): GameDef {
         announce(CURRENT, ' spends a Villager (+1 Action).'),
       ],
     },
+    {
+      id: 'dom_action_pay_debt', name: 'Pay off debt',
+      target: { kind: 'none' },
+      legality: allOf(gt(getVar(DEBT), num(0)), gt(getVar(COINS), num(0))),
+      script: [
+        changeVar(DEBT, num(-1)),
+        changeVar(COINS, num(-1)),
+        announce(CURRENT, ' pays $1 of debt.'),
+      ],
+    },
   );
   // Buying an Event: pays coins (Events are never Bridge-discounted — the
   // discount applies to CARD costs), spends a buy, and fires the Event's
@@ -1818,6 +1844,9 @@ export function buildDominionDef(): GameDef {
         isA(CARD, TYPE_EVENT),
         gt(getVar(BUYS), num(0)),
         lte(field(CARD, COST), getVar(COINS)),
+        // Debt blocks event buys too (a debt-cost event ADDS debt when its
+        // effect runs — buying it still requires owing nothing first).
+        eq(getVar(DEBT), num(0)),
       ),
       script: [
         changeVar(COINS, neg(field(CARD, COST))),
@@ -1829,7 +1858,7 @@ export function buildDominionDef(): GameDef {
   }
   const buyPhase = def.phases.find((p) => p.id === PHASE_BUY);
   if (buyPhase) {
-    buyPhase.actionIds.push('dom_action_spend_coffer');
+    buyPhase.actionIds.push('dom_action_spend_coffer', 'dom_action_pay_debt');
     if (LANDSCAPE_SPECS.some((l) => l.kind === 'event')) {
       buyPhase.actionIds.push('dom_action_buy_event');
     }
@@ -2073,6 +2102,15 @@ export function buildDominionDef(): GameDef {
       },
       // Potions spend themselves at buy time — a chip, no button.
       ...bankChip('potions', POTIONS, 'POTIONS', 69.4, '#6ec6b4', 'rgba(110, 198, 180, 0.10)'),
+      // Debt shows red and grows a pay-down button while you owe.
+      ...bankChip('debt', DEBT, 'DEBT', 75.6, '#e0697a', 'rgba(224, 105, 122, 0.12)'),
+      {
+        kind: 'button', id: 'dom_el_btn_pay_debt', name: 'Pay off debt',
+        rect: { x: 81.4, y: 56.4, w: 4.6, h: 5.8 },
+        actionId: 'dom_action_pay_debt', label: 'Pay $1', fontSize: 0.85,
+        visible: allOf(MY_TURN, IN_BUY, gt(getVar(DEBT, VIEWER), num(0))),
+        reveal: 'fade',
+      },
     );
 
     // Realm header band: "<You>'S REALM" + the ACTIVE TURN chip + drop hint.

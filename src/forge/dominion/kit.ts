@@ -45,6 +45,9 @@ export interface CardKit {
     /** Potions brewed this turn (Alchemy) — the buy action's second
      *  currency, reset at cleanup. The Potion pile itself ships in core. */
     POTIONS: string;
+    /** Owed coin (Empires debt): buying anything requires 0; pay down via
+     *  the core buy-phase action. Take debt with changeVar(DEBT, +n, who). */
+    DEBT: string;
   };
   fields: {
     COST: string; COINS_F: string; VP_F: string; TEXT: string;

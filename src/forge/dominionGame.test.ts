@@ -44,8 +44,9 @@ const BASIC_NAMES = ['Copper', 'Silver', 'Gold', 'Estate', 'Duchy', 'Province', 
 /** Basics 46+40+30+8+8+8+10, kingdom stock 205 piles of 10 (18 core + 10 Base
  *  2E + 26 Intrigue 2E + 26 Seaside 2E + 25 Prosperity 2E + 13 Cornucopia +
  *  13 Guilds + 26 Hinterlands 2E + 7 Promos + 11 Alchemy + 30 Menagerie),
- *  Prosperity basics 12+8, starters 2 × 10, 5 Prizes + 30 Horses, 16 Potions. */
-const TOTAL_CARDS = 150 + 2050 + 20 + 20 + 35 + 16;
+ *  Prosperity basics 12+8, starters 2 × 10, 5 Prizes + 30 Horses, 16 Potions,
+ *  34 Empires landscapes (21 Landmarks + 13 Events, singles). */
+const TOTAL_CARDS = 150 + 2050 + 20 + 20 + 35 + 16 + 34;
 
 const errorsOf = (def: GameDef) =>
   validateGameDef(def).filter((i) => i.severity === 'error');
@@ -187,7 +188,9 @@ describe('the schema-v2 vocabulary (no staging machinery left)', () => {
   });
 
   it('defines the type/tag vocabulary + the one named filter (spec A)', () => {
-    expect(def.cardTypes?.map((t) => t.name)).toEqual(['Treasure', 'Victory', 'Curse', 'Action']);
+    // Event/Landmark joined with the Empires landscapes (declared only
+    // while a registered module ships that kind).
+    expect(def.cardTypes?.map((t) => t.name)).toEqual(['Treasure', 'Victory', 'Curse', 'Action', 'Event', 'Landmark']);
     // Every type wears its skin-palette accent color.
     for (const t of def.cardTypes!) expect(t.color).toMatch(/^#[0-9a-f]{6}$/);
     // MOAT DECISION (see dominionGame.ts): a card has ONE primary type, so

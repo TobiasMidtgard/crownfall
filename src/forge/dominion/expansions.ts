@@ -21,6 +21,8 @@ import { promos1 } from './promos1';
 import { alchemy1e } from './alchemy1e';
 import { menagerieA } from './menagerieA';
 import { menagerieB } from './menagerieB';
+import { empiresLandmarks } from './empiresLandmarks';
+import { empiresEvents } from './empiresEvents';
 
 export const EXPANSIONS: ExpansionModule[] = [
   base2e, intrigue2eA, intrigue2eB, intrigue2eC,
@@ -32,4 +34,6 @@ export const EXPANSIONS: ExpansionModule[] = [
   // exile-discharge trigger — it must precede menagerieB, whose cards
   // reference those zones and assume that trigger fires first on a gain.
   menagerieA, menagerieB,
+  // Empires' landscape side (the kingdom waits on split piles).
+  empiresLandmarks, empiresEvents,
 ];

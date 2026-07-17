@@ -233,6 +233,7 @@ const TYPE_ACTION = 'dom_type_action';
  *  kind (an unused type would be a validation warning). */
 const TYPE_EVENT = 'dom_type_event';
 const TYPE_LANDMARK = 'dom_type_landmark';
+const TYPE_PROJECT = 'dom_type_project';
 const TAG_ATTACK = 'dom_tag_attack';
 const TAG_REACTION = 'dom_tag_reaction';
 const TAG_KINGDOM = 'dom_tag_kingdom';
@@ -257,6 +258,8 @@ const CARD_TYPES: CardTypeDef[] = [
     ? [{ id: TYPE_EVENT, name: 'Event', color: '#8fb8d8' }] : []),
   ...(LANDSCAPE_SPECS.some((l) => l.kind === 'landmark')
     ? [{ id: TYPE_LANDMARK, name: 'Landmark', color: '#5fae8e' }] : []),
+  ...(LANDSCAPE_SPECS.some((l) => l.kind === 'project')
+    ? [{ id: TYPE_PROJECT, name: 'Project', color: '#d8a3c0' }] : []),
 ];
 const CARD_TAGS: TagDef[] = [
   { id: TAG_ATTACK, name: 'Attack' },
@@ -441,7 +444,7 @@ for (const p of NONSUPPLY_PILES) {
 // Landscapes wear their sideboard type and no tags at all.
 for (const l of LANDSCAPE_SPECS) {
   TYPE_LINE[l.name] = {
-    typeId: l.kind === 'event' ? TYPE_EVENT : TYPE_LANDMARK,
+    typeId: l.kind === 'event' ? TYPE_EVENT : l.kind === 'landmark' ? TYPE_LANDMARK : TYPE_PROJECT,
     tags: [],
   };
 }
@@ -1866,6 +1869,13 @@ export function buildDominionDef(): GameDef {
   const actionPhase = def.phases.find((p) => p.id === PHASE_ACTION);
   if (actionPhase) actionPhase.actionIds.push('dom_action_spend_villager');
   def.actions.push(...EXPANSIONS.flatMap((x) => x.buildActions?.(KIT) ?? []));
+  // Project buys are per-project module actions (see kit.ts): the naming
+  // convention registers them all with the buy phase in one sweep.
+  if (buyPhase) {
+    buyPhase.actionIds.push(...def.actions
+      .map((a) => a.id)
+      .filter((id) => id.startsWith('dom_action_buy_project_')));
+  }
 
   // Triggers: the Gardens-aware recount runs at turn end AND on every
   // tagged 'gain' (Workshop / Remodel / Mine / Witch's Curse) — the old
@@ -2409,7 +2419,7 @@ export function potionEnabled(def: GameDef): boolean {
 export interface LandscapeCatalogEntry {
   name: string;
   cost: number;
-  kind: 'event' | 'landmark';
+  kind: 'event' | 'landmark' | 'project';
   expansion: string;
 }
 

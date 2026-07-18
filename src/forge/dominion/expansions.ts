@@ -26,6 +26,8 @@ import { empiresEvents } from './empiresEvents';
 import { renaissanceProjects } from './renaissanceProjects';
 import { renaissanceA } from './renaissanceA';
 import { renaissanceB } from './renaissanceB';
+import { menagerieWays } from './menagerieWays';
+import { adventuresEvents } from './adventuresEvents';
 
 export const EXPANSIONS: ExpansionModule[] = [
   base2e, intrigue2eA, intrigue2eB, intrigue2eC,
@@ -42,4 +44,8 @@ export const EXPANSIONS: ExpansionModule[] = [
   // Renaissance: renaissanceA declares the five artifact vars (and leans on
   // seaside2eA's Haven mark, registered far above); B reads A's artifacts.
   renaissanceProjects, renaissanceA, renaissanceB,
+  // Ways reference menagerieA's mats + seaside2eA's Haven mark by id;
+  // Adventures Events are self-contained (token events wait on the token
+  // system, Mission on extra turns).
+  menagerieWays, adventuresEvents,
 ];

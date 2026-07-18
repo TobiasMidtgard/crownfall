@@ -23,7 +23,7 @@ import { getGameById, saveGame } from '../state/store';
 import { buildDominionDef } from './dominionGame';
 
 export const DOMINION_GAME_ID = 'dominion-crownfall';
-export const SEED_VERSION = 24; // v24: Renaissance — 25 cards + 17 Projects, Artifacts, Villagers live
+export const SEED_VERSION = 25; // v25: Menagerie Ways (18) + Adventures Events (12) — play-substitution live
 
 const STAMP_KEY = 'crownfall.seed.dominion';
 const TOMBSTONE_KEY = 'crownfall.seed.dominion.deleted';

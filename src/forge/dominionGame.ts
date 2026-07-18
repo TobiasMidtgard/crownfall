@@ -146,6 +146,14 @@ const KIND_F = 'dom_field_kind';
 const PHASE_ACTION = 'dom_phase_action';
 const PHASE_BUY = 'dom_phase_buy';
 const PHASE_CLEANUP = 'dom_phase_cleanup';
+/**
+ * Nocturne's fourth phase, between Buy and Cleanup. Present only while some
+ * registered module ships Night cards. In a hand WITHOUT Night cards the
+ * phase offers ZERO legal moves (playing needs a Night card; even "end
+ * night" is gated on holding one) so the runner auto-skips it — plain
+ * kingdoms never see the phase at all.
+ */
+const PHASE_NIGHT = 'dom_phase_night';
 
 /** The per-player victory-point variable (read by the hall on game over). */
 export const DOMINION_VP_VAR = VP;
@@ -235,6 +243,8 @@ const TYPE_EVENT = 'dom_type_event';
 const TYPE_LANDMARK = 'dom_type_landmark';
 const TYPE_PROJECT = 'dom_type_project';
 const TYPE_WAY = 'dom_type_way';
+/** Nocturne's primary type — declared only while a module ships Night cards. */
+const TYPE_NIGHT = 'dom_type_night';
 const TAG_ATTACK = 'dom_tag_attack';
 const TAG_REACTION = 'dom_tag_reaction';
 const TAG_KINGDOM = 'dom_tag_kingdom';
@@ -263,6 +273,8 @@ const CARD_TYPES: CardTypeDef[] = [
     ? [{ id: TYPE_PROJECT, name: 'Project', color: '#d8a3c0' }] : []),
   ...(LANDSCAPE_SPECS.some((l) => l.kind === 'way')
     ? [{ id: TYPE_WAY, name: 'Way', color: '#c9b458' }] : []),
+  ...(EXPANSIONS.some((x) => (x.nightNames ?? []).length > 0)
+    ? [{ id: TYPE_NIGHT, name: 'Night', color: '#7d7bb8' }] : []),
 ];
 const CARD_TAGS: TagDef[] = [
   { id: TAG_ATTACK, name: 'Attack' },
@@ -420,6 +432,9 @@ const ATTACK_NAMES = new Set(['Militia', 'Witch', ...EXPANSIONS.flatMap((x) => x
 const REACTION_NAMES = new Set(['Moat', ...EXPANSIONS.flatMap((x) => x.reactionNames ?? [])]);
 const VICTORY_NAMES = new Set(['Gardens', ...EXPANSIONS.flatMap((x) => x.victoryNames ?? [])]);
 const TREASURE_NAMES = new Set(EXPANSIONS.flatMap((x) => x.treasureNames ?? []));
+const NIGHT_NAMES = new Set(EXPANSIONS.flatMap((x) => x.nightNames ?? []));
+/** The Night phase (and its seal chrome) exists only alongside Night cards. */
+const NIGHT_ACTIVE = NIGHT_NAMES.size > 0;
 for (const p of KINGDOM_PILES) {
   const tags = [TAG_KINGDOM];
   if (ATTACK_NAMES.has(p.name)) tags.push(TAG_ATTACK);
@@ -427,7 +442,8 @@ for (const p of KINGDOM_PILES) {
   TYPE_LINE[p.name] = {
     typeId: VICTORY_NAMES.has(p.name) ? TYPE_VICTORY
       : TREASURE_NAMES.has(p.name) ? TYPE_TREASURE
-        : TYPE_ACTION,
+        : NIGHT_NAMES.has(p.name) ? TYPE_NIGHT
+          : TYPE_ACTION,
     tags,
   };
 }
@@ -858,6 +874,7 @@ const FOE = nextPlayer(VIEWER);
 const IN_ACTION: Expr = { kind: 'phaseIs', phaseId: PHASE_ACTION };
 const IN_BUY: Expr = { kind: 'phaseIs', phaseId: PHASE_BUY };
 const IN_CLEANUP: Expr = { kind: 'phaseIs', phaseId: PHASE_CLEANUP };
+const IN_NIGHT: Expr = { kind: 'phaseIs', phaseId: PHASE_NIGHT };
 
 // The harbor spots show only when they hold cards (deck/discard are the
 // viewer's; the trash is shared) — no empty boxes standing around.
@@ -876,6 +893,7 @@ const SEAL_FOE = allOf(not(GAME_IS_OVER), STACK_QUIET, THEIR_TURN);
 const SEAL_MINE = allOf(not(GAME_IS_OVER), STACK_QUIET, MY_TURN);
 const SEAL_ACTION = allOf(not(GAME_IS_OVER), STACK_QUIET, MY_TURN, IN_ACTION);
 const SEAL_BUY = allOf(not(GAME_IS_OVER), STACK_QUIET, MY_TURN, IN_BUY);
+const SEAL_NIGHT = allOf(not(GAME_IS_OVER), STACK_QUIET, MY_TURN, IN_NIGHT);
 const SEAL_CLEANUP = allOf(not(GAME_IS_OVER), STACK_QUIET, MY_TURN, IN_CLEANUP);
 
 // Palette — hex approximations of the reference table's OKLCH tokens.
@@ -1005,20 +1023,33 @@ function sealChildren(m: boolean): ScreenElement[] {
       actionId: 'dom_action_cleanup', label: 'End turn', fontSize: 1,
       visible: IN_CLEANUP,
     },
-    // The three phase dots — Action, Buy, Cleanup.
+    // Nocturne only: the plate covers the (rarely visible) Night phase too.
+    ...(NIGHT_ACTIVE ? [{
+      kind: 'button', id: id('btn_night'), name: 'End the night',
+      rect: { x: 0, y: 0, w: 100, h: 100 },
+      actionId: 'dom_action_end_night', label: 'Night falls — to cleanup', fontSize: 1,
+      visible: IN_NIGHT,
+    } satisfies ScreenElement] : []),
+    // The phase dots — Action, Buy, (Night), Cleanup.
     sealDot(id('dot_action'), 'Action dot', PHASE_ACTION, { x: dot1X, y: dotY, w: dotW, h: dotH }),
     sealDot(id('dot_buy'), 'Buy dot', PHASE_BUY, { x: dot2X, y: dotY, w: dotW, h: dotH }),
-    sealDot(id('dot_cleanup'), 'Cleanup dot', PHASE_CLEANUP, { x: dot3X, y: dotY, w: dotW, h: dotH }),
-    // Name line, six render-states.
+    ...(NIGHT_ACTIVE
+      ? [sealDot(id('dot_night'), 'Night dot', PHASE_NIGHT, { x: dot3X, y: dotY, w: dotW, h: dotH })]
+      : []),
+    sealDot(id('dot_cleanup'), 'Cleanup dot', PHASE_CLEANUP,
+      { x: NIGHT_ACTIVE ? dot3X + dotGap : dot3X, y: dotY, w: dotW, h: dotH }),
+    // Name line, six render-states (+ Night when active).
     sealName(id('name_action'), 'Action', SEAL_ACTION, INK, nameRect, nameFs),
     sealName(id('name_buy'), 'Buy', SEAL_BUY, INK, nameRect, nameFs),
+    ...(NIGHT_ACTIVE ? [sealName(id('name_night'), 'Night', SEAL_NIGHT, INK, nameRect, nameFs)] : []),
     sealName(id('name_cleanup'), 'Cleanup', SEAL_CLEANUP, INK, nameRect, nameFs),
     foeName,
     sealName(id('name_resolve'), 'Resolve', SEAL_RESOLVE, ASH, nameRect, nameFs),
     sealName(id('name_fallen'), 'Fallen', GAME_IS_OVER, INK, nameRect, nameFs),
     // Hint line, matching microcopy (uppercase, engraved via size/color).
     sealHint(id('hint_action'), 'TO BUY', SEAL_ACTION, BONE_SOFT, hintRect, hintFs),
-    sealHint(id('hint_buy'), 'TO CLEANUP', SEAL_BUY, BONE_SOFT, hintRect, hintFs),
+    sealHint(id('hint_buy'), NIGHT_ACTIVE ? 'ONWARD' : 'TO CLEANUP', SEAL_BUY, BONE_SOFT, hintRect, hintFs),
+    ...(NIGHT_ACTIVE ? [sealHint(id('hint_night'), 'TO CLEANUP', SEAL_NIGHT, BONE_SOFT, hintRect, hintFs)] : []),
     sealHint(id('hint_cleanup'), 'END TURN', SEAL_CLEANUP, BONE_SOFT, hintRect, hintFs),
     sealHint(id('hint_foe'), 'TAKES THEIR TURN', SEAL_FOE, ASH, hintRect, hintFs),
     sealHint(id('hint_resolve'), 'RESPOND BELOW', SEAL_RESOLVE, ASH, hintRect, hintFs),
@@ -1058,6 +1089,7 @@ function sealStates(m: boolean): NonNullable<ScreenElement['states']> {
     { id: id('foe'), name: 'Foe turn', when: THEIR_TURN },
     { id: id('action'), name: 'Action', when: IN_ACTION },
     { id: id('buy'), name: 'Buy', when: IN_BUY },
+    ...(NIGHT_ACTIVE ? [{ id: id('night'), name: 'Night', when: IN_NIGHT }] : []),
     { id: id('cleanup'), name: 'Cleanup', when: IN_CLEANUP },
   ];
 }
@@ -1708,10 +1740,12 @@ export function buildDominionDef(): GameDef {
     ...(starter ? [starter] : []),
   ];
 
-  // Setup: promote the default kingdom's piles, then deal opening hands.
+  // Setup: promote the default kingdom's piles, run the modules' extra
+  // setup (Heirloom swaps, trash seeding), then deal opening hands.
   const defaultSet = kingdomById(DEFAULT_KINGDOM_ID);
   def.setup = [
     ...defaultSet.cards.map(kingdomPileBlock),
+    ...EXPANSIONS.flatMap((x) => x.buildSetup?.(KIT) ?? []),
     forEachPlayer([draw(PLAYER, 5)]),
   ];
 
@@ -1870,6 +1904,34 @@ export function buildDominionDef(): GameDef {
       ],
     });
   }
+  // Nocturne's Night phase: slot it before Cleanup, with its two actions.
+  // "End the night" is gated on HOLDING a Night card, so a nightless hand
+  // has zero legal Night moves and the runner auto-skips the whole phase.
+  if (NIGHT_ACTIVE) {
+    const ci = def.phases.findIndex((p) => p.id === PHASE_CLEANUP);
+    def.phases.splice(Math.max(0, ci), 0, {
+      id: PHASE_NIGHT, name: 'Night', onEnter: [],
+      actionIds: ['dom_action_play_night', 'dom_action_end_night'], mode: 'manual',
+    });
+    def.actions.push(
+      {
+        id: 'dom_action_play_night', name: 'Play a Night card',
+        target: { kind: 'cardInZone', zoneId: HAND, ownerOnly: true },
+        legality: isA(CARD, TYPE_NIGHT),
+        script: [
+          announce(CURRENT, ' plays ', CARD, ' into the night.'),
+          tmove(specific(CARD), zone(HAND), zone(INPLAY), 'play', { faceUp: true }),
+        ],
+      },
+      {
+        id: 'dom_action_end_night', name: 'End the night',
+        target: { kind: 'none' },
+        legality: gt(countCards(zone(HAND), isA(CARD, TYPE_NIGHT)), num(0)),
+        script: [END_PHASE],
+      },
+    );
+  }
+
   // Playing a card AS a Way: costs the Action, the card enters In Play on
   // an UNTAGGED move (its own 'play'-filtered abilities stay silent), and
   // the chosen Way's ability fires instead (auto-resolves with one Way).
@@ -2082,20 +2144,28 @@ export function buildDominionDef(): GameDef {
       el.onChangeAnim = 'stamp';
       el.states = sealStates(false);
       el.children = sealChildren(false);
-      const strip: [string, { x: number; y: number; w: number; h: number }][] = [
-        ['dot_action', { x: 68, y: 28, w: 3.2, h: 40 }],
-        ['dot_buy', { x: 73.6, y: 28, w: 3.2, h: 40 }],
-        ['dot_cleanup', { x: 79.2, y: 28, w: 3.2, h: 40 }],
-        ['key', { x: 86.5, y: 26, w: 10.5, h: 46 }],
-      ];
+      const strip: [string, { x: number; y: number; w: number; h: number }][] = NIGHT_ACTIVE
+        ? [
+          ['dot_action', { x: 62.4, y: 28, w: 3.2, h: 40 }],
+          ['dot_buy', { x: 68, y: 28, w: 3.2, h: 40 }],
+          ['dot_night', { x: 73.6, y: 28, w: 3.2, h: 40 }],
+          ['dot_cleanup', { x: 79.2, y: 28, w: 3.2, h: 40 }],
+          ['key', { x: 86.5, y: 26, w: 10.5, h: 46 }],
+        ]
+        : [
+          ['dot_action', { x: 68, y: 28, w: 3.2, h: 40 }],
+          ['dot_buy', { x: 73.6, y: 28, w: 3.2, h: 40 }],
+          ['dot_cleanup', { x: 79.2, y: 28, w: 3.2, h: 40 }],
+          ['key', { x: 86.5, y: 26, w: 10.5, h: 46 }],
+        ];
       for (const [cid, r] of strip) patchEl(el.children, `dom_el_seal_${cid}`, (d) => { d.rect = { ...r }; });
-      for (const nid of ['name_action', 'name_buy', 'name_cleanup', 'name_foe', 'name_resolve', 'name_fallen']) {
+      for (const nid of ['name_action', 'name_buy', 'name_night', 'name_cleanup', 'name_foe', 'name_resolve', 'name_fallen']) {
         patchEl(el.children, `dom_el_seal_${nid}`, (t) => {
           t.rect = { x: 5, y: 12, w: 58, h: 50 };
           if (t.kind === 'text') t.fontSize = 1.15;
         });
       }
-      for (const hid of ['hint_action', 'hint_buy', 'hint_cleanup', 'hint_foe', 'hint_resolve', 'hint_fallen']) {
+      for (const hid of ['hint_action', 'hint_buy', 'hint_night', 'hint_cleanup', 'hint_foe', 'hint_resolve', 'hint_fallen']) {
         patchEl(el.children, `dom_el_seal_${hid}`, (t) => {
           t.rect = { x: 5, y: 64, w: 58, h: 24 };
           if (t.kind === 'text') t.fontSize = 0.55;

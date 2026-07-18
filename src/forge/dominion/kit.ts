@@ -127,6 +127,15 @@ export interface ExpansionModule {
   /** Names whose PRIMARY type is Victory (Duke) / Treasure (Harem). */
   victoryNames?: string[];
   treasureNames?: string[];
+  /** Names whose PRIMARY type is Night (Nocturne): played in the Night
+   *  phase (between Buy and Cleanup) at no Action cost via the core
+   *  'dom_action_play_night'; the phase auto-skips for nightless hands. */
+  nightNames?: string[];
+  /** Extra setup blocks appended after the kingdom/landscape promotion and
+   *  before the opening hands are dealt (Heirloom swaps, trash seeding —
+   *  gate anything pile-conditional on the pile actually being in the
+   *  supply). These survive pickKingdom/pickLandscapes untouched. */
+  buildSetup?(kit: CardKit): Block[];
   /** Extra per-player/global variables the cards need (hidden bookkeeping). */
   variables?: VariableDef[];
   /** Extra zones the cards need (per-player mats: Island, Native Village). */

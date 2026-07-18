@@ -234,6 +234,7 @@ const TYPE_ACTION = 'dom_type_action';
 const TYPE_EVENT = 'dom_type_event';
 const TYPE_LANDMARK = 'dom_type_landmark';
 const TYPE_PROJECT = 'dom_type_project';
+const TYPE_WAY = 'dom_type_way';
 const TAG_ATTACK = 'dom_tag_attack';
 const TAG_REACTION = 'dom_tag_reaction';
 const TAG_KINGDOM = 'dom_tag_kingdom';
@@ -260,6 +261,8 @@ const CARD_TYPES: CardTypeDef[] = [
     ? [{ id: TYPE_LANDMARK, name: 'Landmark', color: '#5fae8e' }] : []),
   ...(LANDSCAPE_SPECS.some((l) => l.kind === 'project')
     ? [{ id: TYPE_PROJECT, name: 'Project', color: '#d8a3c0' }] : []),
+  ...(LANDSCAPE_SPECS.some((l) => l.kind === 'way')
+    ? [{ id: TYPE_WAY, name: 'Way', color: '#c9b458' }] : []),
 ];
 const CARD_TAGS: TagDef[] = [
   { id: TAG_ATTACK, name: 'Attack' },
@@ -442,11 +445,11 @@ for (const p of NONSUPPLY_PILES) {
   };
 }
 // Landscapes wear their sideboard type and no tags at all.
+const LANDSCAPE_TYPE: Record<string, string> = {
+  event: TYPE_EVENT, landmark: TYPE_LANDMARK, project: TYPE_PROJECT, way: TYPE_WAY,
+};
 for (const l of LANDSCAPE_SPECS) {
-  TYPE_LINE[l.name] = {
-    typeId: l.kind === 'event' ? TYPE_EVENT : l.kind === 'landmark' ? TYPE_LANDMARK : TYPE_PROJECT,
-    tags: [],
-  };
+  TYPE_LINE[l.name] = { typeId: LANDSCAPE_TYPE[l.kind], tags: [] };
 }
 
 /** The pretty display line for KIND_F: "Treasure", "Action – Attack"… */
@@ -462,7 +465,15 @@ function kindLabelFor(line: TypeLine): string {
 
 /** "When you play this" ability: fires when the card enters In Play. */
 function onPlay(id: string, name: string, script: Block[], stacked = false): AbilityDef {
-  return { id, name, on: 'enterZone', zoneId: INPLAY, phaseId: null, condition: null, script, stacked };
+  // tagFilter 'play': only PLAY-tagged entries fire (real plays + the
+  // play-tagged synthetic events of Throne Room / Captain / buy_event).
+  // Untagged entries stay silent — that is how a Way substitutes a card's
+  // effect (dom_action_play_way moves the card untagged, then fires the
+  // WAY's ability instead) — and duration marches can never re-fire.
+  return {
+    id, name, on: 'enterZone', zoneId: INPLAY, phaseId: null,
+    tagFilter: 'play', condition: null, script, stacked,
+  };
 }
 
 /**
@@ -1859,6 +1870,35 @@ export function buildDominionDef(): GameDef {
       ],
     });
   }
+  // Playing a card AS a Way: costs the Action, the card enters In Play on
+  // an UNTAGGED move (its own 'play'-filtered abilities stay silent), and
+  // the chosen Way's ability fires instead (auto-resolves with one Way).
+  if (LANDSCAPE_SPECS.some((l) => l.kind === 'way')) {
+    def.actions.push({
+      id: 'dom_action_play_way', name: 'Play as a Way',
+      target: { kind: 'cardInZone', zoneId: HAND, ownerOnly: true },
+      legality: allOf(
+        IS_ACTION_CARD,
+        gt(getVar(ACTIONS), num(0)),
+        gt(countCards(zone(LANDSCAPES), isA(CARD, TYPE_WAY)), num(0)),
+      ),
+      script: [
+        changeVar(ACTIONS, num(-1)),
+        move(specific(CARD), zone(HAND), zone(INPLAY), { faceUp: true }),
+        // No `revealed`: the landscapes zone is visibility-'all' (faces
+        // already public), and a lone Way must AUTO-RESOLVE — revealed
+        // choices are exempt from auto-resolution by design.
+        choosePileBlock({
+          who: null, from: zone(LANDSCAPES), filter: isA(CARD, TYPE_WAY),
+          prompt: 'Play it as which Way?',
+          body: [
+            announce(CURRENT, ' plays a card as ', CARD, '.'),
+            { kind: 'triggerAbilities', card: CARD, on: 'enterZone', zoneId: INPLAY },
+          ],
+        }),
+      ],
+    });
+  }
   const buyPhase = def.phases.find((p) => p.id === PHASE_BUY);
   if (buyPhase) {
     buyPhase.actionIds.push('dom_action_spend_coffer', 'dom_action_pay_debt');
@@ -1867,7 +1907,12 @@ export function buildDominionDef(): GameDef {
     }
   }
   const actionPhase = def.phases.find((p) => p.id === PHASE_ACTION);
-  if (actionPhase) actionPhase.actionIds.push('dom_action_spend_villager');
+  if (actionPhase) {
+    actionPhase.actionIds.push('dom_action_spend_villager');
+    if (LANDSCAPE_SPECS.some((l) => l.kind === 'way')) {
+      actionPhase.actionIds.push('dom_action_play_way');
+    }
+  }
   def.actions.push(...EXPANSIONS.flatMap((x) => x.buildActions?.(KIT) ?? []));
   // Project buys are per-project module actions (see kit.ts): the naming
   // convention registers them all with the buy phase in one sweep.
@@ -2419,7 +2464,7 @@ export function potionEnabled(def: GameDef): boolean {
 export interface LandscapeCatalogEntry {
   name: string;
   cost: number;
-  kind: 'event' | 'landmark' | 'project';
+  kind: 'event' | 'landmark' | 'project' | 'way';
   expansion: string;
 }
 

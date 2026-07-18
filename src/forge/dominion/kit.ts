@@ -154,8 +154,14 @@ export interface ExpansionModule {
    *   + coins/buys/debt gates; the script pays and sets the flag (a
    *   non-hidden perPlayer var, so the scoreboard shows ownership).
    *   Standing effects gate on the flag.
+   * - WAY: its effect is an onPlay-style ability ON THE WAY CARD. The core
+   *   'dom_action_play_way' spends the Action, moves the chosen hand card
+   *   to In Play UNTAGGED (kit.onPlay is 'play'-filtered, so the card's own
+   *   effect stays silent) and fires the Way's ability instead. A Way that
+   *   references the played card reads it as topCard of In Play (the move
+   *   just happened — document that in the module).
    */
-  landscapes?: { name: string; cost: number; kind: 'event' | 'landmark' | 'project' }[];
+  landscapes?: { name: string; cost: number; kind: 'event' | 'landmark' | 'project' | 'way' }[];
   buildTriggers?(kit: CardKit): TriggerDef[];
   /** Extra actions (e.g. a card's own response-speed reaction). */
   buildActions?(kit: CardKit): ActionDef[];

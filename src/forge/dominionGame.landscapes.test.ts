@@ -26,10 +26,12 @@ const testLandscapes: ExpansionModule = {
   ids: {
     'Test Expedition': 'dom_card_test_expedition',
     'Test Obelisk': 'dom_card_test_obelisk',
+    'Test Way of the Ox': 'dom_card_test_way_ox',
   },
   landscapes: [
     { name: 'Test Expedition', cost: 3, kind: 'event' },
     { name: 'Test Obelisk', cost: 0, kind: 'landmark' },
+    { name: 'Test Way of the Ox', cost: 0, kind: 'way' },
   ],
   buildCards(kit: CardKit) {
     return [
@@ -39,6 +41,10 @@ const testLandscapes: ExpansionModule = {
         ]),
       kit.cardDef('dom_card_test_obelisk', 'Test Obelisk', 0, 0, 0,
         'Landmark: 2 VP at every recount while on the table.'),
+      kit.cardDef('dom_card_test_way_ox', 'Test Way of the Ox', 0, 0, 0,
+        'Way: +2 Actions.', [
+          kit.onPlay('dom_ab_test_way_ox', 'Ox', [changeVar(kit.vars.ACTIONS, num(2))]),
+        ]),
     ];
   },
   buildVpTerms(kit: CardKit): Block[] {
@@ -124,6 +130,42 @@ describe('the landscape sideboard core', () => {
     await expect(
       engine.performAction('p0', { actionId: 'dom_action_buy_event', cardId: eventId }),
     ).rejects.toThrow();
+  });
+
+  it('a Way substitutes the played card: its own effect stays silent', async () => {
+    const def = forge.pickLandscapes(base, ['Test Way of the Ox']);
+    def.setup.push({
+      kind: 'moveCards',
+      from: { zoneId: 'dom_zone_supply', owner: null },
+      to: { zoneId: 'dom_zone_hand', owner: null },
+      cards: {
+        kind: 'filter',
+        filter: {
+          kind: 'compare', op: '==',
+          left: { kind: 'cardField', card: { kind: 'binding', name: '$card' }, fieldId: 'name' },
+          right: { kind: 'str', value: 'Smithy' },
+        },
+      },
+      toPosition: 'top', faceUp: true, tag: null,
+    });
+    const { engine, errors } = probeEngine(def, () => {
+      throw new Error('single Way must auto-resolve');
+    });
+    await engine.start();
+    let state = engine.getState();
+    const smithy = findNamed(state, 'dom_zone_hand:p0', 'Smithy');
+    const handBefore = state.zones['dom_zone_hand:p0'].cardIds.length;
+    await engine.performAction('p0', { actionId: 'dom_action_play_way', cardId: smithy });
+    state = engine.getState();
+    expect(errors).toEqual([]);
+    // Smithy's +3 Cards stayed silent; the Ox's +2 Actions fired instead:
+    // 1 (start) − 1 (the play) + 2 (the Way) = 2.
+    expect(state.players[0].vars['dom_var_actions']).toBe(2);
+    expect(state.zones['dom_zone_hand:p0'].cardIds.length).toBe(handBefore - 1);
+    expect(state.zones['dom_zone_inplay:p0'].cardIds).toContain(smithy);
+    // The Way card itself never left the sideboard.
+    expect(state.zones[LANDSCAPES].cardIds.map((id) => state.cards[id].name))
+      .toContain('Test Way of the Ox');
   });
 
   it('a Landmark on the table joins every VP recount; absent it does not', async () => {

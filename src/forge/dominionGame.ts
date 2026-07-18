@@ -1976,12 +1976,14 @@ export function buildDominionDef(): GameDef {
     }
   }
   def.actions.push(...EXPANSIONS.flatMap((x) => x.buildActions?.(KIT) ?? []));
-  // Project buys are per-project module actions (see kit.ts): the naming
-  // convention registers them all with the buy phase in one sweep.
+  // Project buys are per-project module actions (see kit.ts), and
+  // 'dom_action_buyx_*' is the general escape hatch for module-owned buy
+  // surfaces (Dark Ages' top-of-the-Knights-pile, split piles…): both
+  // prefixes register with the buy phase in one sweep.
   if (buyPhase) {
     buyPhase.actionIds.push(...def.actions
       .map((a) => a.id)
-      .filter((id) => id.startsWith('dom_action_buy_project_')));
+      .filter((id) => id.startsWith('dom_action_buy_project_') || id.startsWith('dom_action_buyx_')));
   }
 
   // Triggers: the Gardens-aware recount runs at turn end AND on every

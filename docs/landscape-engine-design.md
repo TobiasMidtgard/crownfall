@@ -40,6 +40,24 @@ The engine already speaks cards, zones, actions, triggers. A landscape is a CARD
   Prophecies need the sun-token countdown (global var + triggers; likely easy) — both
   designed after the four core kinds ship.
 
+### Way audit result (2026-07-18) — SAFE to ship
+
+- `triggerAbilities` fires synthetic **play-tagged** enterZone events (see
+  src/engine/triggerAbilities.test.ts header + events.ts:113 tag check), so adding
+  `tagFilter: 'play'` to kit.onPlay keeps Throne Room / Captain / buy_event working.
+- Grep audit: every module move INTO In Play is tagged 'play' except the duration
+  marches ('duration_return'), which deliberately must NOT re-fire — the filter also
+  closes that latent re-fire class for future unfiltered cards.
+- play_way action: target = hand card, legality `isAction && ACTIONS>0 &&
+  countCards(LANDSCAPES, isWay) > 0` (the countCards filter's own $card binding is
+  independent of the target binding — the Gatekeeper cardZoneId precedent). Script:
+  −1 Action, UNTAGGED move hand→In Play (filtered onPlay stays silent), choosePile
+  over the Ways (auto-resolves when one), triggerAbilities on the chosen Way.
+- Ways that reference the played card (Horse/Butterfly return-to-pile) read it as
+  `topCard(INPLAY, CURRENT)` — the move just happened, documented approximation.
+- Expected exclusions: Way of the Chameleon (per-effect $↔card swap) and Way of the
+  Mouse (set-aside proxy card) — document, ship the other 18.
+
 ## Setup & UI
 
 - SetupScreen: a "Landscapes" section under the kingdom picker — catalog chips by kind,

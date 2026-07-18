@@ -100,6 +100,11 @@ export const KINGDOM_SETS: KingdomSet[] = [
     motto: 'Banished, not forgotten.',
     cards: ['Black Cat', 'Camel Train', 'Stockpile', 'Bounty Hunter', 'Cardinal', 'Sheepdog', 'Coven', 'Displace', 'Sanctuary', 'Gatekeeper'],
   },
+  {
+    id: 'city-of-inventors', name: 'City of Inventors', icon: 'glyph-coin',
+    motto: 'Genius pays its own way.',
+    cards: ['Border Guard', 'Ducat', 'Lackeys', 'Experiment', 'Inventor', 'Mountain Village', 'Priest', 'Recruiter', 'Scholar', 'Villain'],
+  },
 ];
 
 export const DEFAULT_KINGDOM_ID = 'first-game';

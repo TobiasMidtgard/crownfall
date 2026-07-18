@@ -403,6 +403,10 @@ function isDocumentedAdvanced(e: Expr): boolean {
   // string — Menagerie's Gatekeeper asks where the gained copy sits before
   // exiling it) have no guided clause either.
   if (e.left.kind === 'cardZoneId') return true;
+  // TARGETED variable reads on the LEFT of a compare (Renaissance's
+  // project-claim gates read another player's flag, the Horn its per-player
+  // once-mark) — the guided varCompare clause only reads the plain var.
+  if (e.left.kind === 'getVar') return true;
   if (kinds.includes('stackSize')) return true;
   if (kinds.includes('currentPlayer') || kinds.includes('nextPlayer')) return true;
   if (e.right.kind === 'getVar' || e.right.kind === 'zoneCount' || e.right.kind === 'cardField') return true;

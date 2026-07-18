@@ -23,6 +23,9 @@ import { menagerieA } from './menagerieA';
 import { menagerieB } from './menagerieB';
 import { empiresLandmarks } from './empiresLandmarks';
 import { empiresEvents } from './empiresEvents';
+import { renaissanceProjects } from './renaissanceProjects';
+import { renaissanceA } from './renaissanceA';
+import { renaissanceB } from './renaissanceB';
 
 export const EXPANSIONS: ExpansionModule[] = [
   base2e, intrigue2eA, intrigue2eB, intrigue2eC,
@@ -36,4 +39,7 @@ export const EXPANSIONS: ExpansionModule[] = [
   menagerieA, menagerieB,
   // Empires' landscape side (the kingdom waits on split piles).
   empiresLandmarks, empiresEvents,
+  // Renaissance: renaissanceA declares the five artifact vars (and leans on
+  // seaside2eA's Haven mark, registered far above); B reads A's artifacts.
+  renaissanceProjects, renaissanceA, renaissanceB,
 ];

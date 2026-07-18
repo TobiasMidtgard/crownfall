@@ -1552,7 +1552,7 @@ export function buildDominionDef(): GameDef {
       "The hall's flagship table, forged here: the classic deck-builder for two. "
       + 'Buy from a shared supply, grow an engine, and weather Militia raids and '
       + 'midnight Curses — reveal a Moat in the response window to stay safe. '
-      + 'Pick one of eighteen kingdom sets or hand-pick your ten from all 230 piles; '
+      + 'Pick one of nineteen kingdom sets or hand-pick your ten from all 260 piles; '
       + 'the game ends when the Provinces (or any three piles) run out, and most '
       + 'victory points wins.',
   };

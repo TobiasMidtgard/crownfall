@@ -44,10 +44,11 @@ const BASIC_NAMES = ['Copper', 'Silver', 'Gold', 'Estate', 'Duchy', 'Province', 
 /** Basics 46+40+30+8+8+8+10, kingdom stock 205 piles of 10 (18 core + 10 Base
  *  2E + 26 Intrigue 2E + 26 Seaside 2E + 25 Prosperity 2E + 13 Cornucopia +
  *  13 Guilds + 26 Hinterlands 2E + 7 Promos + 11 Alchemy + 30 Menagerie),
- *  Prosperity basics 12+8, starters 2 × 10, 5 Prizes + 30 Horses, 16 Potions,
- *  81 landscape singles (21 Landmarks + 25 Events + 17 Projects + 18 Ways).
- *  Kingdom stock includes Renaissance's 25 piles (230 piles total). */
-const TOTAL_CARDS = 150 + 2300 + 20 + 20 + 35 + 16 + 81;
+ *  Prosperity basics 12+8, starters 2 × 10, non-supply 5 Prizes + 30 Horses
+ *  + 40 Traveller upgrades, 16 Potions, 86 landscape singles (21 Landmarks +
+ *  30 Events + 17 Projects + 18 Ways). Kingdom stock: 260 piles (Adventures
+ *  adds 30). */
+const TOTAL_CARDS = 150 + 2600 + 20 + 20 + 75 + 16 + 86;
 
 const errorsOf = (def: GameDef) =>
   validateGameDef(def).filter((i) => i.severity === 'error');
@@ -918,7 +919,7 @@ describe('kingdom picker helpers (the setup screen surface)', () => {
   it('tags every catalog entry with its printed set; Prosperity basics are not picks', () => {
     const cat = kingdomCatalog(def);
     const sets = new Set(cat.map((c) => c.expansion));
-    expect([...sets].sort()).toEqual(['Alchemy', 'Base', 'Cornucopia', 'Guilds', 'Hinterlands', 'Intrigue', 'Menagerie', 'Promos', 'Prosperity', 'Renaissance', 'Seaside']);
+    expect([...sets].sort()).toEqual(['Adventures', 'Alchemy', 'Base', 'Cornucopia', 'Guilds', 'Hinterlands', 'Intrigue', 'Menagerie', 'Promos', 'Prosperity', 'Renaissance', 'Seaside']);
     expect(cat.filter((c) => c.expansion === 'Intrigue')).toHaveLength(26);
     expect(cat.filter((c) => c.expansion === 'Seaside')).toHaveLength(26);
     expect(cat.filter((c) => c.expansion === 'Prosperity')).toHaveLength(25);
@@ -929,6 +930,7 @@ describe('kingdom picker helpers (the setup screen surface)', () => {
     expect(cat.filter((c) => c.expansion === 'Alchemy')).toHaveLength(11);
     expect(cat.filter((c) => c.expansion === 'Menagerie')).toHaveLength(30);
     expect(cat.filter((c) => c.expansion === 'Renaissance')).toHaveLength(25);
+    expect(cat.filter((c) => c.expansion === 'Adventures')).toHaveLength(30);
     // Potion and Horse stock are never kingdom picks.
     expect(cat.some((c) => c.name === 'Potion' || c.name === 'Horse')).toBe(false);
     expect(cat.some((c) => c.name === 'Platinum' || c.name === 'Colony')).toBe(false);

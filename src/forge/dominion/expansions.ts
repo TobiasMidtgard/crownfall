@@ -28,6 +28,9 @@ import { renaissanceA } from './renaissanceA';
 import { renaissanceB } from './renaissanceB';
 import { menagerieWays } from './menagerieWays';
 import { adventuresEvents } from './adventuresEvents';
+import { adventuresA } from './adventuresA';
+import { adventuresB } from './adventuresB';
+import { adventuresTokens } from './adventuresTokens';
 
 export const EXPANSIONS: ExpansionModule[] = [
   base2e, intrigue2eA, intrigue2eB, intrigue2eC,
@@ -44,8 +47,10 @@ export const EXPANSIONS: ExpansionModule[] = [
   // Renaissance: renaissanceA declares the five artifact vars (and leans on
   // seaside2eA's Haven mark, registered far above); B reads A's artifacts.
   renaissanceProjects, renaissanceA, renaissanceB,
-  // Ways reference menagerieA's mats + seaside2eA's Haven mark by id;
-  // Adventures Events are self-contained (token events wait on the token
-  // system, Mission on extra turns).
+  // Ways reference menagerieA's mats + seaside2eA's Haven mark by id.
   menagerieWays, adventuresEvents,
+  // Adventures: A declares the Tavern mat + Traveller stock and Teacher
+  // writes the token vars that adventuresTokens declares — register all
+  // three together (order among them is free; the merged def needs all).
+  adventuresA, adventuresB, adventuresTokens,
 ];

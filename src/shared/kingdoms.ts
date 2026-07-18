@@ -105,6 +105,11 @@ export const KINGDOM_SETS: KingdomSet[] = [
     motto: 'Genius pays its own way.',
     cards: ['Border Guard', 'Ducat', 'Lackeys', 'Experiment', 'Inventor', 'Mountain Village', 'Priest', 'Recruiter', 'Scholar', 'Villain'],
   },
+  {
+    id: 'roads-and-taverns', name: 'Roads and Taverns', icon: 'crest-dominion',
+    motto: 'Every journey ends at an inn.',
+    cards: ['Page', 'Peasant', 'Ratcatcher', 'Coin of the Realm', 'Guide', 'Dungeon', 'Gear', 'Port', 'Lost City', 'Hireling'],
+  },
 ];
 
 export const DEFAULT_KINGDOM_ID = 'first-game';

@@ -10,11 +10,12 @@
  * so every script below speaks CURRENT-relative zones/vars, exactly like
  * empiresEvents.
  *
- * EXCLUDED (8 of the printed 20, verified against the official card list):
- *  - Ferry ($3), Plan ($3), Seaway ($5), Lost Arts ($6), Training ($6),
- *    Pathfinding ($8), Inheritance ($7): the Adventures pile-token system
- *    (a token parked ON a supply pile modifying every play/buy from it) —
- *    waits for the token system.
+ * EXCLUDED here (verified against the official card list):
+ *  - Plan / Seaway / Lost Arts / Training / Pathfinding now SHIP in the
+ *    sibling adventuresTokens module (per-player pile-name token vars).
+ *  - Ferry ($3): per-player COST modification is inexpressible (the only
+ *    cost lever is the shared global discount).
+ *  - Inheritance ($7): Estates-become-copies needs card morphing.
  *  - Mission ($4): extra turns (the extra-turn bucket).
  *
  * DEVIATIONS register (details in the per-card comments):

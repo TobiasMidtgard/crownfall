@@ -44,11 +44,11 @@ const BASIC_NAMES = ['Copper', 'Silver', 'Gold', 'Estate', 'Duchy', 'Province', 
 /** Basics 46+40+30+8+8+8+10, kingdom stock 205 piles of 10 (18 core + 10 Base
  *  2E + 26 Intrigue 2E + 26 Seaside 2E + 25 Prosperity 2E + 13 Cornucopia +
  *  13 Guilds + 26 Hinterlands 2E + 7 Promos + 11 Alchemy + 30 Menagerie),
- *  Prosperity basics 12+8, starters 2 × 10, non-supply 5 Prizes + 30 Horses
- *  + 40 Traveller upgrades, 16 Potions, 86 landscape singles (21 Landmarks +
- *  30 Events + 17 Projects + 18 Ways). Kingdom stock: 260 piles (Adventures
- *  adds 30). */
-const TOTAL_CARDS = 150 + 2600 + 20 + 20 + 75 + 16 + 86;
+ *  Prosperity basics 12+8, starters 2 × 10, non-supply 169 (5 Prizes,
+ *  30 Horses, 40 Traveller upgrades, 12 Boons + 12 Hexes, 53 Spirits/Bats/
+ *  Wishes, 14 Heirlooms, 3 Zombies), 16 Potions, 86 landscape singles.
+ *  Kingdom stock: 293 piles (Nocturne adds 33). */
+const TOTAL_CARDS = 150 + 2930 + 20 + 20 + 169 + 16 + 86;
 
 const errorsOf = (def: GameDef) =>
   validateGameDef(def).filter((i) => i.severity === 'error');
@@ -192,7 +192,7 @@ describe('the schema-v2 vocabulary (no staging machinery left)', () => {
   it('defines the type/tag vocabulary + the one named filter (spec A)', () => {
     // Event/Landmark joined with the Empires landscapes (declared only
     // while a registered module ships that kind).
-    expect(def.cardTypes?.map((t) => t.name)).toEqual(['Treasure', 'Victory', 'Curse', 'Action', 'Event', 'Landmark', 'Project', 'Way']);
+    expect(def.cardTypes?.map((t) => t.name)).toEqual(['Treasure', 'Victory', 'Curse', 'Action', 'Event', 'Landmark', 'Project', 'Way', 'Night']);
     // Every type wears its skin-palette accent color.
     for (const t of def.cardTypes!) expect(t.color).toMatch(/^#[0-9a-f]{6}$/);
     // MOAT DECISION (see dominionGame.ts): a card has ONE primary type, so
@@ -698,7 +698,9 @@ describe('the screen layout speaks the original table\'s language', () => {
     expect(seal.onChangeAnim).toBe('stamp');
     expect(seal.states?.map((s) => s.id)).toEqual([
       'dom_st_seal_over', 'dom_st_seal_resolve', 'dom_st_seal_foe',
-      'dom_st_seal_action', 'dom_st_seal_buy', 'dom_st_seal_cleanup',
+      'dom_st_seal_action', 'dom_st_seal_buy',
+      // Nocturne's Night slot joined the seal.
+      'dom_st_seal_night', 'dom_st_seal_cleanup',
     ]);
     const kids = (seal as Extract<ScreenElement, { kind: 'group' }>).children;
     const ids = kids.map((k) => k.id);
@@ -832,7 +834,7 @@ describe("the mobile variant is the original's pocket table (one viewport)", () 
   it('the compact seal keeps the six states and drops the keyboard hint', () => {
     const seal = findEl(m.elements, 'dom_el_m_seal') as Extract<ScreenElement, { kind: 'group' }>;
     expect(seal.onChangeAnim).toBe('stamp');
-    expect(seal.states?.map((s) => s.name)).toEqual(['Fallen', 'Resolve', 'Foe turn', 'Action', 'Buy', 'Cleanup']);
+    expect(seal.states?.map((s) => s.name)).toEqual(['Fallen', 'Resolve', 'Foe turn', 'Action', 'Buy', 'Night', 'Cleanup']);
     const ids = seal.children.map((k) => k.id);
     for (const suffix of [
       'btn_done', 'btn_end', 'btn_cleanup', 'dot_action', 'dot_buy', 'dot_cleanup',
@@ -919,7 +921,7 @@ describe('kingdom picker helpers (the setup screen surface)', () => {
   it('tags every catalog entry with its printed set; Prosperity basics are not picks', () => {
     const cat = kingdomCatalog(def);
     const sets = new Set(cat.map((c) => c.expansion));
-    expect([...sets].sort()).toEqual(['Adventures', 'Alchemy', 'Base', 'Cornucopia', 'Guilds', 'Hinterlands', 'Intrigue', 'Menagerie', 'Promos', 'Prosperity', 'Renaissance', 'Seaside']);
+    expect([...sets].sort()).toEqual(['Adventures', 'Alchemy', 'Base', 'Cornucopia', 'Guilds', 'Hinterlands', 'Intrigue', 'Menagerie', 'Nocturne', 'Promos', 'Prosperity', 'Renaissance', 'Seaside']);
     expect(cat.filter((c) => c.expansion === 'Intrigue')).toHaveLength(26);
     expect(cat.filter((c) => c.expansion === 'Seaside')).toHaveLength(26);
     expect(cat.filter((c) => c.expansion === 'Prosperity')).toHaveLength(25);
@@ -931,6 +933,7 @@ describe('kingdom picker helpers (the setup screen surface)', () => {
     expect(cat.filter((c) => c.expansion === 'Menagerie')).toHaveLength(30);
     expect(cat.filter((c) => c.expansion === 'Renaissance')).toHaveLength(25);
     expect(cat.filter((c) => c.expansion === 'Adventures')).toHaveLength(30);
+    expect(cat.filter((c) => c.expansion === 'Nocturne')).toHaveLength(33);
     // Potion and Horse stock are never kingdom picks.
     expect(cat.some((c) => c.name === 'Potion' || c.name === 'Horse')).toBe(false);
     expect(cat.some((c) => c.name === 'Platinum' || c.name === 'Colony')).toBe(false);

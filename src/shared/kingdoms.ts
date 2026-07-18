@@ -110,6 +110,11 @@ export const KINGDOM_SETS: KingdomSet[] = [
     motto: 'Every journey ends at an inn.',
     cards: ['Page', 'Peasant', 'Ratcatcher', 'Coin of the Realm', 'Guide', 'Dungeon', 'Gear', 'Port', 'Lost City', 'Hireling'],
   },
+  {
+    id: 'midnight-vigil', name: 'Midnight Vigil', icon: 'crest-veil',
+    motto: 'What sleeps by day works by night.',
+    cards: ['Bard', 'Blessed Village', 'Tracker', 'Skulk', 'Cursed Village', 'Ghost Town', 'Night Watchman', 'Cobbler', 'Raider', 'Necromancer'],
+  },
 ];
 
 export const DEFAULT_KINGDOM_ID = 'first-game';

@@ -23,7 +23,7 @@ import { getGameById, saveGame } from '../state/store';
 import { buildDominionDef } from './dominionGame';
 
 export const DOMINION_GAME_ID = 'dominion-crownfall';
-export const SEED_VERSION = 26; // v26: Adventures complete — Tavern, Travellers, pile tokens (30 cards + 5 Events)
+export const SEED_VERSION = 27; // v27: Nocturne complete — Night phase, Boons/Hexes, Heirlooms, Spirits (33 cards)
 
 const STAMP_KEY = 'crownfall.seed.dominion';
 const TOMBSTONE_KEY = 'crownfall.seed.dominion.deleted';

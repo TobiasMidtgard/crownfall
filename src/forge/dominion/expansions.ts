@@ -31,6 +31,9 @@ import { adventuresEvents } from './adventuresEvents';
 import { adventuresA } from './adventuresA';
 import { adventuresB } from './adventuresB';
 import { adventuresTokens } from './adventuresTokens';
+import { nocturneBoons } from './nocturneBoons';
+import { nocturneNight } from './nocturneNight';
+import { nocturneRest } from './nocturneRest';
 
 export const EXPANSIONS: ExpansionModule[] = [
   base2e, intrigue2eA, intrigue2eB, intrigue2eC,
@@ -53,4 +56,7 @@ export const EXPANSIONS: ExpansionModule[] = [
   // writes the token vars that adventuresTokens declares — register all
   // three together (order among them is free; the merged def needs all).
   adventuresA, adventuresB, adventuresTokens,
+  // Nocturne: Boons declares the fate/hex/state contract the other two
+  // consume — it must come first.
+  nocturneBoons, nocturneNight, nocturneRest,
 ];

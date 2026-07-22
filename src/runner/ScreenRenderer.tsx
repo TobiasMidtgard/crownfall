@@ -63,8 +63,8 @@ import {
 } from './layout';
 import {
   filterDisplayCards, flowChildCss, flowLayoutCss, layoutStyleCss, lineColor, lineEndpoints,
-  pctToPx, resolveElementAppearance, resolveSeat, shapeBorderRadius, shapeClipPath, shapePolygon,
-  slotRect, textStyleCss, computeStage,
+  pathShapePoints, pctToPx, resolveElementAppearance, resolveSeat, shapeBorderRadius,
+  shapeClipPath, shapePolygon, slotRect, textStyleCss, computeStage,
   type ActiveScreen,
 } from './layoutGeometry';
 import { zonePartCss } from './partStyles';
@@ -925,30 +925,46 @@ function ElementBody({ ctx, el, selCtx, style, screenW, buttonMove, onMove }: {
           </span>
         )
         : null;
-      const polygon = shapePolygon(el.shape);
+      // CUSTOM PATH shapes draw the element's own vertices; the preset
+      // polygon shapes draw their static table entry. Same SVG treatment.
+      const open = el.shape === 'path' && el.closed === false;
+      const polygon = el.shape === 'path'
+        ? (el.points && el.points.length >= 3 ? pathShapePoints(el.points) : null)
+        : shapePolygon(el.shape);
       if (polygon !== null) {
         // A polygon stretched by viewBox keeps the shape axis-aligned in
         // non-square rects; non-scaling-stroke keeps the border width in px.
         const hasBorder = style?.borderWidth !== undefined || style?.borderColor !== undefined
           || style?.borderStyle !== undefined;
-        const strokeW = hasBorder ? (style?.borderWidth ?? 1) : 0;
+        const strokeW = hasBorder || open ? (style?.borderWidth ?? 1) : 0;
         const dash = style?.borderStyle === 'dashed' ? '6 4'
           : style?.borderStyle === 'dotted' ? '1.5 3' : undefined;
+        const svgStyle = {
+          fill: open ? 'none' : (style?.background ?? 'transparent'),
+          stroke: strokeW > 0
+            ? (style?.borderColor ?? 'rgba(255,255,255,0.35)')
+            : 'none',
+        };
         return (
           <div className={`rn-sl-shape rn-sl-${el.shape}`} style={{ opacity: style?.opacity }}>
             <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-              <polygon
-                points={polygon}
-                vectorEffect="non-scaling-stroke"
-                strokeWidth={strokeW}
-                strokeDasharray={dash}
-                style={{
-                  fill: style?.background ?? 'transparent',
-                  stroke: strokeW > 0
-                    ? (style?.borderColor ?? 'rgba(255,255,255,0.35)')
-                    : 'none',
-                }}
-              />
+              {open ? (
+                <polyline
+                  points={polygon}
+                  vectorEffect="non-scaling-stroke"
+                  strokeWidth={strokeW}
+                  strokeDasharray={dash}
+                  style={svgStyle}
+                />
+              ) : (
+                <polygon
+                  points={polygon}
+                  vectorEffect="non-scaling-stroke"
+                  strokeWidth={strokeW}
+                  strokeDasharray={dash}
+                  style={svgStyle}
+                />
+              )}
             </svg>
             {label}
           </div>

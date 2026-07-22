@@ -27,7 +27,7 @@ import {
   selectionVersion, selectorContextFrom, selectorGateOpen, subscribeSelection,
   varTextValue, visibleButtonActionIds, writeSelection, zoneInstKey,
 } from './layout';
-import { filterDisplayCards, resolveElementAppearance, resolveSeat } from './layoutGeometry';
+import { filterDisplayCards, pathShapePoints, resolveElementAppearance, resolveSeat } from './layoutGeometry';
 
 const rect = { x: 0, y: 0, w: 20, h: 10 };
 
@@ -867,5 +867,12 @@ describe('styleRules: conditional style patches (universal node model)', () => {
     expect(a.stateId).toBe('st_night');
     // base -> state(red bg) -> gold border -> #222 bg -> purple bg
     expect(a.style).toEqual({ background: 'purple', borderColor: 'gold' });
+  });
+});
+
+describe('path shapes (universal node model)', () => {
+  it('pathShapePoints renders an svg points string', () => {
+    expect(pathShapePoints([{ x: 50, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }]))
+      .toBe('50,0 100,100 0,100');
   });
 });

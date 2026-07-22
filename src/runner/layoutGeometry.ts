@@ -156,13 +156,23 @@ const SHAPE_POLYGONS: Partial<Record<ShapeKind, string>> = {
 };
 
 export const SHAPE_KINDS: ShapeKind[] = [
-  'rect', 'rounded', 'pill', 'circle', 'diamond', 'hexagon', 'star',
+  'rect', 'rounded', 'pill', 'circle', 'diamond', 'hexagon', 'star', 'path',
 ];
 
 /** SVG polygon `points` for polygon shapes (diamond/hexagon/star); else null. */
 export function shapePolygon(shape: ShapeKind): string | null {
   return SHAPE_POLYGONS[shape] ?? null;
 }
+
+/** SVG `points` string for a CUSTOM path shape's vertices (% of its box). */
+export function pathShapePoints(pts: { x: number; y: number }[]): string {
+  return pts.map((p) => `${p.x},${p.y}`).join(' ');
+}
+
+/** A fresh default path (a triangle) for newly created path shapes. */
+export const DEFAULT_PATH_POINTS: { x: number; y: number }[] = [
+  { x: 50, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 },
+];
 
 /** A CSS clip-path polygon(...) for polygon shapes; null for radius shapes. */
 export function shapeClipPath(shape: ShapeKind): string | null {

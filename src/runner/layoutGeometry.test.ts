@@ -225,8 +225,8 @@ describe('shape & line geometry', () => {
     }
   });
 
-  it('SHAPE_KINDS lists all seven silhouettes', () => {
-    expect(SHAPE_KINDS).toEqual(['rect', 'rounded', 'pill', 'circle', 'diamond', 'hexagon', 'star']);
+  it('SHAPE_KINDS lists the seven silhouettes + the custom path', () => {
+    expect(SHAPE_KINDS).toEqual(['rect', 'rounded', 'pill', 'circle', 'diamond', 'hexagon', 'star', 'path']);
   });
 
   it('line endpoints: h/v cross the middle, down = TL→BR, up = BL→TR', () => {

@@ -249,6 +249,13 @@ export function validateGameDef(def: GameDef): ValidationIssue[] {
           (el.styleRules ?? []).forEach((r, i) => {
             walkExpr(r.when, `${here} > style rule ${i + 1}`);
           });
+          if (el.kind === 'shape' && el.shape === 'path') {
+            const pts = el.points ?? [];
+            if (pts.length < 3) err(here, 'A path shape needs at least 3 points.');
+            if (pts.some((p) => p.x < 0 || p.x > 100 || p.y < 0 || p.y > 100)) {
+              err(here, 'Path points must lie within the shape box (0-100%).');
+            }
+          }
           if (el.showForSelector !== undefined) {
             const target = own.get(el.showForSelector);
             if (target === undefined) {

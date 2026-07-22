@@ -70,7 +70,7 @@ export interface CardStateSpec {
  * pill/circle) round via border-radius; polygon shapes (diamond/hexagon/star)
  * clip to a polygon. 'rect' + a style radius covers arbitrary rounded rects.
  */
-export type ShapeKind = 'rect' | 'rounded' | 'pill' | 'circle' | 'diamond' | 'hexagon' | 'star';
+export type ShapeKind = 'rect' | 'rounded' | 'pill' | 'circle' | 'diamond' | 'hexagon' | 'star' | 'path';
 
 /** One box-shadow layer (drop shadow, or an inner glow when inset). */
 export interface ShadowSpec {
@@ -506,6 +506,15 @@ export type ScreenElement =
       label?: string;
       /** % of screen width. */
       fontSize?: number;
+      /**
+       * CUSTOM VECTOR ('path' shapes only): the polygon's vertices, each in
+       * % of this shape's own box (0–100), ≥3 points. Fill/stroke come from
+       * `style` (background / borderColor / borderWidth). Edited on canvas
+       * via vertex handles while the shape is focused.
+       */
+      points?: { x: number; y: number }[];
+      /** 'path' only: false = open polyline (stroke, no fill). Default true. */
+      closed?: boolean;
     })
   /** A connector line drawn inside the rect (flow diagrams, phase tracks). */
   | (ScreenElementBase & {

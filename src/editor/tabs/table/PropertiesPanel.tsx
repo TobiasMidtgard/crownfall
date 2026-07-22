@@ -1702,7 +1702,7 @@ function ActionScriptModal({ def, action, onClose, onChangeDef }: {
 
 const SHAPE_LABELS: Record<ShapeKind, string> = {
   rect: 'Rectangle', rounded: 'Rounded', pill: 'Pill', circle: 'Circle',
-  diamond: 'Diamond', hexagon: 'Hexagon', star: 'Star',
+  diamond: 'Diamond', hexagon: 'Hexagon', star: 'Star', path: 'Custom path',
 };
 
 /** A visual grid of shape swatches (each shows its true silhouette). */

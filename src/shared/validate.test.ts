@@ -252,3 +252,28 @@ describe('styleRules validation (universal node model)', () => {
     expect(validateGameDef(def).filter((i) => i.where.includes('style rule'))).toEqual([]);
   });
 });
+
+describe('path shape validation', () => {
+  const screenDef = (elements: unknown[]): GameDef =>
+    baseDef({ screenLayout: { aspect: null, elements: elements as never } });
+
+  it('flags a path with fewer than 3 points and out-of-box points', () => {
+    const def = screenDef([
+      { kind: 'shape', id: 'e_p1', name: 'Two points', rect: { x: 0, y: 0, w: 10, h: 10 },
+        shape: 'path', points: [{ x: 0, y: 0 }, { x: 100, y: 100 }] },
+      { kind: 'shape', id: 'e_p2', name: 'Escapee', rect: { x: 0, y: 0, w: 10, h: 10 },
+        shape: 'path', points: [{ x: 0, y: 0 }, { x: 120, y: 50 }, { x: 0, y: 100 }] },
+    ]);
+    const msgs = validateGameDef(def).map((i) => i.message);
+    expect(msgs.some((m) => m.includes('at least 3 points'))).toBe(true);
+    expect(msgs.some((m) => m.includes('within the shape box'))).toBe(true);
+  });
+
+  it('accepts a proper triangle', () => {
+    const def = screenDef([
+      { kind: 'shape', id: 'e_p3', name: 'Tri', rect: { x: 0, y: 0, w: 10, h: 10 },
+        shape: 'path', points: [{ x: 50, y: 0 }, { x: 100, y: 100 }, { x: 0, y: 100 }] },
+    ]);
+    expect(validateGameDef(def).filter((i) => i.where.includes('Tri'))).toEqual([]);
+  });
+});

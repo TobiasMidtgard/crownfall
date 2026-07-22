@@ -2,6 +2,18 @@
     "version":  "0.0.1",
     "configurations":  [
                            {
+                               "name":  "riftline",
+                               "runtimeExecutable":  "npm",
+                               "runtimeArgs":  [
+                                                   "run",
+                                                   "dev",
+                                                   "--prefix",
+                                                   "C:\\Users\\Tobit\\Documents\\ProgrammingProjects\\Riftline"
+                                               ],
+                               "port":  5174,
+                               "autoPort":  true
+                           },
+                           {
                                "name":  "crownfall",
                                "runtimeExecutable":  "npm",
                                "runtimeArgs":  [

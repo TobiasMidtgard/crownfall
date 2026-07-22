@@ -1,6 +1,7 @@
 node_modules/
 dist/
 *.local
+.superpowers/
 .DS_Store
 
 .claude/scheduled_tasks.lock

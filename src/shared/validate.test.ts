@@ -228,3 +228,27 @@ describe('layout backbone validation', () => {
     expect(errorsOf(def)).toEqual([]);
   });
 });
+
+describe('styleRules validation (universal node model)', () => {
+  const screenDef = (elements: unknown[]): GameDef =>
+    baseDef({ screenLayout: { aspect: null, elements: elements as never } });
+
+  it('flags a styleRule whose condition references a missing variable', () => {
+    const def = screenDef([
+      { kind: 'text', id: 'e_sr', name: 'Ruled text', rect: { x: 0, y: 0, w: 10, h: 10 },
+        text: 'x',
+        styleRules: [{ when: { kind: 'getVar', varId: 'no_such_var', target: null }, style: {} }] },
+    ]);
+    const all = validateGameDef(def).map((i) => `${i.where}: ${i.message}`);
+    expect(all.some((s) => s.includes('style rule 1'))).toBe(true);
+  });
+
+  it('accepts a styleRule over a real variable', () => {
+    const def = screenDef([
+      { kind: 'text', id: 'e_ok', name: 'Ruled ok', rect: { x: 0, y: 0, w: 10, h: 10 },
+        text: 'x',
+        styleRules: [{ when: { kind: 'num', value: 1 }, style: { background: '#123456' } }] },
+    ]);
+    expect(validateGameDef(def).filter((i) => i.where.includes('style rule'))).toEqual([]);
+  });
+});

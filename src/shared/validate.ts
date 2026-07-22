@@ -246,6 +246,9 @@ export function validateGameDef(def: GameDef): ValidationIssue[] {
           for (const st of el.states ?? []) {
             walkExpr(st.when, `${here} > state "${st.name}"`);
           }
+          (el.styleRules ?? []).forEach((r, i) => {
+            walkExpr(r.when, `${here} > style rule ${i + 1}`);
+          });
           if (el.showForSelector !== undefined) {
             const target = own.get(el.showForSelector);
             if (target === undefined) {

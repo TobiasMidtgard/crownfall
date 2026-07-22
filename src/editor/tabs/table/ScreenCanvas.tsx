@@ -77,6 +77,9 @@ const NO_ELEMENTS: ScreenElement[] = [];
 /** Double-tap window for entering focus mode (ms between taps on one element). */
 const DOUBLE_TAP_MS = 400;
 
+/** Session memory for the "👁 Hidden" ghost toggle (survives tab switches). */
+let showHiddenMemory = false;
+
 const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 2;
 const ZOOM_STEP = 1.25;
@@ -221,6 +224,14 @@ export function ScreenCanvas({
   // time context so authors can see/design each state (see deriveContextState).
   const [previewCtx, setPreviewCtx] = useState<PreviewContext>(DEFAULT_PREVIEW_CONTEXT);
   const pvState = useMemo(() => deriveContextState(sample, previewCtx), [sample, previewCtx]);
+  // "👁 Hidden": ghost every element the previewed board state hides (empty
+  // occupied-only strips, off-state chrome) so it stays findable/selectable
+  // without hunting through Layers. Session-remembered, default off.
+  const [showHidden, setShowHidden] = useState(() => showHiddenMemory);
+  const toggleShowHidden = () => setShowHidden((v) => {
+    showHiddenMemory = !v;
+    return !v;
+  });
   // The context bar's tab buttons switch the shared selector store; re-render so
   // the overlay's shown-set tracks the same active tab as the real render.
   const selVersion = useSyncExternalStore(subscribeSelection, selectionVersion, selectionVersion);
@@ -1261,33 +1272,63 @@ export function ScreenCanvas({
 
   // Selected-but-hidden elements (Layers picks): dashed ghost outlines at
   // their absolute rects, still draggable/resizable so hidden things stay
-  // editable while the preview is live.
-  const previewGhosts = pvState !== null
-    ? sel.filter((id) => index.has(id) && !pvReachable(id)).map((id) => {
-        const info = index.get(id)!;
-        const abs = live?.rects[id] ?? info.abs;
-        return (
-          <div
-            key={`pv-${id}`}
-            className="tt-el tt-pv-ghost tt-el-selected"
-            style={{
-              left: `${abs.x}%`, top: `${abs.y}%`, width: `${abs.w}%`, height: `${abs.h}%`, zIndex: 950,
-            }}
-            onPointerDown={(e) => startDrag(e, id, 'move')}
-            role="button"
-            aria-label={`${info.el.name} — hidden in preview; drag to move`}
-          >
-            <span className="tt-pv-ghost-tag">{info.el.name} · hidden</span>
-            {sel.length === 1 && (
-              <div
-                className="tt-handle"
-                onPointerDown={(e) => startDrag(e, id, 'resize')}
-                aria-label={`Resize ${info.el.name}`}
-              />
-            )}
-          </div>
-        );
+  // editable while the preview is live. With "👁 Hidden" on, the TOPMOST
+  // hidden element of every hidden subtree ghosts too (soft style) — the
+  // occupied-only strips and off-state chrome become findable on canvas.
+  const softGhostIds = pvState !== null && showHidden
+    ? [...index.keys()].filter((id) => {
+        if (selSet.has(id) || pvReachable(id)) return false;
+        // IN FOCUS: you drilled into this element on purpose — ghost EVERY
+        // hidden child (the seal's off-state phase buttons/names/hints
+        // included) so each one can be clicked and edited.
+        if (focusEl) {
+          const parent = index.get(id)?.parentId ?? null;
+          return parent === null || pvReachable(parent);
+        }
+        // SCREEN LEVEL: only ƒx-conditional elements (an OWN `visible`
+        // expression — the occupied-only strips and chips). Anything inside
+        // a STATEFUL group (the seal's six render-states) stays out:
+        // ghosting every state at once would bury the canvas — drill into
+        // the group (or use the state preview) to design those.
+        if (index.get(id)?.el.visible == null) return false;
+        for (let cur = index.get(id)?.parentId ?? null; cur !== null; cur = index.get(cur)?.parentId ?? null) {
+          if ((index.get(cur)?.el.states?.length ?? 0) > 0) return false;
+        }
+        const parent = index.get(id)?.parentId ?? null;
+        return parent === null || pvReachable(parent);
       })
+    : [];
+  const ghostFor = (id: Id, soft: boolean) => {
+    const info = index.get(id)!;
+    const abs = live?.rects[id] ?? info.abs;
+    return (
+      <div
+        key={`pv-${id}`}
+        className={soft ? 'tt-el tt-pv-ghost tt-pv-ghost-soft' : 'tt-el tt-pv-ghost tt-el-selected'}
+        style={{
+          left: `${abs.x}%`, top: `${abs.y}%`, width: `${abs.w}%`, height: `${abs.h}%`,
+          zIndex: soft ? 940 : 950,
+        }}
+        onPointerDown={(e) => startDrag(e, id, 'move')}
+        role="button"
+        aria-label={`${info.el.name} — hidden in preview; drag to move`}
+      >
+        <span className="tt-pv-ghost-tag">{info.el.name} · hidden</span>
+        {!soft && sel.length === 1 && (
+          <div
+            className="tt-handle"
+            onPointerDown={(e) => startDrag(e, id, 'resize')}
+            aria-label={`Resize ${info.el.name}`}
+          />
+        )}
+      </div>
+    );
+  };
+  const previewGhosts = pvState !== null
+    ? [
+        ...sel.filter((id) => index.has(id) && !pvReachable(id)).map((id) => ghostFor(id, false)),
+        ...softGhostIds.map((id) => ghostFor(id, true)),
+      ]
     : null;
 
   return (
@@ -1563,6 +1604,17 @@ export function ScreenCanvas({
       {pvState !== null && (
         <div className="tt-context-bar" role="group" aria-label="Board state — design each state of the screen">
           <span className="tt-ctx-label">Board state</span>
+          <div className="tt-seg tt-seg-small" role="group" aria-label="Hidden elements">
+            <button
+              type="button"
+              className={showHidden ? 'tt-active' : ''}
+              onClick={toggleShowHidden}
+              title="Ghost the elements this board state hides (empty strips, off-phase chrome) so they stay visible and selectable"
+              aria-pressed={showHidden}
+            >
+              👁 Hidden
+            </button>
+          </div>
           <div className="tt-seg tt-seg-small" role="group" aria-label="Whose turn">
             {(['you', 'foe', 'over'] as const).map((a) => (
               <button

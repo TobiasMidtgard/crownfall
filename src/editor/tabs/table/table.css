@@ -754,6 +754,18 @@
   border-radius: 8px;
   background: rgba(45, 212, 191, 0.05);
 }
+/* "👁 Hidden" soft ghosts: findable, unobtrusive, hover to firm up. */
+.tt-pv-ghost-soft {
+  border-width: 1px;
+  opacity: 0.45;
+  background: rgba(45, 212, 191, 0.03);
+}
+.tt-pv-ghost-soft:hover {
+  opacity: 0.9;
+}
+.tt-pv-ghost-soft .tt-pv-ghost-tag {
+  font-weight: 500;
+}
 .tt-pv-ghost-tag {
   position: absolute;
   top: 2px;

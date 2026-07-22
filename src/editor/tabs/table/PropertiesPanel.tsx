@@ -44,8 +44,10 @@ import { defaultGradient, gradientToCss, parseGradient, type Gradient } from './
 import {
   GROUP_MIN, MIN_H, MIN_W, MOTION_DEFAULTS, PHONE_ASPECT, addElementState, bindCounterStepActions,
   deckCardCount,
-  findEl, makeActionDef, makeVariableDef, moveElementState, newCustomDeckAt,
-  newElementState, patchMobileVariant, patchMotion, removeElementState, selectorButtonOptions,
+  findEl, makeActionDef, makeVariableDef, moveElementState, newButtonElement, newCounterElement,
+  newCustomDeckAt, newElementState, newGroupElement, newImageElement, newLineElement,
+  newShapeElement, newTextElement, newVarTextElement, patchMobileVariant, patchMotion,
+  removeElementState, selectorButtonOptions,
   setTextDynamic, snapStep, templateFieldOptions, updateEl, updateElementState, variantElements,
   withVariantElements, writeSelection, type AlignOp, type VariantKey,
 } from './screenModel';
@@ -447,63 +449,14 @@ function ElementProps(props: PropertiesPanelProps & { el: ScreenElement }) {
       {el.kind === 'shape' && <ShapeSection el={el} onPatchEl={onPatchEl} />}
       {el.kind === 'line' && <LineSection el={el} onPatchEl={onPatchEl} />}
       {el.kind === 'log' && <LogSection el={el} onPatchEl={onPatchEl} />}
-      {el.kind === 'group' && (
-        <section className="tt-prop-section">
-          <h4>Group</h4>
-          <p className="faint tt-prop-hint">
-            {el.children.length === 0
-              ? 'Empty — drag elements inside on the canvas.'
-              : `${el.children.length} element${el.children.length === 1 ? '' : 's'} move, hide and animate together.`}
-          </p>
-          <p className="faint tt-prop-hint">
-            Want switchable panels? Insert the "Panel switcher" preset from the palette, or
-            add selector buttons and bind panels via "Show only for" below.
-          </p>
-          {el.children.length > 0 && (
-            // Front-to-back like the Layers panel (reverse of the array).
-            <div className="tt-layers" role="list" aria-label="Group children, front to back">
-              {el.children.slice().reverse().map((child) => (
-                <div
-                  key={child.id}
-                  className="tt-layer"
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => onSelect?.([child.id])}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      onSelect?.([child.id]);
-                    }
-                  }}
-                >
-                  <span className="tt-layer-icon" aria-hidden="true">{KIND_ICONS[child.kind]}</span>
-                  <span className="tt-layer-name">{child.name}</span>
-                  <span className="tt-layer-btns">
-                    <button
-                      type="button"
-                      className="tt-layer-btn"
-                      aria-label={`Focus the group and select ${child.name}`}
-                      title="Focus the group and select this element"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onFocus(el.id);
-                        onSelect?.([child.id]);
-                      }}
-                    >
-                      ⛶
-                    </button>
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-          {el.children.length > 0 && (
-            <button type="button" className="btn" onClick={() => onUngroup(el.id)}>
-              ⊟ Ungroup
-            </button>
-          )}
-        </section>
-      )}
+      <ChildrenSection
+        def={def}
+        el={el}
+        onPatchEl={onPatchEl}
+        onSelect={onSelect}
+        onFocus={onFocus}
+        onUngroup={onUngroup}
+      />
       {el.kind === 'group' && <LayoutSection el={el} onPatchEl={onPatchEl} />}
       {el.kind === 'panelSwitcher' && <PanelSwitcherSection el={el} onPatchEl={onPatchEl} />}
       {el.kind === 'image' && <ImageSection el={el} onPatchEl={onPatchEl} />}
@@ -907,6 +860,121 @@ const collapseGroupMem = new Map<string, boolean>();
  * groups). Open state is remembered per `id` for the session; `forceOpen`
  * pops it open from outside (a canvas card-part click).
  */
+/** Kinds addable as a child of any node (factories from screenModel). */
+const CHILD_FACTORIES: { key: string; label: string; make: (def: GameDef) => ScreenElement | null }[] = [
+  { key: 'text', label: 'Text', make: () => newTextElement() },
+  { key: 'varText', label: 'Variable', make: (def) => newVarTextElement(def) },
+  { key: 'button', label: 'Button', make: (def) => newButtonElement(def) },
+  { key: 'counter', label: 'Counter', make: (def) => newCounterElement(def) },
+  { key: 'shape', label: 'Shape', make: () => newShapeElement() },
+  { key: 'line', label: 'Line', make: () => newLineElement() },
+  { key: 'image', label: 'Image', make: () => newImageElement() },
+  { key: 'group', label: 'Group', make: () => newGroupElement() },
+];
+
+/**
+ * EVERY node can hold children (the universal node model): list them, jump
+ * into them, add new ones in place. Groups keep Ungroup; a fresh child
+ * lands centered at half the parent's size and is selected in focus.
+ */
+function ChildrenSection({ def, el, onPatchEl, onSelect, onFocus, onUngroup }: {
+  def: GameDef;
+  el: ScreenElement;
+  onPatchEl: PropertiesPanelProps['onPatchEl'];
+  onSelect?: (ids: Id[]) => void;
+  onFocus: (id: Id) => void;
+  onUngroup: (id: Id) => void;
+}) {
+  const kids = el.children ?? [];
+  const isGroup = el.kind === 'group';
+  const addChild = (key: string) => {
+    const f = CHILD_FACTORIES.find((c) => c.key === key);
+    if (!f) return;
+    const child = f.make(def);
+    if (child === null) return; // e.g. a Variable child with no vars defined
+    // Child rects are % of the PARENT box — land centered at half size.
+    child.rect = { x: 25, y: 25, w: 50, h: 50 };
+    onPatchEl(el.id, (c) => ({ ...c, children: [...(c.children ?? []), child] } as ScreenElement));
+    onFocus(el.id);
+    onSelect?.([child.id]);
+  };
+  return (
+    <section className="tt-prop-section">
+      <h4>{isGroup ? 'Group' : 'Children'}</h4>
+      <p className="faint tt-prop-hint">
+        {kids.length === 0
+          ? (isGroup
+            ? 'Empty — drag elements inside on the canvas, or add one below.'
+            : 'Any element can carry children — badges, glyphs, conditional decals. They move, hide and animate with it.')
+          : `${kids.length} element${kids.length === 1 ? '' : 's'} move, hide and animate together.`}
+      </p>
+      {isGroup && (
+        <p className="faint tt-prop-hint">
+          Want switchable panels? Insert the "Panel switcher" preset from the palette, or
+          add selector buttons and bind panels via "Show only for" below.
+        </p>
+      )}
+      {kids.length > 0 && (
+        // Front-to-back like the Layers panel (reverse of the array).
+        <div className="tt-layers" role="list" aria-label="Children, front to back">
+          {kids.slice().reverse().map((child) => (
+            <div
+              key={child.id}
+              className="tt-layer"
+              role="button"
+              tabIndex={0}
+              onClick={() => onSelect?.([child.id])}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onSelect?.([child.id]);
+                }
+              }}
+            >
+              <span className="tt-layer-icon" aria-hidden="true">{KIND_ICONS[child.kind]}</span>
+              <span className="tt-layer-name">{child.name}</span>
+              <span className="tt-layer-btns">
+                <button
+                  type="button"
+                  className="tt-layer-btn"
+                  aria-label={`Focus ${el.name} and select ${child.name}`}
+                  title="Focus this element and select the child"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onFocus(el.id);
+                    onSelect?.([child.id]);
+                  }}
+                >
+                  ⛶
+                </button>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+      <label className="tt-prop-row">
+        <span>Add child</span>
+        <select
+          className="select"
+          value=""
+          onChange={(e) => {
+            if (e.target.value !== '') addChild(e.target.value);
+            e.target.value = '';
+          }}
+        >
+          <option value="">＋ pick a kind…</option>
+          {CHILD_FACTORIES.map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
+        </select>
+      </label>
+      {isGroup && kids.length > 0 && (
+        <button type="button" className="btn" onClick={() => onUngroup(el.id)}>
+          ⊟ Ungroup
+        </button>
+      )}
+    </section>
+  );
+}
+
 function CollapseGroup({ id, title, forceOpen = false, children }: {
   id: string;
   title: string;

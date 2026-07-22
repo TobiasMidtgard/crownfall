@@ -263,6 +263,13 @@ export interface ScreenElementBase {
   /** Conditional appearances (first match wins). */
   states?: ElementState[];
   /**
+   * Conditional style PATCHES, evaluated in order against the live context
+   * (same evaluator/binding as `visible`); every matching rule's patch
+   * merges over the last — base style → active state style → matching
+   * rules. The "recolor this node while X" primitive, at any depth.
+   */
+  styleRules?: { when: Expr; style: Partial<LayoutStyle> }[];
+  /**
    * Render only while this selector BUTTON (a 'selector'-role button element
    * in the same screen) is the selected one of its group. Composes with
    * `visible` — both must hold. Absent = always (subject to `visible`).

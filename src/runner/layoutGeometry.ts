@@ -124,15 +124,24 @@ export function resolveElementAppearance(
   el: ScreenElement,
   viewerId: Id,
 ): ElementAppearance {
+  let rect = el.rect;
+  let style = el.style;
+  let stateId: Id | null = null;
   for (const st of el.states ?? []) {
     if (!isDisplayVisible(def, state, st.when, viewerId)) continue;
-    return {
-      rect: st.rect ?? el.rect,
-      style: st.style ? { ...el.style, ...st.style } : el.style,
-      stateId: st.id,
-    };
+    rect = st.rect ?? el.rect;
+    style = st.style ? { ...el.style, ...st.style } : el.style;
+    stateId = st.id;
+    break;
   }
-  return { rect: el.rect, style: el.style, stateId: null };
+  // styleRules layer OVER the resolved state: every matching rule's patch
+  // merges in order (later rules win) — see ScreenElementBase.styleRules.
+  if (el.styleRules !== undefined && el.styleRules.length > 0) {
+    for (const rule of el.styleRules) {
+      if (isDisplayVisible(def, state, rule.when, viewerId)) style = { ...style, ...rule.style };
+    }
+  }
+  return { rect, style, stateId };
 }
 
 // ---------------------------------------------------------------------------

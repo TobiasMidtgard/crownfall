@@ -833,3 +833,39 @@ describe('counter elements (interactive variable steppers)', () => {
       .toEqual(new Set(['heal']));
   });
 });
+
+describe('styleRules: conditional style patches (universal node model)', () => {
+  const baseStyle = { background: '#111', borderColor: '#888' };
+  function ruledEl(): ScreenElement {
+    return {
+      kind: 'shape', id: 'el_rdot', name: 'Ruled dot', shape: 'circle',
+      rect: { x: 5, y: 5, w: 20, h: 10 },
+      style: baseStyle,
+      states: [{ id: 'st_night', name: 'Night', when: gv('night'), style: { background: 'red' } }],
+      styleRules: [
+        { when: gv('night'), style: { borderColor: 'gold' } },
+        { when: cmp('>', gv('lp', bnd('$viewer')), num(0)), style: { background: '#222' } },
+        { when: gv('night'), style: { background: 'purple' } },
+      ],
+    };
+  }
+
+  it('day: only the lp rule matches - its patch lands over the base', async () => {
+    const def = screenDef();
+    const h = harness(def);
+    await h.engine.start();
+    const a = resolveElementAppearance(def, h.state(), ruledEl(), 'p0');
+    expect(a.stateId).toBeNull();
+    expect(a.style).toEqual({ background: '#222', borderColor: '#888' });
+  });
+
+  it('night: rules merge over the active STATE style, in order, later wins', async () => {
+    const def = screenDef();
+    const h = harness(def);
+    await h.engine.start();
+    const a = resolveElementAppearance(def, atNight(h.state()), ruledEl(), 'p0');
+    expect(a.stateId).toBe('st_night');
+    // base -> state(red bg) -> gold border -> #222 bg -> purple bg
+    expect(a.style).toEqual({ background: 'purple', borderColor: 'gold' });
+  });
+});

@@ -182,3 +182,9 @@ SHIPPED so far: Base 2E, Intrigue 2E, Seaside 2E (Durations, mats; Outpost exclu
 - **Reusable "for each opponent" + "discard down to N" blocks**, Militia rebuilt to use them (`04fcb14`).
 - **SEED_VERSION → 10**: pushes the rebuilt Militia + def fixes to existing games (overwrites local edits to the built-in Dominion — approved).
 - **#8 (smart containers + typed slots) + #10 (robust grid)** — the "layout backbone" wave (merged `83fbc06`): `FlowLayout` on any container (Grid/Row/Column), typed slots, `panelSwitcher` + `image` elements; Dominion mobile supply migrated as proof. Leftovers tracked above.
+
+## Fix: editor preview squished left until a table was visited
+
+- Root cause: runner.css (the .rn-* positioning rules) was imported only by the play chunk (PlayPage/TableScreen). A session that opened the editor first rendered the live preview with position:static elements - inline left/top ignored, everything stacked at the left edge of the stage - until visiting any table injected the stylesheet for the rest of the session ("wrong until I have played a game").
+- Fix: ScreenRenderer.tsx now imports its own stylesheet, so every chunk that renders .rn-* markup (editor preview included) ships the rules in dev and production.
+- Guard: src/runner/rendererStyles.test.ts pins the import.

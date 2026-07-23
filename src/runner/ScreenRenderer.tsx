@@ -50,6 +50,11 @@
  *     are decorative.
  */
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+// The .rn-* rules ride with the module that renders the markup: the editor's
+// live preview embeds this renderer outside the play chunk, and without this
+// import a production session that never visited a table rendered every
+// .rn-el position:static — the whole preview stacked at the stage's left edge.
+import './runner.css';
 import type { Expr, FlowLayout, Id, LayoutStyle, Move, ScreenElement } from '../shared/types';
 import { PASS_ACTION_ID } from '../shared/types';
 import { isDisplayVisible } from '../engine';
